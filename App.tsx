@@ -128,6 +128,11 @@ const App: React.FC = () => {
     );
   }, [treePeople, searchQuery, supabaseActive]);
 
+  const filteredRelationships = useMemo(() => {
+    const visibleIds = new Set(filteredPeople.map(p => p.id));
+    return treeRelationships.filter(rel => visibleIds.has(rel.personId) && visibleIds.has(rel.relatedId));
+  }, [treeRelationships, filteredPeople]);
+
   const selectTree = (tree: FamilyTreeType) => {
     setActiveTree(tree);
     setShowTreeSelector(false);
@@ -316,7 +321,7 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="text-3xl font-serif font-bold text-slate-900">Kinship Map</h2>
                 </div>
-                <FamilyTree people={filteredPeople} relationships={treeRelationships} onPersonSelect={setSelectedPerson} layout={layoutType} />
+                <FamilyTree people={filteredPeople} relationships={filteredRelationships} onPersonSelect={setSelectedPerson} layout={layoutType} />
               </div>
             )}
             {activeTab === 'records' && (
