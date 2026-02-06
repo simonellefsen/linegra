@@ -38,6 +38,7 @@ const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
   EDUC: 'Education',
   BAPM: 'Baptism',
   CONF: 'Confirmation',
+  BURI: 'Burial',
   EVEN: 'Other'
 };
 
@@ -72,28 +73,32 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
     let currentType: 'INDI' | 'FAM' | 'SOUR' | null = null;
     let currentTag = '';
     let currentEvent: PersonEvent | null = null;
-    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', ...Object.keys(GEDCOM_EVENT_MAP)]);
+    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI']);
     const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR']);
+    const lineRegex = /^(\d+)\s+(?:(@[^@]+@)\s+)?([A-Z0-9_]+)(?:\s+(.*))?$/i;
 
     lines.forEach((line) => {
-      const match = line.match(/^(\d+)\s+(@?\w+@?)\s*(\w+)?\s*(.*)$/);
+      const match = line.match(lineRegex);
       if (!match) return;
 
-      const [, levelStr, tagOrId, tagIfId, value] = match;
-      const level = parseInt(levelStr);
+      const [, levelStr, pointerToken, tagRaw, rest] = match;
+      const level = parseInt(levelStr, 10);
+      const tag = tagRaw.toUpperCase();
+      const value = (rest ?? '').trim();
 
       if (level === 0) {
         currentEvent = null;
-        if (tagIfId === 'INDI') {
-          currentId = tagOrId.replace(/@/g, '');
+        const pointerId = pointerToken ? pointerToken.replace(/@/g, '') : '';
+        if (pointerToken && tag === 'INDI') {
+          currentId = pointerId;
           currentType = 'INDI';
           parsedPeople[currentId] = { id: currentId, firstName: '', lastName: '', updatedAt: new Date().toISOString(), events: [], sourceIds: [], inlineSources: [] };
-        } else if (tagIfId === 'FAM') {
-          currentId = tagOrId.replace(/@/g, '');
+        } else if (pointerToken && tag === 'FAM') {
+          currentId = pointerId;
           currentType = 'FAM';
           parsedFamilies[currentId] = { children: [] };
-        } else if (tagIfId === 'SOUR') {
-          currentId = tagOrId.replace(/@/g, '');
+        } else if (pointerToken && tag === 'SOUR') {
+          currentId = pointerId;
           currentType = 'SOUR';
           parsedSources[currentId] = {
             id: currentId,
@@ -107,7 +112,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         }
       } else if (currentType === 'INDI' && parsedPeople[currentId]) {
         const p = parsedPeople[currentId];
-        if (level === 1 && tagOrId !== 'DATE' && tagOrId !== 'PLAC' && tagOrId !== 'NOTE') {
+        if (level === 1 && tag !== 'DATE' && tag !== 'PLAC' && tag !== 'NOTE') {
           currentEvent = null;
           currentTag = '';
         }
@@ -126,117 +131,121 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           }
           return evt;
         };
-        if (tagOrId === 'NAME') {
+        if (tag === 'NAME') {
           const nameParts = value.split('/');
           p.firstName = nameParts[0]?.trim() || '';
           p.lastName = nameParts[1]?.trim() || '';
-        } else if (tagOrId === 'SEX') {
-          p.gender = value.trim() === 'F' ? 'F' : (value.trim() === 'M' ? 'M' : 'O');
-        } else if (tagOrId === 'BIRT') {
+        } else if (tag === 'SEX') {
+          p.gender = value === 'F' ? 'F' : (value === 'M' ? 'M' : 'O');
+        } else if (tag === 'BIRT') {
           currentTag = 'BIRT';
           currentEvent = ensureEvent('Birth', 'birth');
-        } else if (tagOrId === 'DEAT') {
+        } else if (tag === 'DEAT') {
           currentTag = 'DEAT';
           currentEvent = ensureEvent('Death', 'death');
-        } else if (tagOrId === 'CHAN') {
+        } else if (tag === 'BURI') {
+          currentTag = 'BURI';
+          currentEvent = ensureEvent('Burial', 'burial');
+        } else if (tag === 'CHAN') {
           currentTag = 'CHAN';
-        } else if (GEDCOM_EVENT_MAP[tagOrId]) {
-          currentTag = tagOrId;
+        } else if (GEDCOM_EVENT_MAP[tag]) {
+          currentTag = tag;
           const events = p.events || (p.events = []);
           currentEvent = {
             id: `evt-${currentId}-${events.length + 1}`,
-            type: GEDCOM_EVENT_MAP[tagOrId],
+            type: GEDCOM_EVENT_MAP[tag],
             date: '',
             place: '',
-            description: value.trim()
+            description: value
           };
           events.push(currentEvent);
-        } else if (tagOrId === 'DATE' && level === 2) {
-          if (currentTag === 'BIRT') p.birthDate = value.trim();
-          if (currentTag === 'DEAT') p.deathDate = value.trim();
-          if (currentEvent) currentEvent.date = value.trim();
+        } else if (tag === 'DATE' && level === 2) {
+          if (currentTag === 'BIRT') p.birthDate = value;
+          if (currentTag === 'DEAT') p.deathDate = value;
+          if (currentEvent) currentEvent.date = value;
           if (currentTag === 'CHAN') {
-            const parsed = Date.parse(value.trim());
-            p.updatedAt = Number.isNaN(parsed) ? value.trim() : new Date(parsed).toISOString();
+            const parsed = Date.parse(value);
+            p.updatedAt = Number.isNaN(parsed) ? value : new Date(parsed).toISOString();
           }
-        } else if (tagOrId === 'PLAC' && level === 2) {
-          if (currentTag === 'BIRT') p.birthPlace = value.trim();
-          if (currentTag === 'DEAT') p.deathPlace = value.trim();
-          if (currentEvent) currentEvent.place = value.trim();
-        } else if (tagOrId === 'NOTE' && (currentEvent || currentTag === 'BIRT' || currentTag === 'DEAT')) {
+        } else if (tag === 'PLAC' && level === 2) {
+          if (currentTag === 'BIRT') p.birthPlace = value;
+          if (currentTag === 'DEAT') p.deathPlace = value;
+          if (currentEvent) currentEvent.place = value;
+        } else if (tag === 'NOTE' && (currentEvent || ['BIRT', 'DEAT', 'BURI'].includes(currentTag))) {
           const targetEvent = currentEvent || (currentTag === 'BIRT'
             ? ensureEvent('Birth', 'birth')
             : currentTag === 'DEAT'
               ? ensureEvent('Death', 'death')
-              : null);
+              : currentTag === 'BURI'
+                ? ensureEvent('Burial', 'burial')
+                : null);
           if (targetEvent) {
-            targetEvent.description = `${targetEvent.description || ''}\nNote: ${value.trim()}`.trim();
+            targetEvent.description = `${targetEvent.description || ''}\nNote: ${value}`.trim();
           }
-        } else if (tagOrId === 'TYPE' && currentEvent) {
-          const typeText = value.trim();
+        } else if (tag === 'TYPE' && currentEvent) {
+          const typeText = value;
           if (currentTag === 'EVEN' && typeText) {
             currentEvent.type = typeText;
           }
           currentEvent.description = currentEvent.description
             ? `${currentEvent.description}\nType: ${typeText}`
             : `Type: ${typeText}`;
-        } else if (tagOrId === 'SOUR') {
-          const srcId = value.replace(/@/g, '').trim();
+        } else if (tag === 'SOUR') {
+          const srcId = value.replace(/@/g, '');
           if (srcId) {
             (p.sourceIds || (p.sourceIds = [])).push(srcId);
-          } else if (value.trim()) {
+          } else if (value) {
             const inlineId = `inline-${currentId}-${(p.inlineSources?.length || 0) + 1}`;
             const inlineSource: Source = {
               id: inlineId,
-              title: value.trim(),
+              title: value,
               type: 'Unknown',
               reliability: 1,
-              actualText: value.trim()
+              actualText: value
             };
             p.inlineSources?.push(inlineSource);
           }
-        } else if (level === 1 && !supportedIndividualTags.has(tagOrId)) {
-          warnings.push(`Ignored individual tag "${tagOrId}" on record ${currentId}`);
+        } else if (level === 1 && !supportedIndividualTags.has(tag)) {
+          warnings.push(`Ignored individual tag \"${tag}\" on record ${currentId}`);
         }
       } else if (currentType === 'FAM' && parsedFamilies[currentId]) {
         const f = parsedFamilies[currentId];
-        const valId = value.replace(/@/g, '').trim();
-        if (tagOrId === 'HUSB') f.husb = valId;
-        else if (tagOrId === 'WIFE') f.wife = valId;
-        else if (tagOrId === 'CHIL') f.children.push(valId);
-        else if (tagOrId === 'MARR') currentTag = 'MARR';
-        else if (tagOrId === 'DATE' && level === 2 && currentTag === 'MARR') f.date = value.trim();
-        else if (tagOrId === 'PLAC' && level === 2 && currentTag === 'MARR') f.place = value.trim();
-        else if (tagOrId === 'TYPE' && level === 2 && currentTag === 'MARR') f.type = value.trim();
-        else if (level === 1 && !supportedFamilyTags.has(tagOrId)) {
-          warnings.push(`Ignored family tag "${tagOrId}" on record ${currentId}`);
+        if (tag === 'HUSB') f.husb = value.replace(/@/g, '');
+        else if (tag === 'WIFE') f.wife = value.replace(/@/g, '');
+        else if (tag === 'CHIL') f.children.push(value.replace(/@/g, ''));
+        else if (tag === 'MARR') currentTag = 'MARR';
+        else if (tag === 'DATE' && level === 2 && currentTag === 'MARR') f.date = value;
+        else if (tag === 'PLAC' && level === 2 && currentTag === 'MARR') f.place = value;
+        else if (tag === 'TYPE' && level === 2 && currentTag === 'MARR') f.type = value;
+        else if (level === 1 && !supportedFamilyTags.has(tag)) {
+          warnings.push(`Ignored family tag \"${tag}\" on record ${currentId}`);
         }
       } else if (currentType === 'SOUR' && parsedSources[currentId]) {
         const source = parsedSources[currentId];
-        switch (tagOrId) {
+        switch (tag) {
           case 'TITL':
-            source.title = value.trim();
+            source.title = value;
             break;
           case 'AUTH':
-            source.repository = value.trim();
+            source.repository = value;
             break;
           case 'PUBL':
-            source.notes = value.trim();
+            source.notes = value;
             break;
           case 'TEXT':
-            source.actualText = value.trim();
+            source.actualText = value;
             break;
           case 'NOTE':
-            source.notes = `${source.notes || ''}\n${value.trim()}`.trim();
+            source.notes = `${source.notes || ''}\n${value}`.trim();
             break;
           case 'URL':
-            source.url = value.trim();
+            source.url = value;
             break;
           case 'DATE':
-            source.citationDate = value.trim();
+            source.citationDate = value;
             break;
           default:
-            warnings.push(`Ignored source tag "${tagOrId}" on source ${currentId}`);
+            warnings.push(`Ignored source tag \"${tag}\" on source ${currentId}`);
         }
       }
     });
