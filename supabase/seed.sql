@@ -1,0 +1,2 @@
+-- Seed placeholder for Linegra
+-- Add optional demo data inserts here after linking a tree owner profile.

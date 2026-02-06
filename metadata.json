@@ -1,0 +1,7 @@
+{
+  "name": "Linegra - Genealogy",
+  "description": "A modern, AI-powered genealogy platform for building, visualizing, and preserving family histories with interactive trees and smart biographies.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
