@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Person, 
   User as UserType, 
@@ -21,7 +21,7 @@ import {
 } from '../types';
 import { FluentDateInput } from './FluentDate';
 import { PlaceInput } from './PlaceInput';
-import { MOCK_TREES, MOCK_RELATIONSHIPS, MOCK_MEDIA } from '../mockData';
+import { MOCK_TREES, MOCK_MEDIA } from '../mockData';
 import { 
   X, Library, Image as ImageIcon, FileText, Plus, Info, Lock, ShieldCheck, 
   Target, Microscope, Dna, Share2, ChevronRight, Search, Link2, 
@@ -33,6 +33,7 @@ import {
 
 interface PersonProfileProps {
   person: Person;
+  relationships: Relationship[];
   currentUser: UserType | null;
   onClose: () => void;
   allPeople: Person[];
@@ -74,7 +75,7 @@ const NOTE_TYPES: NoteType[] = ['Generic', 'To-do', 'Research Note', 'Discrepanc
 const DNA_VENDORS: DNAVendor[] = ['FamilyTreeDNA', 'AncestryDNA', '23andMe', 'MyHeritage', 'LivingDNA', 'Other'];
 const DNA_TEST_TYPES: DNATestType[] = ['Autosomal', 'Y-DNA', 'mtDNA', 'X-DNA', 'Other'];
 
-const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onClose, allPeople }) => {
+const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, currentUser, onClose, allPeople }) => {
   const [activeSection, setActiveSection] = useState<ProfileSection>('vital');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -103,7 +104,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   });
 
   const [relConfidences, setRelConfidences] = useState<Record<string, RelationshipConfidence>>(
-    MOCK_RELATIONSHIPS.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {})
+    relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {})
   );
 
   // Expanded available events list for dropdowns, including specific event instances if they have identifiers
@@ -124,17 +125,17 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   }, [currentUser, person]);
 
   const parents = useMemo(() => {
-    return MOCK_RELATIONSHIPS
+    return relationships
       .filter(r => r.relatedId === person.id && ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'step_parent', 'guardian'].includes(r.type))
       .map(r => ({
         rel: r,
         person: allPeople.find(p => p.id === r.personId)
       }))
       .filter((item): item is { rel: Relationship; person: Person } => !!item.person);
-  }, [person.id, allPeople]);
+  }, [person.id, allPeople, relationships]);
 
   const spouses = useMemo(() => {
-    return MOCK_RELATIONSHIPS
+    return relationships
       .filter(r => (r.personId === person.id || r.relatedId === person.id) && ['marriage', 'partner'].includes(r.type))
       .map(r => {
         const otherId = r.personId === person.id ? r.relatedId : r.personId;
@@ -144,23 +145,23 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         };
       })
       .filter((item): item is { rel: Relationship; person: Person } => !!item.person);
-  }, [person.id, allPeople]);
+  }, [person.id, allPeople, relationships]);
 
   const children = useMemo(() => {
-    const asParent = MOCK_RELATIONSHIPS
+    const asParent = relationships
       .filter(r => r.personId === person.id && ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'step_parent', 'guardian'].includes(r.type))
       .map(r => ({
         rel: r,
         person: allPeople.find(p => p.id === r.relatedId)
       }));
-    const asChildRel = MOCK_RELATIONSHIPS
+    const asChildRel = relationships
       .filter(r => r.personId === person.id && r.type === 'child')
       .map(r => ({
         rel: r,
         person: allPeople.find(p => p.id === r.relatedId)
       }));
     return [...asParent, ...asChildRel].filter((item): item is { rel: Relationship; person: Person } => !!item.person);
-  }, [person.id, allPeople]);
+  }, [person.id, allPeople, relationships]);
 
   const tabs: { id: ProfileSection; label: string; icon: any; secure?: boolean }[] = [
     { id: 'vital', label: 'Vital', icon: Heart },
@@ -218,6 +219,31 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
     setNotes([newNote, ...notes]);
     setActiveSection('notes');
   };
+
+  // Sync local editable state whenever the selected person changes
+  useEffect(() => {
+    setFirstName(person.firstName);
+    setLastName(person.lastName);
+    setMaidenName(person.maidenName || '');
+    setBirthDate(person.birthDate || '');
+    setBirthPlace(person.birthPlace || '');
+    setDeathDate(person.deathDate || '');
+    setDeathPlace(person.deathPlace || '');
+    setResidenceAtDeath(person.residenceAtDeath || '');
+    setDeathCause(person.deathCause || '');
+    setDeathCategory(person.deathCauseCategory || 'Unknown');
+    setAltNames(person.alternateNames || []);
+    setEvents(person.events || []);
+    setSources(person.sources || []);
+    setNotes(person.notes || []);
+    setDnaTests(person.dnaTests || []);
+    setMediaItems(() => {
+      const ids = person.mediaIds || [];
+      return MOCK_MEDIA.filter(m => ids.includes(m.id) || m.linkedPersonIds.includes(person.id));
+    });
+    setRelConfidences(relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {}));
+    setActiveSection('vital');
+  }, [person, relationships]);
 
   const handleAddAltName = () => {
     const newAlt: AlternateName = {

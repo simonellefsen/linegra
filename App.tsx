@@ -247,6 +247,7 @@ const App: React.FC = () => {
           {selectedPerson && (
             <PersonProfile 
               person={selectedPerson} 
+              relationships={treeRelationships}
               currentUser={currentUser}
               allPeople={treePeople}
               onClose={() => setSelectedPerson(null)} 

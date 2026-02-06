@@ -26,6 +26,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
   const [isImporting, setIsImporting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importStats, setImportStats] = useState({ people: 0, relationships: 0 });
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [showConfig, setShowConfig] = useState(!isSupabaseConfigured());
   const [tempUrl, setTempUrl] = useState('');
   const [tempKey, setTempKey] = useState('');
@@ -45,10 +46,13 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
     const lines = text.split(/\r?\n/);
     const parsedPeople: Record<string, Partial<Person>> = {};
     const parsedFamilies: Record<string, { husb?: string; wife?: string; children: string[]; date?: string; place?: string }> = {};
+    const warnings: string[] = [];
     
     let currentId = '';
     let currentType: 'INDI' | 'FAM' | null = null;
     let currentTag = '';
+    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT']);
+    const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR']);
 
     lines.forEach((line) => {
       const match = line.match(/^(\d+)\s+(@?\w+@?)\s*(\w+)?\s*(.*)$/);
@@ -87,6 +91,8 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         } else if (tagOrId === 'PLAC' && level === 2) {
           if (currentTag === 'BIRT') p.birthPlace = value.trim();
           if (currentTag === 'DEAT') p.deathPlace = value.trim();
+        } else if (level === 1 && !supportedIndividualTags.has(tagOrId)) {
+          warnings.push(`Ignored individual tag "${tagOrId}" on record ${currentId}`);
         }
       } else if (currentType === 'FAM' && parsedFamilies[currentId]) {
         const f = parsedFamilies[currentId];
@@ -97,6 +103,9 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         else if (tagOrId === 'MARR') currentTag = 'MARR';
         else if (tagOrId === 'DATE' && level === 2 && currentTag === 'MARR') f.date = value.trim();
         else if (tagOrId === 'PLAC' && level === 2 && currentTag === 'MARR') f.place = value.trim();
+        else if (level === 1 && !supportedFamilyTags.has(tagOrId)) {
+          warnings.push(`Ignored family tag "${tagOrId}" on record ${currentId}`);
+        }
       }
     });
 
@@ -141,7 +150,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
       });
     });
 
-    return { people: finalPeople, relationships: finalRelationships };
+    return { people: finalPeople, relationships: finalRelationships, warnings };
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,11 +167,13 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         const data = parseGEDCOM(text);
         
         setImportStats({ people: data.people.length, relationships: data.relationships.length });
+        setImportWarnings(data.warnings);
         onImport(data);
         setStatus('success');
       } catch (err) {
         console.error("Import failed", err);
         setStatus('error');
+        setImportWarnings(['Import failed, see console for details.']);
       } finally {
         setIsImporting(false);
       }
@@ -291,7 +302,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-4 bg-slate-50 rounded-3xl border border-slate-100">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-4 bg-slate-50 rounded-3xl border border-slate-100">
               <p className="text-xs text-slate-500 italic max-w-sm">
                 <b>Note:</b> These keys are stored locally in your browser and never sent to our servers.
               </p>
@@ -314,6 +325,20 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           </div>
         )}
       </div>
+
+      {importWarnings.length > 0 && (
+        <div className="p-6 bg-amber-50 border border-amber-200 rounded-[32px] space-y-3">
+          <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+            <AlertCircle className="w-4 h-4" />
+            GEDCOM import warnings
+          </div>
+          <ul className="list-disc ml-6 text-xs text-amber-800 space-y-1">
+            {importWarnings.map((warning, idx) => (
+              <li key={`${warning}-${idx}`}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="group bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all hover:-translate-y-1">
