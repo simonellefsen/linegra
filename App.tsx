@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { MOCK_PEOPLE, MOCK_RELATIONSHIPS, MOCK_TREES } from './mockData';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship } from './types';
 import FamilyTree from './components/FamilyTree';
 import PersonProfile from './components/PersonProfile';
@@ -28,7 +29,7 @@ const App: React.FC = () => {
   const [supabaseActive] = useState(isSupabaseConfigured());
 
   // Tree State
-  const [trees] = useState<FamilyTreeType[]>(MOCK_TREES);
+  const [trees, setTrees] = useState<FamilyTreeType[]>(MOCK_TREES);
   const [activeTree, setActiveTree] = useState<FamilyTreeType>(MOCK_TREES[0]);
   const [allPeople, setAllPeople] = useState<Person[]>(MOCK_PEOPLE);
   const [allRelationships, setAllRelationships] = useState<Relationship[]>(MOCK_RELATIONSHIPS);
@@ -40,7 +41,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-    if (!supabaseActive) {
+    const hydrateLocal = () => {
       setCurrentUser({
         id: 'u1',
         name: 'James Researcher',
@@ -49,7 +50,15 @@ const App: React.FC = () => {
         isAdmin: true,
         avatarUrl: 'https://ui-avatars.com/api/?name=James+Researcher&background=0f172a&color=fff'
       });
+      setTrees(MOCK_TREES);
+      setActiveTree(MOCK_TREES[0]);
+      setAllPeople(MOCK_PEOPLE);
+      setAllRelationships(MOCK_RELATIONSHIPS);
       setLoading(false);
+    };
+
+    if (!supabaseActive) {
+      hydrateLocal();
       return;
     }
 
@@ -63,8 +72,24 @@ const App: React.FC = () => {
           isAdmin: false,
           avatarUrl: `https://ui-avatars.com/api/?name=${session.user.email}&background=0f172a&color=fff`
         });
+      } else {
+        setCurrentUser(null);
       }
-      setLoading(false);
+    }).finally(async () => {
+      try {
+        const dbTrees = await ensureTrees();
+        setTrees(dbTrees);
+        const selected = dbTrees[0];
+        setActiveTree(selected);
+        const archive = await loadArchiveData(selected.id);
+        setAllPeople(archive.people.length ? archive.people : MOCK_PEOPLE);
+        setAllRelationships(archive.relationships.length ? archive.relationships : MOCK_RELATIONSHIPS);
+      } catch (err) {
+        console.error('Failed to load archive data', err);
+        hydrateLocal();
+      } finally {
+        setLoading(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -103,16 +128,34 @@ const App: React.FC = () => {
     setActiveTree(tree);
     setShowTreeSelector(false);
     setActiveTab('home');
+    if (isSupabaseConfigured()) {
+      loadArchiveData(tree.id, searchQuery).then((archive) => {
+        setAllPeople(archive.people);
+        setAllRelationships(archive.relationships);
+      }).catch((err) => {
+        console.error('Failed to load tree data', err);
+      });
+    }
   };
 
-  const handleImport = (data: { people: Person[]; relationships: Relationship[] }) => {
-    // Add imported data with a special treeId for identification
+  const handleImport = async (data: { people: Person[]; relationships: Relationship[] }) => {
+    if (isSupabaseConfigured()) {
+      try {
+        await importGedcomToSupabase(activeTree.id, data, currentUser?.id);
+        const archive = await loadArchiveData(activeTree.id);
+        setAllPeople(archive.people);
+        setAllRelationships(archive.relationships);
+        setActiveTab('tree');
+        return;
+      } catch (err) {
+        console.error('Failed to import GEDCOM to Supabase', err);
+      }
+    }
     const importedPeople = data.people.map(p => ({ ...p, treeId: 'imported' }));
     const importedRels = data.relationships.map(r => ({ ...r, treeId: 'imported' }));
-
     setAllPeople(prev => [...prev, ...importedPeople]);
     setAllRelationships(prev => [...prev, ...importedRels]);
-    setActiveTab('tree'); // Jump to tree to see results
+    setActiveTab('tree');
   };
 
   if (loading) {

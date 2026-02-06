@@ -37,7 +37,7 @@ export interface MediaItem {
   date?: string;
   description?: string;
   linkedPersonIds: string[]; 
-  linkedEventId?: string;    
+  linkedEventId?: string;
 }
 
 export type DNATestType = 'Autosomal' | 'Y-DNA' | 'mtDNA' | 'X-DNA' | 'Other';
@@ -182,6 +182,7 @@ export interface Person {
   dnaTests?: DNATest[];
   isDNAMatch?: boolean;
   dnaMatchInfo?: DNAMatchInfo;
+  citations?: Citation[];
 }
 
 export interface FamilyTree {
@@ -204,3 +205,12 @@ export interface User {
 }
 
 export type TreeLayoutType = 'pedigree' | 'fan' | 'descendant';
+export interface Citation {
+  id: string;
+  sourceId: string;
+  personId?: string;
+  personEventId?: string;
+  eventLabel?: string;
+  noteId?: string;
+  label?: string;
+}
