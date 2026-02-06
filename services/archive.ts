@@ -70,17 +70,8 @@ export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   }
   const { data, error } = await supabase.from('family_trees').select('*').order('created_at');
   if (error) throw new Error(error.message);
-  if (data.length === 0) {
-    const defaultTree = {
-      name: 'Linegra Family Archive',
-      description: 'Default archive created automatically',
-      owner_id: null,
-      is_public: false,
-      theme_color: '#0f172a'
-    };
-    const { data: created, error: insertError } = await supabase.from('family_trees').insert(defaultTree).select('*');
-    if (insertError) throw new Error(insertError.message);
-    return created as FamilyTreeType[];
+  if (!data.length) {
+    throw new Error('No family trees found in Supabase. Run the latest migrations to seed the default tree.');
   }
   return data as FamilyTreeType[];
 };
