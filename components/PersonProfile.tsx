@@ -55,6 +55,7 @@ const EVENT_TYPES = [
   'Emigration', 
   'Education', 
   'Military Service',
+  'Occupation',
   'Baptism', 
   'Christening', 
   'Confirmation', 
@@ -62,6 +63,7 @@ const EVENT_TYPES = [
   'Probate', 
   'Will', 
   'Retirement', 
+  'Burial',
   'Occupation Change',
   'Other'
 ];
@@ -109,6 +111,14 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
 
   const getSourceCountForEvent = (eventLabel: string) => {
     return sources.filter((source) => (source.event || 'General') === eventLabel).length;
+  };
+
+  const getNoteCountForEvent = (eventLabel: string) => {
+    return notes.filter((note) => (note.event || 'General') === eventLabel).length;
+  };
+
+  const getMediaCountForEvent = (eventLabel: string) => {
+    return mediaItems.filter((media) => (media.linkedEventLabel || 'General') === eventLabel).length;
   };
 
   // Expanded available events list for dropdowns, including specific event instances if they have identifiers
@@ -487,6 +497,28 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                                </span>
                              )}
                            </button>
+                           <button
+                             aria-label="View birth notes"
+                             className="relative p-2 rounded-full text-emerald-500 hover:bg-emerald-50 transition-colors"
+                           >
+                             <FileText className="w-4 h-4" />
+                             {getNoteCountForEvent('Birth') > 0 && (
+                               <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[9px] font-black rounded-full px-1">
+                                 {getNoteCountForEvent('Birth')}
+                               </span>
+                             )}
+                           </button>
+                           <button
+                             aria-label="View birth media"
+                             className="relative p-2 rounded-full text-sky-600 hover:bg-sky-50 transition-colors"
+                           >
+                             <ImageIcon className="w-4 h-4" />
+                             {getMediaCountForEvent('Birth') > 0 && (
+                               <span className="absolute -top-1 -right-1 bg-sky-600 text-white text-[9px] font-black rounded-full px-1">
+                                 {getMediaCountForEvent('Birth')}
+                               </span>
+                             )}
+                           </button>
                         </div>
                       </div>
                       <div className="bg-white p-6 rounded-[36px] border border-slate-100 shadow-sm space-y-5">
@@ -508,6 +540,28 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                              {getSourceCountForEvent('Death') > 0 && (
                                <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black rounded-full px-1">
                                  {getSourceCountForEvent('Death')}
+                               </span>
+                             )}
+                           </button>
+                           <button
+                             aria-label="View death notes"
+                             className="relative p-2 rounded-full text-emerald-500 hover:bg-emerald-50 transition-colors"
+                           >
+                             <FileText className="w-4 h-4" />
+                             {getNoteCountForEvent('Death') > 0 && (
+                               <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[9px] font-black rounded-full px-1">
+                                 {getNoteCountForEvent('Death')}
+                               </span>
+                             )}
+                           </button>
+                           <button
+                             aria-label="View death media"
+                             className="relative p-2 rounded-full text-sky-600 hover:bg-sky-50 transition-colors"
+                           >
+                             <ImageIcon className="w-4 h-4" />
+                             {getMediaCountForEvent('Death') > 0 && (
+                               <span className="absolute -top-1 -right-1 bg-sky-600 text-white text-[9px] font-black rounded-full px-1">
+                                 {getMediaCountForEvent('Death')}
                                </span>
                              )}
                            </button>

@@ -136,18 +136,22 @@ export const loadArchiveData = async (treeId: string, search?: string) => {
     citationRows?.forEach((citation) => {
       const src = sourceMap.get(citation.source_id);
       if (!src) return;
+      const extra = (citation as any)?.extra || {};
+      const inlineNotes = extra.inline_notes as string | undefined;
+      const combinedNotes = [inlineNotes, src.notes].filter(Boolean).join('\n\n') || undefined;
       const list = sourcesByPerson[citation.person_id] || (sourcesByPerson[citation.person_id] = []);
       list.push({
-        id: src.id,
+        id: `${src.id}:${citation.id}`,
+        externalId: src.id,
         title: src.title,
         type: src.type,
         repository: src.repository || undefined,
         url: src.url || undefined,
         citationDate: src.citation_date_text || undefined,
-        page: src.page || undefined,
+        page: citation.page_text || src.page || undefined,
         reliability: src.reliability || undefined,
         actualText: src.actual_text || undefined,
-        notes: src.notes || undefined,
+        notes: combinedNotes,
         event: citation.event_label || 'General'
       });
     });
@@ -211,12 +215,13 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
   const notes: any[] = [];
   const sources: any[] = [];
   const citations: any[] = [];
+  const sourceExternalToDbId = new Map<string, string>();
 
   data.people.forEach((person) => {
     const personId = personIdMap.get(person.id);
     if (!personId) return;
     (person.events || []).forEach((event) => {
-      if (['Birth', 'Death', 'Burial'].includes(event.type)) return;
+      if (['Birth', 'Death'].includes(event.type)) return;
       events.push({
         id: randomId(),
         person_id: personId,
@@ -239,28 +244,38 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
         is_private: note.isPrivate || false
       });
     });
-    (person.sources || []).forEach((source) => {
-      const sourceId = randomId();
-      sources.push({
-        id: sourceId,
-        tree_id: treeId,
-        title: source.title || 'Untitled Record',
-        type: source.type || 'Unknown',
-        repository: source.repository || null,
-        url: source.url || null,
-        citation_date_text: source.citationDate || null,
-        page: source.page || null,
-        reliability: source.reliability || null,
-        actual_text: source.actualText || null,
-        notes: source.notes || null
-      });
+    (person.sources || []).forEach((source, index) => {
+      const externalKey = source.externalId || source.id || `${person.id}-source-${index}`;
+      let sourceId = sourceExternalToDbId.get(externalKey);
+      if (!sourceId) {
+        sourceId = randomId();
+        sourceExternalToDbId.set(externalKey, sourceId);
+        const baseNotes = source.event === 'General' ? (source.notes || null) : null;
+        const basePage = source.event === 'General' ? (source.page || null) : null;
+        sources.push({
+          id: sourceId,
+          tree_id: treeId,
+          title: source.title || 'Untitled Record',
+          type: source.type || 'Unknown',
+          repository: source.repository || null,
+          url: source.url || null,
+          citation_date_text: source.citationDate || null,
+          page: basePage,
+          reliability: source.reliability || null,
+          actual_text: source.actualText || null,
+          notes: baseNotes
+        });
+      }
+      const inlineNotes = source.event === 'General' ? null : (source.notes || null);
       citations.push({
         id: randomId(),
         tree_id: treeId,
         source_id: sourceId,
         person_id: personId,
         event_label: source.event || 'General',
-        label: source.event || 'General'
+        label: source.title || source.event || 'Citation',
+        page_text: source.page || null,
+        extra: inlineNotes ? { inline_notes: inlineNotes } : {}
       });
     });
   });
@@ -288,5 +303,13 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
     file_name: `import-${Date.now()}.ged`,
     status: 'completed',
     stats: { people: personRows.length, relationships: relationshipRows.length }
+  });
+  console.info('[Linegra] GEDCOM import synced to Supabase', {
+    treeId,
+    people: personRows.length,
+    relationships: relationshipRows.length,
+    events: events.length,
+    sources: sources.length,
+    citations: citations.length
   });
 };

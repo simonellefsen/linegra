@@ -39,6 +39,7 @@ const App: React.FC = () => {
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     const hydrateLocal = () => {
@@ -119,10 +120,13 @@ const App: React.FC = () => {
   }, [allRelationships, activeTree.id]);
 
   const filteredPeople = useMemo(() => {
+    if (supabaseActive) {
+      return treePeople;
+    }
     return treePeople.filter(p => 
       `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [treePeople, searchQuery]);
+  }, [treePeople, searchQuery, supabaseActive]);
 
   const selectTree = (tree: FamilyTreeType) => {
     setActiveTree(tree);
@@ -137,6 +141,38 @@ const App: React.FC = () => {
       });
     }
   };
+
+  useEffect(() => {
+    if (!supabaseActive || !activeTree?.id) return;
+    let cancelled = false;
+    if (!searchQuery.trim()) {
+      setIsSearching(false);
+    } else {
+      setIsSearching(true);
+    }
+    const timer = setTimeout(() => {
+      loadArchiveData(activeTree.id, searchQuery)
+        .then((archive) => {
+          if (cancelled) return;
+          setAllPeople(archive.people);
+          setAllRelationships(archive.relationships);
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            console.error('Search failed', err);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsSearching(false);
+          }
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [supabaseActive, activeTree?.id, searchQuery]);
 
   const handleImport = async (data: { people: Person[]; relationships: Relationship[] }) => {
     if (isSupabaseConfigured()) {
@@ -248,6 +284,9 @@ const App: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
+              {isSearching && (
+                <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
+              )}
             </div>
           </div>
           <div className="flex items-center gap-6">

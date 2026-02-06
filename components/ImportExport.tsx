@@ -92,7 +92,6 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
     const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI']);
     const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR']);
     const lineRegex = /^(\d+)\s+(?:(@[^@]+@)\s+)?([A-Z0-9_]+)(?:\s+(.*))?$/i;
-    const personSourceCache: Record<string, Source> = {};
     let currentEventLabel = '';
     let currentEventSource: Source | null = null;
     let currentEventSourceLevel = 0;
@@ -205,45 +204,38 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         } else if (tag === 'NOTE' && currentEventSource && level > currentEventSourceLevel) {
           currentEventSource.notes = `${currentEventSource.notes || ''}\n${value}`.trim();
         } else if (tag === 'SOUR' && level >= 2 && currentEventLabel) {
-          const normalizeSource = () => {
-            const personSources = p.sources || (p.sources = []);
-            const sourceId = value.startsWith('@') ? value.replace(/@/g, '') : '';
-            let sourceEntry: Source | undefined;
-            if (sourceId) {
-              sourceEntry = personSourceCache[sourceId];
-              if (!sourceEntry) {
-                const base = parsedSources[sourceId];
-                sourceEntry = {
-                  id: sourceId,
-                  title: base?.title || `Source ${sourceId}`,
-                  type: base?.type || 'Unknown',
-                  repository: base?.repository,
-                  page: base?.page,
-                  citationDate: base?.citationDate,
-                  notes: base?.notes,
-                  actualText: base?.actualText,
-                  event: GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General'
-                };
-                personSources.push(sourceEntry);
-                personSourceCache[sourceId] = sourceEntry;
-              }
-            } else {
-              sourceEntry = {
-                id: `inline-source-${currentId}-${(personSources?.length || 0) + 1}`,
-                title: value || `${currentEventLabel} Source`,
-                type: 'Unknown',
-                event: GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General',
-                actualText: value
-              };
-              personSources.push(sourceEntry);
-            }
-            if (sourceEntry && !sourceEntry.event) {
-              sourceEntry.event = GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General';
-            }
-            return sourceEntry || null;
-          };
-
-          currentEventSource = normalizeSource();
+          const personSources = p.sources || (p.sources = []);
+          const eventLabel = GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General';
+          const pointerId = value.startsWith('@') ? value.replace(/@/g, '') : '';
+          const nextId = `source-${currentId}-${personSources.length + 1}`;
+          let sourceEntry: Source;
+          if (pointerId) {
+            const base = parsedSources[pointerId];
+            sourceEntry = {
+              id: nextId,
+              externalId: pointerId,
+              title: base?.title || `Source ${pointerId}`,
+              type: base?.type || 'Unknown',
+              repository: base?.repository,
+              page: base?.page,
+              citationDate: base?.citationDate,
+              actualText: base?.actualText,
+              event: eventLabel,
+              url: base?.url,
+              reliability: base?.reliability as 1 | 2 | 3 | undefined
+            };
+          } else {
+            sourceEntry = {
+              id: nextId,
+              externalId: nextId,
+              title: value || `${eventLabel} Source`,
+              type: 'Unknown',
+              actualText: value,
+              event: eventLabel
+            };
+          }
+          personSources.push(sourceEntry);
+          currentEventSource = sourceEntry;
           currentEventSourceLevel = level;
         } else if (tag === 'NOTE' && currentEvent) {
           currentEvent.description = `${currentEvent.description || ''}\nNote: ${value}`.trim();
@@ -265,10 +257,12 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
             const inlineId = `inline-${currentId}-${(p.inlineSources?.length || 0) + 1}`;
             const inlineSource: Source = {
               id: inlineId,
+              externalId: inlineId,
               title: value,
               type: 'Unknown',
               reliability: 1,
-              actualText: value
+              actualText: value,
+              event: 'General'
             };
             p.inlineSources?.push(inlineSource);
           }
@@ -302,6 +296,9 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           case 'TEXT':
             source.actualText = value;
             break;
+          case 'PAGE':
+            source.page = value;
+            break;
           case 'NOTE':
             source.notes = `${source.notes || ''}\n${value}`.trim();
             break;
@@ -318,27 +315,25 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
     });
 
     const finalPeople: Person[] = Object.values(parsedPeople).map((p) => {
-      const sourceList: Source[] = [];
+      const mergedSources: Source[] = [];
       (p.sourceIds || []).forEach((id) => {
         const src = parsedSources[id];
         if (src) {
-          sourceList.push({ ...src });
+          mergedSources.push({
+            ...src,
+            id: `source-${p.id}-ref-${mergedSources.length + 1}`,
+            externalId: id,
+            event: src.event || 'General'
+          });
         } else {
           warnings.push(`Person ${p.id} referenced missing source ${id}`);
         }
       });
-      const inlineSources = p.inlineSources || [];
-      const linkedEventSources = p.sources || [];
-      const mergedSources = [...sourceList];
-      linkedEventSources.forEach((src) => {
-        if (!mergedSources.find((existing) => existing.id === src.id)) {
-          mergedSources.push(src);
-        }
-      });
-      inlineSources.forEach((src) => mergedSources.push(src));
+      (p.inlineSources || []).forEach((src) => mergedSources.push(src));
+      (p.sources || []).forEach((src) => mergedSources.push(src));
       return {
         ...p,
-        events: p.events || [],
+        events: (p.events || []).filter((evt) => !['Birth', 'Death'].includes(evt.type || '')),
         sources: mergedSources
       } as Person;
     });

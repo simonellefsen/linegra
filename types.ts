@@ -11,6 +11,7 @@ export type SourceType =
 
 export interface Source {
   id: string;
+  externalId?: string;
   title: string;
   type: SourceType;
   url?: string;
@@ -37,7 +38,7 @@ export interface MediaItem {
   date?: string;
   description?: string;
   linkedPersonIds: string[]; 
-  linkedEventId?: string;
+  linkedEventLabel?: string;
 }
 
 export type DNATestType = 'Autosomal' | 'Y-DNA' | 'mtDNA' | 'X-DNA' | 'Other';
@@ -213,4 +214,6 @@ export interface Citation {
   eventLabel?: string;
   noteId?: string;
   label?: string;
+  page?: string;
+  extra?: Record<string, unknown>;
 }
