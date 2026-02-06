@@ -107,6 +107,10 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {})
   );
 
+  const getSourceCountForEvent = (eventLabel: string) => {
+    return sources.filter((source) => (source.event || 'General') === eventLabel).length;
+  };
+
   // Expanded available events list for dropdowns, including specific event instances if they have identifiers
   const availableEvents = useMemo(() => {
     const list = ['General', 'Birth', 'Death'];
@@ -474,9 +478,14 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                            <button
                              onClick={() => handleAddSource('Birth')}
                              aria-label="Link birth source"
-                             className="p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
+                             className="relative p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
                            >
                              <Library className="w-4 h-4" />
+                             {getSourceCountForEvent('Birth') > 0 && (
+                               <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black rounded-full px-1">
+                                 {getSourceCountForEvent('Birth')}
+                               </span>
+                             )}
                            </button>
                         </div>
                       </div>
@@ -493,9 +502,14 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                            <button
                              onClick={() => handleAddSource('Death')}
                              aria-label="Link death source"
-                             className="p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
+                             className="relative p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
                            >
                              <Library className="w-4 h-4" />
+                             {getSourceCountForEvent('Death') > 0 && (
+                               <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black rounded-full px-1">
+                                 {getSourceCountForEvent('Death')}
+                               </span>
+                             )}
                            </button>
                         </div>
                       </div>

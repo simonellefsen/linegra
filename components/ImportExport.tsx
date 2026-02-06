@@ -137,6 +137,15 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         }
       } else if (currentType === 'INDI' && parsedPeople[currentId]) {
         const p = parsedPeople[currentId];
+        const appendNote = (text: string, label: string) => {
+          const notesArr = p.notes || (p.notes = []);
+          notesArr.push({
+            id: `note-${currentId}-${notesArr.length + 1}`,
+            text,
+            type: 'Research Note',
+            event: label || 'General'
+          });
+        };
         if (level === 1 && tag !== 'DATE' && tag !== 'PLAC' && tag !== 'NOTE') {
           currentEvent = null;
           currentTag = '';
@@ -188,25 +197,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           if (currentTag === 'DEAT') p.deathPlace = value;
           if (currentEvent) currentEvent.place = value;
         } else if (tag === 'NOTE' && ['BIRT', 'DEAT', 'BURI'].includes(currentTag)) {
-          const noteKey = `${currentId}-${currentTag}-note`;
-          const events = p.events || (p.events = []);
-          let noteEvent = events.find((evt) => evt.id === noteKey);
-          if (!noteEvent) {
-            const type: PersonEvent['type'] = currentTag === 'DEAT'
-              ? 'Death'
-              : currentTag === 'BURI'
-                ? 'Burial'
-                : 'Birth';
-            noteEvent = {
-              id: noteKey,
-              type,
-              date: '',
-              place: '',
-              description: ''
-            };
-            events.push(noteEvent);
-          }
-          noteEvent.description = `${noteEvent.description || ''}\nNote: ${value}`.trim();
+          appendNote(value, GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General');
         } else if (tag === 'NOTE' && currentEvent && level === 2) {
           currentEvent.description = `${currentEvent.description || ''}\nNote: ${value}`.trim();
         } else if (tag === 'PAGE' && currentEventSource) {
@@ -264,6 +255,8 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           currentEvent.description = currentEvent.description
             ? `${currentEvent.description}\nType: ${typeText}`
             : `Type: ${typeText}`;
+        } else if (tag === 'NOTE' && level === 1) {
+          appendNote(value, currentEventLabel || 'General');
         } else if (tag === 'SOUR' && level < 2) {
           const srcId = value.replace(/@/g, '');
           if (srcId) {
