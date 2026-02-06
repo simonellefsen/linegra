@@ -116,21 +116,6 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           currentEvent = null;
           currentTag = '';
         }
-        const ensureEvent = (type: PersonEvent['type'], idSuffix: string) => {
-          const events = p.events || (p.events = []);
-          let evt = events.find((event) => event.id === `evt-${currentId}-${idSuffix}`);
-          if (!evt) {
-            evt = {
-              id: `evt-${currentId}-${idSuffix}`,
-              type,
-              date: '',
-              place: '',
-              description: ''
-            };
-            events.push(evt);
-          }
-          return evt;
-        };
         if (tag === 'NAME') {
           const nameParts = value.split('/');
           p.firstName = nameParts[0]?.trim() || '';
@@ -139,13 +124,13 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           p.gender = value === 'F' ? 'F' : (value === 'M' ? 'M' : 'O');
         } else if (tag === 'BIRT') {
           currentTag = 'BIRT';
-          currentEvent = ensureEvent('Birth', 'birth');
+          currentEvent = null;
         } else if (tag === 'DEAT') {
           currentTag = 'DEAT';
-          currentEvent = ensureEvent('Death', 'death');
+          currentEvent = null;
         } else if (tag === 'BURI') {
           currentTag = 'BURI';
-          currentEvent = ensureEvent('Burial', 'burial');
+          currentEvent = null;
         } else if (tag === 'CHAN') {
           currentTag = 'CHAN';
         } else if (GEDCOM_EVENT_MAP[tag]) {
@@ -171,17 +156,28 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           if (currentTag === 'BIRT') p.birthPlace = value;
           if (currentTag === 'DEAT') p.deathPlace = value;
           if (currentEvent) currentEvent.place = value;
-        } else if (tag === 'NOTE' && (currentEvent || ['BIRT', 'DEAT', 'BURI'].includes(currentTag))) {
-          const targetEvent = currentEvent || (currentTag === 'BIRT'
-            ? ensureEvent('Birth', 'birth')
-            : currentTag === 'DEAT'
-              ? ensureEvent('Death', 'death')
+        } else if (tag === 'NOTE' && ['BIRT', 'DEAT', 'BURI'].includes(currentTag)) {
+          const noteKey = `${currentId}-${currentTag}-note`;
+          const events = p.events || (p.events = []);
+          let noteEvent = events.find((evt) => evt.id === noteKey);
+          if (!noteEvent) {
+            const type: PersonEvent['type'] = currentTag === 'DEAT'
+              ? 'Death'
               : currentTag === 'BURI'
-                ? ensureEvent('Burial', 'burial')
-                : null);
-          if (targetEvent) {
-            targetEvent.description = `${targetEvent.description || ''}\nNote: ${value}`.trim();
+                ? 'Burial'
+                : 'Birth';
+            noteEvent = {
+              id: noteKey,
+              type,
+              date: '',
+              place: '',
+              description: ''
+            };
+            events.push(noteEvent);
           }
+          noteEvent.description = `${noteEvent.description || ''}\nNote: ${value}`.trim();
+        } else if (tag === 'NOTE' && currentEvent) {
+          currentEvent.description = `${currentEvent.description || ''}\nNote: ${value}`.trim();
         } else if (tag === 'TYPE' && currentEvent) {
           const typeText = value;
           if (currentTag === 'EVEN' && typeText) {
