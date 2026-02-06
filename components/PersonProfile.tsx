@@ -471,7 +471,13 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                       <div className="flex items-center justify-between px-1">
                         <div className="flex items-center gap-2 text-[10px] font-black uppercase text-blue-600 tracking-widest"><Plus className="w-3.5 h-3.5" /> Birth Record</div>
                         <div className="flex gap-2">
-                           <button onClick={() => handleAddSource('Birth')} className="text-[9px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center gap-1 transition-colors"><Library className="w-3 h-3" /> Link Source</button>
+                           <button
+                             onClick={() => handleAddSource('Birth')}
+                             aria-label="Link birth source"
+                             className="p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
+                           >
+                             <Library className="w-4 h-4" />
+                           </button>
                         </div>
                       </div>
                       <div className="bg-white p-6 rounded-[36px] border border-slate-100 shadow-sm space-y-5">
@@ -484,7 +490,13 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                       <div className="flex items-center justify-between px-1">
                         <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600 tracking-widest"><Skull className="w-3.5 h-3.5" /> Death Record</div>
                         <div className="flex gap-2">
-                           <button onClick={() => handleAddSource('Death')} className="text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest flex items-center gap-1 transition-colors"><Library className="w-3 h-3" /> Link Source</button>
+                           <button
+                             onClick={() => handleAddSource('Death')}
+                             aria-label="Link death source"
+                             className="p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
+                           >
+                             <Library className="w-4 h-4" />
+                           </button>
                         </div>
                       </div>
                       <div className="bg-slate-900/5 p-6 rounded-[36px] border border-slate-200/60 space-y-5">

@@ -42,6 +42,22 @@ const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
   EVEN: 'Other'
 };
 
+const GEDCOM_EVENT_LABELS: Record<string, string> = {
+  BIRT: 'Birth',
+  DEAT: 'Death',
+  BURI: 'Burial',
+  RESI: 'Residence',
+  OCCU: 'Occupation',
+  IMMI: 'Immigration',
+  EMIG: 'Emigration',
+  NATU: 'Naturalization',
+  MILI: 'Military Service',
+  EDUC: 'Education',
+  BAPM: 'Baptism',
+  CONF: 'Confirmation',
+  EVEN: 'Other'
+};
+
 const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onImport }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -76,6 +92,10 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
     const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI']);
     const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR']);
     const lineRegex = /^(\d+)\s+(?:(@[^@]+@)\s+)?([A-Z0-9_]+)(?:\s+(.*))?$/i;
+    const personSourceCache: Record<string, Source> = {};
+    let currentEventLabel = '';
+    let currentEventSource: Source | null = null;
+    let currentEventSourceLevel = 0;
 
     lines.forEach((line) => {
       const match = line.match(lineRegex);
@@ -85,6 +105,11 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
       const level = parseInt(levelStr, 10);
       const tag = tagRaw.toUpperCase();
       const value = (rest ?? '').trim();
+
+      if (currentEventSource && level <= currentEventSourceLevel) {
+        currentEventSource = null;
+        currentEventSourceLevel = 0;
+      }
 
       if (level === 0) {
         currentEvent = null;
@@ -115,6 +140,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         if (level === 1 && tag !== 'DATE' && tag !== 'PLAC' && tag !== 'NOTE') {
           currentEvent = null;
           currentTag = '';
+          currentEventLabel = GEDCOM_EVENT_LABELS[tag] || '';
         }
         if (tag === 'NAME') {
           const nameParts = value.split('/');
@@ -125,14 +151,18 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         } else if (tag === 'BIRT') {
           currentTag = 'BIRT';
           currentEvent = null;
+          currentEventLabel = GEDCOM_EVENT_LABELS[tag];
         } else if (tag === 'DEAT') {
           currentTag = 'DEAT';
           currentEvent = null;
+          currentEventLabel = GEDCOM_EVENT_LABELS[tag];
         } else if (tag === 'BURI') {
           currentTag = 'BURI';
           currentEvent = null;
+          currentEventLabel = GEDCOM_EVENT_LABELS[tag];
         } else if (tag === 'CHAN') {
           currentTag = 'CHAN';
+          currentEventLabel = '';
         } else if (GEDCOM_EVENT_MAP[tag]) {
           currentTag = tag;
           const events = p.events || (p.events = []);
@@ -144,6 +174,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
             description: value
           };
           events.push(currentEvent);
+          currentEventLabel = GEDCOM_EVENT_LABELS[tag] || tag;
         } else if (tag === 'DATE' && level === 2) {
           if (currentTag === 'BIRT') p.birthDate = value;
           if (currentTag === 'DEAT') p.deathDate = value;
@@ -176,6 +207,53 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
             events.push(noteEvent);
           }
           noteEvent.description = `${noteEvent.description || ''}\nNote: ${value}`.trim();
+        } else if (tag === 'NOTE' && currentEvent && level === 2) {
+          currentEvent.description = `${currentEvent.description || ''}\nNote: ${value}`.trim();
+        } else if (tag === 'PAGE' && currentEventSource) {
+          currentEventSource.page = value;
+        } else if (tag === 'NOTE' && currentEventSource && level > currentEventSourceLevel) {
+          currentEventSource.notes = `${currentEventSource.notes || ''}\n${value}`.trim();
+        } else if (tag === 'SOUR' && level >= 2 && currentEventLabel) {
+          const normalizeSource = () => {
+            const personSources = p.sources || (p.sources = []);
+            const sourceId = value.startsWith('@') ? value.replace(/@/g, '') : '';
+            let sourceEntry: Source | undefined;
+            if (sourceId) {
+              sourceEntry = personSourceCache[sourceId];
+              if (!sourceEntry) {
+                const base = parsedSources[sourceId];
+                sourceEntry = {
+                  id: sourceId,
+                  title: base?.title || `Source ${sourceId}`,
+                  type: base?.type || 'Unknown',
+                  repository: base?.repository,
+                  page: base?.page,
+                  citationDate: base?.citationDate,
+                  notes: base?.notes,
+                  actualText: base?.actualText,
+                  event: GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General'
+                };
+                personSources.push(sourceEntry);
+                personSourceCache[sourceId] = sourceEntry;
+              }
+            } else {
+              sourceEntry = {
+                id: `inline-source-${currentId}-${(personSources?.length || 0) + 1}`,
+                title: value || `${currentEventLabel} Source`,
+                type: 'Unknown',
+                event: GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General',
+                actualText: value
+              };
+              personSources.push(sourceEntry);
+            }
+            if (sourceEntry && !sourceEntry.event) {
+              sourceEntry.event = GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General';
+            }
+            return sourceEntry || null;
+          };
+
+          currentEventSource = normalizeSource();
+          currentEventSourceLevel = level;
         } else if (tag === 'NOTE' && currentEvent) {
           currentEvent.description = `${currentEvent.description || ''}\nNote: ${value}`.trim();
         } else if (tag === 'TYPE' && currentEvent) {
@@ -186,7 +264,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           currentEvent.description = currentEvent.description
             ? `${currentEvent.description}\nType: ${typeText}`
             : `Type: ${typeText}`;
-        } else if (tag === 'SOUR') {
+        } else if (tag === 'SOUR' && level < 2) {
           const srcId = value.replace(/@/g, '');
           if (srcId) {
             (p.sourceIds || (p.sourceIds = [])).push(srcId);
@@ -256,11 +334,19 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           warnings.push(`Person ${p.id} referenced missing source ${id}`);
         }
       });
-      (p.inlineSources || []).forEach((src) => sourceList.push(src));
+      const inlineSources = p.inlineSources || [];
+      const linkedEventSources = p.sources || [];
+      const mergedSources = [...sourceList];
+      linkedEventSources.forEach((src) => {
+        if (!mergedSources.find((existing) => existing.id === src.id)) {
+          mergedSources.push(src);
+        }
+      });
+      inlineSources.forEach((src) => mergedSources.push(src));
       return {
         ...p,
         events: p.events || [],
-        sources: sourceList
+        sources: mergedSources
       } as Person;
     });
 
