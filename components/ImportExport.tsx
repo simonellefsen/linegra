@@ -107,9 +107,25 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         }
       } else if (currentType === 'INDI' && parsedPeople[currentId]) {
         const p = parsedPeople[currentId];
-        if (level === 1 && tagOrId !== 'DATE' && tagOrId !== 'PLAC') {
+        if (level === 1 && tagOrId !== 'DATE' && tagOrId !== 'PLAC' && tagOrId !== 'NOTE') {
           currentEvent = null;
+          currentTag = '';
         }
+        const ensureEvent = (type: PersonEvent['type'], idSuffix: string) => {
+          const events = p.events || (p.events = []);
+          let evt = events.find((event) => event.id === `evt-${currentId}-${idSuffix}`);
+          if (!evt) {
+            evt = {
+              id: `evt-${currentId}-${idSuffix}`,
+              type,
+              date: '',
+              place: '',
+              description: ''
+            };
+            events.push(evt);
+          }
+          return evt;
+        };
         if (tagOrId === 'NAME') {
           const nameParts = value.split('/');
           p.firstName = nameParts[0]?.trim() || '';
@@ -118,8 +134,12 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           p.gender = value.trim() === 'F' ? 'F' : (value.trim() === 'M' ? 'M' : 'O');
         } else if (tagOrId === 'BIRT') {
           currentTag = 'BIRT';
+          currentEvent = ensureEvent('Birth', 'birth');
         } else if (tagOrId === 'DEAT') {
           currentTag = 'DEAT';
+          currentEvent = ensureEvent('Death', 'death');
+        } else if (tagOrId === 'CHAN') {
+          currentTag = 'CHAN';
         } else if (GEDCOM_EVENT_MAP[tagOrId]) {
           currentTag = tagOrId;
           const events = p.events || (p.events = []);
@@ -135,12 +155,23 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           if (currentTag === 'BIRT') p.birthDate = value.trim();
           if (currentTag === 'DEAT') p.deathDate = value.trim();
           if (currentEvent) currentEvent.date = value.trim();
+          if (currentTag === 'CHAN') {
+            const parsed = Date.parse(value.trim());
+            p.updatedAt = Number.isNaN(parsed) ? value.trim() : new Date(parsed).toISOString();
+          }
         } else if (tagOrId === 'PLAC' && level === 2) {
           if (currentTag === 'BIRT') p.birthPlace = value.trim();
           if (currentTag === 'DEAT') p.deathPlace = value.trim();
           if (currentEvent) currentEvent.place = value.trim();
-        } else if (tagOrId === 'NOTE' && currentEvent) {
-          currentEvent.description = `${currentEvent.description || ''}\nNote: ${value.trim()}`.trim();
+        } else if (tagOrId === 'NOTE' && (currentEvent || currentTag === 'BIRT' || currentTag === 'DEAT')) {
+          const targetEvent = currentEvent || (currentTag === 'BIRT'
+            ? ensureEvent('Birth', 'birth')
+            : currentTag === 'DEAT'
+              ? ensureEvent('Death', 'death')
+              : null);
+          if (targetEvent) {
+            targetEvent.description = `${targetEvent.description || ''}\nNote: ${value.trim()}`.trim();
+          }
         } else if (tagOrId === 'TYPE' && currentEvent) {
           const typeText = value.trim();
           if (currentTag === 'EVEN' && typeText) {
@@ -455,38 +486,42 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         )}
       </div>
 
-      {importWarnings.length > 0 && (
-        <div className="p-6 bg-amber-50 border border-amber-200 rounded-[32px] space-y-4">
-          <div className="flex items-center justify-between text-amber-700">
-            <div className="flex items-center gap-2 font-semibold text-sm">
-              <AlertCircle className="w-4 h-4" />
-              GEDCOM import warnings ({importWarnings.length})
-            </div>
-            <button
-              onClick={() => {
-                const log = [`Linegra GEDCOM import log - ${new Date().toISOString()}`, '', ...importWarnings].join('\n');
-                const blob = new Blob([log], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `linegra_gedcom_warnings_${new Date().toISOString().slice(0,10)}.txt`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-              }}
-              className="text-xs font-bold underline hover:text-amber-800"
-            >
-              Download log
-            </button>
+      <div className="p-6 bg-amber-50 border border-amber-200 rounded-[32px] space-y-4">
+        <div className="flex items-center justify-between text-amber-700">
+          <div className="flex items-center gap-2 font-semibold text-sm">
+            <AlertCircle className="w-4 h-4" />
+            GEDCOM import warnings ({importWarnings.length})
           </div>
+          <button
+            disabled={!importWarnings.length}
+            onClick={() => {
+              if (!importWarnings.length) return;
+              const log = [`Linegra GEDCOM import log - ${new Date().toISOString()}`, '', ...importWarnings].join('\n');
+              const blob = new Blob([log], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `linegra_gedcom_warnings_${new Date().toISOString().slice(0,10)}.txt`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+            }}
+            className={`text-xs font-bold underline ${importWarnings.length ? 'hover:text-amber-800' : 'opacity-50 cursor-not-allowed'}`}
+          >
+            Download log
+          </button>
+        </div>
+        {importWarnings.length > 0 ? (
           <ul className="list-disc ml-6 text-xs text-amber-800 space-y-1 max-h-48 overflow-auto pr-2">
             {importWarnings.map((warning, idx) => (
               <li key={`${warning}-${idx}`}>{warning}</li>
             ))}
           </ul>
-        </div>
-      )}
+        ) : (
+          <p className="text-xs text-amber-700">No warnings recorded yet. Import a GEDCOM to see ignored fields or issues.</p>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="group bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all hover:-translate-y-1">
