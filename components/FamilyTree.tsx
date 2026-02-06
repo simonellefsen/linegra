@@ -2,7 +2,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { Person, Relationship, TreeLayoutType, RelationshipConfidence } from '../types';
-import { Dna } from 'lucide-react';
 
 interface FamilyTreeProps {
   people: Person[];
@@ -10,6 +9,13 @@ interface FamilyTreeProps {
   onPersonSelect: (person: Person) => void;
   layout: TreeLayoutType;
 }
+
+type SimulationPerson = Person & d3.SimulationNodeDatum;
+type SimulationLink = d3.SimulationLinkDatum<SimulationPerson> & {
+  id: string;
+  type: Relationship['type'];
+  confidence: RelationshipConfidence;
+};
 
 const FamilyTree: React.FC<FamilyTreeProps> = ({ people, relationships, onPersonSelect, layout }) => {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -45,7 +51,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ people, relationships, onPerson
     svg.call(zoom);
 
     // Identify links with confidence
-    const allLinks = relationships.map(r => ({
+    const allLinks: SimulationLink[] = relationships.map(r => ({
       id: r.id,
       source: r.personId,
       target: r.relatedId,
@@ -53,8 +59,10 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ people, relationships, onPerson
       confidence: r.confidence || 'Unknown'
     }));
 
-    const simulation = d3.forceSimulation(people as any)
-      .force("link", d3.forceLink(allLinks).id((d: any) => d.id).distance(240))
+    const nodes: SimulationPerson[] = people.map((p) => ({ ...p }));
+
+    const simulation = d3.forceSimulation<SimulationPerson>(nodes)
+      .force("link", d3.forceLink<SimulationPerson, SimulationLink>(allLinks).id((d) => d.id as string).distance(240))
       .force("charge", d3.forceManyBody().strength(-2500))
       .force("center", d3.forceCenter(width / 2, height / 2));
 
@@ -80,10 +88,10 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ people, relationships, onPerson
 
     const node = g.append("g")
       .selectAll(".node")
-      .data(people)
+      .data(nodes)
       .join("g")
       .attr("class", "node")
-      .on("click", (e, d: any) => onPersonSelect(d))
+      .on("click", (_, d) => onPersonSelect(d))
       .style("cursor", "pointer");
 
     node.append("rect")
@@ -93,9 +101,9 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ people, relationships, onPerson
       .attr("y", -32)
       .attr("rx", 18)
       .attr("fill", "#fff")
-      .attr("stroke", (d: any) => d.isDNAMatch ? "#3b82f6" : "#f1f5f9")
-      .attr("stroke-width", (d: any) => d.isDNAMatch ? 3 : 1.5)
-      .attr("filter", (d: any) => d.isDNAMatch ? "url(#dna-glow)" : "none");
+      .attr("stroke", (d) => d.isDNAMatch ? "#3b82f6" : "#f1f5f9")
+      .attr("stroke-width", (d) => d.isDNAMatch ? 3 : 1.5)
+      .attr("filter", (d) => d.isDNAMatch ? "url(#dna-glow)" : "none");
 
     node.append("text")
       .attr("dy", "-0.2em")
@@ -103,15 +111,15 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ people, relationships, onPerson
       .attr("font-size", "14px")
       .attr("font-weight", "700")
       .attr("fill", "#0f172a")
-      .text((d: any) => `${d.firstName} ${d.lastName}`);
+      .text((d) => `${d.firstName} ${d.lastName}`);
 
     simulation.on("tick", () => {
       link
-        .attr("x1", (d: any) => d.source.x)
-        .attr("y1", (d: any) => d.source.y)
-        .attr("x2", (d: any) => d.target.x)
-        .attr("y2", (d: any) => d.target.y);
-      node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+        .attr("x1", (d) => (d.source as SimulationPerson).x ?? 0)
+        .attr("y1", (d) => (d.source as SimulationPerson).y ?? 0)
+        .attr("x2", (d) => (d.target as SimulationPerson).x ?? 0)
+        .attr("y2", (d) => (d.target as SimulationPerson).y ?? 0);
+      node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
 
   }, [people, relationships, onPersonSelect, layout]);

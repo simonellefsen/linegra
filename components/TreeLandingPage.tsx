@@ -2,11 +2,7 @@
 import React from 'react';
 import { Person, FamilyTree } from '../types';
 import { 
-  History, 
   Calendar, 
-  Search, 
-  Plus, 
-  Sparkles, 
   HelpCircle,
   Clock,
   ChevronRight,

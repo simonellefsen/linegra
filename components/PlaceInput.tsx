@@ -8,7 +8,6 @@ import {
   Globe, 
   Map as MapIcon, 
   Compass, 
-  Info, 
   Loader2, 
   History, 
   Home, 
@@ -36,8 +35,8 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
     ? { fullText: value } 
     : value || { fullText: '' };
 
-  const updateField = (field: keyof StructuredPlace, val: any) => {
-    const newPlace = { ...place, [field]: val };
+  const updateField = (field: keyof StructuredPlace, val: string | number | undefined) => {
+    const newPlace: StructuredPlace = { ...place, [field]: val ?? undefined };
     onChange(newPlace);
   };
 
@@ -197,13 +196,15 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
   );
 };
 
-const DetailField: React.FC<{ 
-  label: string; 
-  icon: any; 
-  value?: string; 
-  onChange: (v: string) => void; 
-  placeholder?: string 
-}> = ({ label, icon: Icon, value, onChange, placeholder }) => (
+interface DetailFieldProps {
+  label: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  value?: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}
+
+const DetailField: React.FC<DetailFieldProps> = ({ label, icon: Icon, value, onChange, placeholder }) => (
   <div className="space-y-1">
     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1 truncate block">{label}</label>
     <div className="relative">

@@ -24,9 +24,9 @@ import { PlaceInput } from './PlaceInput';
 import { MOCK_TREES, MOCK_RELATIONSHIPS, MOCK_MEDIA } from '../mockData';
 import { 
   X, Library, Image as ImageIcon, FileText, Plus, Info, Lock, ShieldCheck, 
-  Target, Microscope, Dna, Share2, ChevronRight, Search, Link2, Briefcase, 
-  Skull, Heart, Trash2, ExternalLink, Bookmark, Camera, Calendar, MapPin,
-  AlertTriangle, ShieldAlert, CheckCircle, HelpCircle, Edit3, Link, Music, Video, File,
+  Target, Microscope, Dna, Share2, ChevronRight, Search, Link2, 
+  Skull, Heart, Trash2, Calendar,
+  CheckCircle, HelpCircle, Edit3, Link, Music, Video, File,
   Upload as UploadIcon, Globe, Fingerprint, Sparkles, Home, GraduationCap, Sword, PlaneLanding, PlaneTakeoff,
   History
 } from 'lucide-react';
@@ -91,7 +91,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   const [deathCategory, setDeathCategory] = useState<DeathCauseCategory>(person.deathCauseCategory || 'Unknown');
   const [altNames, setAltNames] = useState<AlternateName[]>(person.alternateNames || []);
   const [events, setEvents] = useState<PersonEvent[]>(person.events || []);
-  const [isDNAMatch, setIsDNAMatch] = useState(!!person.isDNAMatch);
+  const isDNAMatch = !!person.isDNAMatch;
 
   // Dynamic Archive state
   const [sources, setSources] = useState<Source[]>(person.sources || []);

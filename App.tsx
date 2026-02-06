@@ -17,6 +17,7 @@ import {
   User as UserIcon,
   Loader2
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 const App: React.FC = () => {
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
@@ -125,6 +126,12 @@ const App: React.FC = () => {
     );
   }
 
+  const primaryNavItems: Array<{ id: 'home' | 'tree' | 'records'; icon: LucideIcon; label: string }> = [
+    { id: 'home', icon: Home, label: 'Portal Home' },
+    { id: 'tree', icon: GitBranch, label: 'Interactive Tree' },
+    { id: 'records', icon: Database, label: 'Historical Archive' }
+  ];
+
   return (
     <div className="flex h-screen w-full bg-slate-50 text-slate-900 overflow-hidden font-sans">
       <nav className="w-20 lg:w-72 bg-white border-r border-slate-200 flex flex-col h-full shrink-0 transition-all duration-500 shadow-[20px_0_60px_rgba(0,0,0,0.02)]">
@@ -162,14 +169,10 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex-1 px-5 space-y-2">
-          {[
-            { id: 'home', icon: Home, label: 'Portal Home' },
-            { id: 'tree', icon: GitBranch, label: 'Interactive Tree' },
-            { id: 'records', icon: Database, label: 'Historical Archive' },
-          ].map((item) => (
+          {primaryNavItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id as any)}
+              onClick={() => setActiveTab(item.id)}
               className={`w-full flex items-center gap-5 px-6 py-4 rounded-[22px] transition-all duration-300 ${
                 activeTab === item.id ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/20 translate-x-2' : 'text-slate-500 hover:bg-slate-100'
               }`}

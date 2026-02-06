@@ -11,10 +11,12 @@ View your app in AI Studio: https://ai.studio/apps/drive/1pWfS3iW2IEOX4MJO3XMvFj
 ## Run Locally
 
 **Prerequisites:**  Node.js
+  
+> AI integration now uses OpenRouter. See `docs/AI_SETUP.md` for required `OPENROUTER_API_KEY` instructions before running locally or on CI.
 
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Create `.env.local` with `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` values (see `docs/AI_SETUP.md` + `docs/SUPABASE_SETUP.md`)
 3. Run the app:
    `npm run dev`

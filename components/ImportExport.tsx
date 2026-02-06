@@ -2,23 +2,19 @@ import React, { useState, useRef } from 'react';
 import { 
   Upload, 
   Download, 
-  FileJson, 
   AlertCircle, 
   CheckCircle2, 
   Loader2, 
-  Database, 
-  ShieldCheck, 
   Key, 
   Globe,
   Settings2,
-  RefreshCw,
   Wifi,
   WifiOff,
   ChevronRight,
   Info
 } from 'lucide-react';
-import { Person, Relationship, RelationshipType, RelationshipConfidence } from '../types';
-import { isSupabaseConfigured, getActiveConfig } from '../lib/supabase';
+import { Person, Relationship } from '../types';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 interface ImportExportProps {
   people: Person[];
@@ -58,7 +54,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
       const match = line.match(/^(\d+)\s+(@?\w+@?)\s*(\w+)?\s*(.*)$/);
       if (!match) return;
 
-      const [_, levelStr, tagOrId, tagIfId, value] = match;
+      const [, levelStr, tagOrId, tagIfId, value] = match;
       const level = parseInt(levelStr);
 
       if (level === 0) {
@@ -260,7 +256,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
               </div>
               <ol className="text-sm text-slate-300 space-y-3 list-decimal ml-5">
                 <li>Create a free project at <a href="https://supabase.com" target="_blank" className="text-blue-400 underline font-bold">Supabase.com</a></li>
-                <li>Go to <b>Project Settings > API</b> in your Supabase dashboard.</li>
+                <li>Go to <b>Project Settings &gt; API</b> in your Supabase dashboard.</li>
                 <li>Copy the <b>Project URL</b> and <b>anon / public key</b> into the fields below.</li>
                 <li>Click <b>"Link Live Database"</b> and the app will refresh.</li>
               </ol>
