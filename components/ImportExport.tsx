@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Info
 } from 'lucide-react';
-import { Person, Relationship } from '../types';
+import { Person, Relationship, PersonEvent, Source } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 interface ImportExportProps {
@@ -21,6 +21,25 @@ interface ImportExportProps {
   relationships: Relationship[];
   onImport: (data: { people: Person[]; relationships: Relationship[] }) => void;
 }
+
+type ParsedPerson = Partial<Person> & {
+  events?: PersonEvent[];
+  sourceIds?: string[];
+  inlineSources?: Source[];
+};
+
+const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
+  RESI: 'Residence',
+  OCCU: 'Occupation',
+  IMMI: 'Immigration',
+  EMIG: 'Emigration',
+  NATU: 'Naturalization',
+  MILI: 'Military Service',
+  EDUC: 'Education',
+  BAPM: 'Baptism',
+  CONF: 'Confirmation',
+  EVEN: 'Other'
+};
 
 const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onImport }) => {
   const [isImporting, setIsImporting] = useState(false);
@@ -44,14 +63,16 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
 
   const parseGEDCOM = (text: string) => {
     const lines = text.split(/\r?\n/);
-    const parsedPeople: Record<string, Partial<Person>> = {};
-    const parsedFamilies: Record<string, { husb?: string; wife?: string; children: string[]; date?: string; place?: string }> = {};
+    const parsedPeople: Record<string, ParsedPerson> = {};
+    const parsedFamilies: Record<string, { husb?: string; wife?: string; children: string[]; date?: string; place?: string; type?: string }> = {};
+    const parsedSources: Record<string, Source> = {};
     const warnings: string[] = [];
     
     let currentId = '';
-    let currentType: 'INDI' | 'FAM' | null = null;
+    let currentType: 'INDI' | 'FAM' | 'SOUR' | null = null;
     let currentTag = '';
-    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT']);
+    let currentEvent: PersonEvent | null = null;
+    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', ...Object.keys(GEDCOM_EVENT_MAP)]);
     const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR']);
 
     lines.forEach((line) => {
@@ -62,19 +83,33 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
       const level = parseInt(levelStr);
 
       if (level === 0) {
+        currentEvent = null;
         if (tagIfId === 'INDI') {
           currentId = tagOrId.replace(/@/g, '');
           currentType = 'INDI';
-          parsedPeople[currentId] = { id: currentId, firstName: '', lastName: '', updatedAt: new Date().toISOString() };
+          parsedPeople[currentId] = { id: currentId, firstName: '', lastName: '', updatedAt: new Date().toISOString(), events: [], sourceIds: [], inlineSources: [] };
         } else if (tagIfId === 'FAM') {
           currentId = tagOrId.replace(/@/g, '');
           currentType = 'FAM';
           parsedFamilies[currentId] = { children: [] };
+        } else if (tagIfId === 'SOUR') {
+          currentId = tagOrId.replace(/@/g, '');
+          currentType = 'SOUR';
+          parsedSources[currentId] = {
+            id: currentId,
+            title: '',
+            type: 'Unknown',
+            reliability: 1,
+            actualText: ''
+          };
         } else {
           currentType = null;
         }
       } else if (currentType === 'INDI' && parsedPeople[currentId]) {
         const p = parsedPeople[currentId];
+        if (level === 1 && tagOrId !== 'DATE' && tagOrId !== 'PLAC') {
+          currentEvent = null;
+        }
         if (tagOrId === 'NAME') {
           const nameParts = value.split('/');
           p.firstName = nameParts[0]?.trim() || '';
@@ -85,12 +120,50 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           currentTag = 'BIRT';
         } else if (tagOrId === 'DEAT') {
           currentTag = 'DEAT';
+        } else if (GEDCOM_EVENT_MAP[tagOrId]) {
+          currentTag = tagOrId;
+          const events = p.events || (p.events = []);
+          currentEvent = {
+            id: `evt-${currentId}-${events.length + 1}`,
+            type: GEDCOM_EVENT_MAP[tagOrId],
+            date: '',
+            place: '',
+            description: value.trim()
+          };
+          events.push(currentEvent);
         } else if (tagOrId === 'DATE' && level === 2) {
           if (currentTag === 'BIRT') p.birthDate = value.trim();
           if (currentTag === 'DEAT') p.deathDate = value.trim();
+          if (currentEvent) currentEvent.date = value.trim();
         } else if (tagOrId === 'PLAC' && level === 2) {
           if (currentTag === 'BIRT') p.birthPlace = value.trim();
           if (currentTag === 'DEAT') p.deathPlace = value.trim();
+          if (currentEvent) currentEvent.place = value.trim();
+        } else if (tagOrId === 'NOTE' && currentEvent) {
+          currentEvent.description = `${currentEvent.description || ''}\nNote: ${value.trim()}`.trim();
+        } else if (tagOrId === 'TYPE' && currentEvent) {
+          const typeText = value.trim();
+          if (currentTag === 'EVEN' && typeText) {
+            currentEvent.type = typeText;
+          }
+          currentEvent.description = currentEvent.description
+            ? `${currentEvent.description}\nType: ${typeText}`
+            : `Type: ${typeText}`;
+        } else if (tagOrId === 'SOUR') {
+          const srcId = value.replace(/@/g, '').trim();
+          if (srcId) {
+            (p.sourceIds || (p.sourceIds = [])).push(srcId);
+          } else if (value.trim()) {
+            const inlineId = `inline-${currentId}-${(p.inlineSources?.length || 0) + 1}`;
+            const inlineSource: Source = {
+              id: inlineId,
+              title: value.trim(),
+              type: 'Unknown',
+              reliability: 1,
+              actualText: value.trim()
+            };
+            p.inlineSources?.push(inlineSource);
+          }
         } else if (level === 1 && !supportedIndividualTags.has(tagOrId)) {
           warnings.push(`Ignored individual tag "${tagOrId}" on record ${currentId}`);
         }
@@ -103,17 +176,61 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         else if (tagOrId === 'MARR') currentTag = 'MARR';
         else if (tagOrId === 'DATE' && level === 2 && currentTag === 'MARR') f.date = value.trim();
         else if (tagOrId === 'PLAC' && level === 2 && currentTag === 'MARR') f.place = value.trim();
+        else if (tagOrId === 'TYPE' && level === 2 && currentTag === 'MARR') f.type = value.trim();
         else if (level === 1 && !supportedFamilyTags.has(tagOrId)) {
           warnings.push(`Ignored family tag "${tagOrId}" on record ${currentId}`);
+        }
+      } else if (currentType === 'SOUR' && parsedSources[currentId]) {
+        const source = parsedSources[currentId];
+        switch (tagOrId) {
+          case 'TITL':
+            source.title = value.trim();
+            break;
+          case 'AUTH':
+            source.repository = value.trim();
+            break;
+          case 'PUBL':
+            source.notes = value.trim();
+            break;
+          case 'TEXT':
+            source.actualText = value.trim();
+            break;
+          case 'NOTE':
+            source.notes = `${source.notes || ''}\n${value.trim()}`.trim();
+            break;
+          case 'URL':
+            source.url = value.trim();
+            break;
+          case 'DATE':
+            source.citationDate = value.trim();
+            break;
+          default:
+            warnings.push(`Ignored source tag "${tagOrId}" on source ${currentId}`);
         }
       }
     });
 
-    const finalPeople = Object.values(parsedPeople) as Person[];
+    const finalPeople: Person[] = Object.values(parsedPeople).map((p) => {
+      const sourceList: Source[] = [];
+      (p.sourceIds || []).forEach((id) => {
+        const src = parsedSources[id];
+        if (src) {
+          sourceList.push({ ...src });
+        } else {
+          warnings.push(`Person ${p.id} referenced missing source ${id}`);
+        }
+      });
+      (p.inlineSources || []).forEach((src) => sourceList.push(src));
+      return {
+        ...p,
+        events: p.events || [],
+        sources: sourceList
+      } as Person;
+    });
+
     const finalRelationships: Relationship[] = [];
 
     Object.values(parsedFamilies).forEach((f, idx) => {
-      // Marriages
       if (f.husb && f.wife) {
         finalRelationships.push({
           id: `rel-m-${idx}`,
@@ -122,10 +239,11 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           personId: f.husb,
           relatedId: f.wife,
           date: f.date,
+          place: f.place,
+          notes: f.type,
           confidence: 'Confirmed'
         });
       }
-      // Parent-Child
       f.children.forEach((childId, cIdx) => {
         if (f.husb) {
           finalRelationships.push({
@@ -195,6 +313,17 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         const familyKey = [r.personId, r.relatedId].sort().join('-');
         if (!processedFamilies.has(familyKey)) {
           ged += `0 @F${idx}@ FAM\n1 HUSB @P${r.personId}@\n1 WIFE @P${r.relatedId}@\n`;
+          ged += `1 MARR\n`;
+          if (r.date) {
+            ged += `2 DATE ${r.date}\n`;
+          }
+          const placeText = typeof r.place === 'string' ? r.place : (typeof r.place === 'object' ? r.place?.fullText : '');
+          if (placeText) {
+            ged += `2 PLAC ${placeText}\n`;
+          }
+          if (r.notes) {
+            ged += `2 TYPE ${r.notes}\n`;
+          }
           // Find children for this marriage
           relationships.filter(childRel => 
             (childRel.type === 'bio_father' && childRel.personId === r.personId) || 
@@ -327,12 +456,31 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
       </div>
 
       {importWarnings.length > 0 && (
-        <div className="p-6 bg-amber-50 border border-amber-200 rounded-[32px] space-y-3">
-          <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
-            <AlertCircle className="w-4 h-4" />
-            GEDCOM import warnings
+        <div className="p-6 bg-amber-50 border border-amber-200 rounded-[32px] space-y-4">
+          <div className="flex items-center justify-between text-amber-700">
+            <div className="flex items-center gap-2 font-semibold text-sm">
+              <AlertCircle className="w-4 h-4" />
+              GEDCOM import warnings ({importWarnings.length})
+            </div>
+            <button
+              onClick={() => {
+                const log = [`Linegra GEDCOM import log - ${new Date().toISOString()}`, '', ...importWarnings].join('\n');
+                const blob = new Blob([log], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `linegra_gedcom_warnings_${new Date().toISOString().slice(0,10)}.txt`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+              }}
+              className="text-xs font-bold underline hover:text-amber-800"
+            >
+              Download log
+            </button>
           </div>
-          <ul className="list-disc ml-6 text-xs text-amber-800 space-y-1">
+          <ul className="list-disc ml-6 text-xs text-amber-800 space-y-1 max-h-48 overflow-auto pr-2">
             {importWarnings.map((warning, idx) => (
               <li key={`${warning}-${idx}`}>{warning}</li>
             ))}
