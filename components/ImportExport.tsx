@@ -206,7 +206,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
             p.inlineSources?.push(inlineSource);
           }
         } else if (level === 1 && !supportedIndividualTags.has(tag)) {
-          warnings.push(`Ignored individual tag \"${tag}\" on record ${currentId}`);
+          warnings.push(`Ignored individual tag "${tag}" on record ${currentId}`);
         }
       } else if (currentType === 'FAM' && parsedFamilies[currentId]) {
         const f = parsedFamilies[currentId];
@@ -218,7 +218,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         else if (tag === 'PLAC' && level === 2 && currentTag === 'MARR') f.place = value;
         else if (tag === 'TYPE' && level === 2 && currentTag === 'MARR') f.type = value;
         else if (level === 1 && !supportedFamilyTags.has(tag)) {
-          warnings.push(`Ignored family tag \"${tag}\" on record ${currentId}`);
+          warnings.push(`Ignored family tag "${tag}" on record ${currentId}`);
         }
       } else if (currentType === 'SOUR' && parsedSources[currentId]) {
         const source = parsedSources[currentId];
@@ -245,7 +245,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
             source.citationDate = value;
             break;
           default:
-            warnings.push(`Ignored source tag \"${tag}\" on source ${currentId}`);
+            warnings.push(`Ignored source tag "${tag}" on source ${currentId}`);
         }
       }
     });
