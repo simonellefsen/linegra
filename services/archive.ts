@@ -31,8 +31,7 @@ const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
     is_dna_match: person.isDNAMatch || false,
     dna_match_info: person.dnaMatchInfo || null,
     tags: [],
-    user_role: person.userRole || null,
-    added_by_user_id: person.addedByUserId || null
+    user_role: person.userRole || null
   };
 };
 
