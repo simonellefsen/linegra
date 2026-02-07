@@ -326,6 +326,7 @@ const App: React.FC = () => {
         const archive = await loadArchiveData(activeTree.id);
         setAllPeople(archive.people);
         setAllRelationships(archive.relationships);
+        await fetchAdminTreeStats();
         setActiveTab('tree');
         return;
       } catch (err) {
