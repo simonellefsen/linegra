@@ -24,6 +24,7 @@ interface ImportExportProps {
   isAdmin?: boolean;
   currentUser?: { id?: string | null; name?: string | null };
   onTreeCreated?: () => void;
+  activeTreeName?: string;
 }
 
 type ParsedPerson = Partial<Person> & {
@@ -62,7 +63,7 @@ const GEDCOM_EVENT_LABELS: Record<string, string> = {
   EVEN: 'Other'
 };
 
-const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onImport, isAdmin = false, currentUser, onTreeCreated }) => {
+const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onImport, isAdmin = false, currentUser, onTreeCreated, activeTreeName }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importStats, setImportStats] = useState({ people: 0, relationships: 0 });
@@ -75,6 +76,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
   const [newTreeOwner, setNewTreeOwner] = useState('');
   const [newTreeEmail, setNewTreeEmail] = useState('');
   const [treeCreationStatus, setTreeCreationStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [pendingImport, setPendingImport] = useState<{ data: { people: Person[]; relationships: Relationship[] }; fileName: string } | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isLive = isSupabaseConfigured();
@@ -431,8 +433,10 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         
         setImportStats({ people: data.people.length, relationships: data.relationships.length });
         setImportWarnings(data.warnings);
-        onImport(data);
-        setStatus('success');
+        setPendingImport({ data, fileName: file.name });
+        setStatus('idle');
+        setIsImporting(false);
+        return;
       } catch (err) {
         console.error("Import failed", err);
         setStatus('error');
@@ -601,6 +605,42 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
       </div>
 
       {isAdmin && (
+        <div className="pt-8 border-t border-slate-200/50 space-y-8 animate-in slide-in-from-top-4">
+          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm p-8 space-y-6">
+            <div>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Administrator Panel</p>
+              <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">Create New Family Tree</h3>
+            </div>
+            <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleCreateTree}>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tree Name</label>
+                <input value={newTreeName} onChange={(e) => setNewTreeName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="e.g. Linegra Heritage" required />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Name</label>
+                <input value={newTreeOwner} onChange={(e) => setNewTreeOwner(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="Lead Researcher" />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Description</label>
+                <textarea value={newTreeDescription} onChange={(e) => setNewTreeDescription(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none min-h-[90px]" placeholder="Brief description of the archive's focus" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Email</label>
+                <input type="email" value={newTreeEmail} onChange={(e) => setNewTreeEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="owner@example.com" />
+              </div>
+              <div className="md:col-span-2 flex items-center gap-4">
+                <button type="submit" className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all">
+                  Save Tree
+                </button>
+                {treeCreationStatus === 'success' && <span className="text-emerald-600 text-sm font-bold">Tree created.</span>}
+                {treeCreationStatus === 'error' && <span className="text-rose-600 text-sm font-bold">Creation failed.</span>}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isAdmin && (
         <div className="p-8 rounded-[32px] border border-slate-200 bg-white shadow-sm space-y-6">
           <div>
             <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Administrator Tools</p>
@@ -758,6 +798,59 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           <div>
             <p className="text-sm text-rose-900 font-bold leading-none">Import Failed</p>
             <p className="text-xs text-rose-600 mt-1">The GEDCOM file could not be parsed. Ensure it is a valid format.</p>
+          </div>
+        </div>
+      )}
+
+      {pendingImport && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-[32px] border border-slate-200 shadow-2xl max-w-lg w-full p-8 space-y-6">
+            <div>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Confirm Import</p>
+              <h3 className="text-2xl font-serif font-bold text-slate-900 mt-2">Attach GEDCOM to {activeTreeName || 'current tree'}?</h3>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              You are about to ingest <span className="font-bold text-slate-900">{importStats.people}</span> people and <span className="font-bold text-slate-900">{importStats.relationships}</span> relationships from <span className="font-semibold">{pendingImport.fileName}</span> into <span className="font-semibold">{activeTreeName || 'this tree'}</span>.
+            </p>
+            {!!importWarnings.length && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800 space-y-2 max-h-32 overflow-auto">
+                <p className="font-semibold">Warnings</p>
+                <ul className="list-disc ml-5 space-y-1">
+                  {importWarnings.map((warning, idx) => (
+                    <li key={`${warning}-${idx}`}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => {
+                  setPendingImport(null);
+                  setStatus('idle');
+                }}
+                className="px-6 py-3 rounded-2xl border border-slate-200 text-slate-500 text-sm font-bold uppercase tracking-widest hover:bg-slate-100 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setIsImporting(true);
+                  try {
+                    await onImport(pendingImport.data);
+                    setStatus('success');
+                  } catch (err) {
+                    console.error('Confirm import failed', err);
+                    setStatus('error');
+                  } finally {
+                    setIsImporting(false);
+                    setPendingImport(null);
+                  }
+                }}
+                className="flex-1 px-6 py-3 rounded-2xl bg-slate-900 text-white text-sm font-black uppercase tracking-[0.2em] hover:bg-slate-800 transition-all"
+              >
+                Confirm Import
+              </button>
+            </div>
           </div>
         </div>
       )}

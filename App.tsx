@@ -374,7 +374,8 @@ const App: React.FC = () => {
                   onImport={handleImport} 
                   isAdmin={!!currentUser?.isAdmin} 
                   currentUser={currentUser || undefined}
-                  onTreeCreated={refreshTrees} 
+                  onTreeCreated={refreshTrees}
+                  activeTreeName={activeTree.name}
                 />
               </div>
             )}
