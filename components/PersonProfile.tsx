@@ -17,7 +17,8 @@ import {
   NoteType,
   DNAVendor,
   DNATestType,
-  MediaType
+  MediaType,
+  Citation
 } from '../types';
 import { FluentDateInput } from './FluentDate';
 import { PlaceInput } from './PlaceInput';
@@ -131,6 +132,16 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     });
     return list;
   }, [events]);
+
+  const citationMap = useMemo(() => {
+    const map: Record<string, Citation[]> = {};
+    (person.citations || []).forEach((citation) => {
+      const key = citation.sourceId;
+      if (!key) return;
+      (map[key] || (map[key] = [])).push(citation);
+    });
+    return map;
+  }, [person.citations]);
 
   const canAccessDNA = useMemo(() => {
     if (!currentUser) return false;
@@ -782,8 +793,34 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                        className="w-full text-xs text-slate-500 italic border-none outline-none bg-slate-50 rounded-xl p-3 min-h-[60px]"
                        placeholder="Transcription of the record contents..."
                      />
-                  </div>
-                ))}
+                     {(() => {
+                       const citationKey = source.externalId || source.id;
+                       const linkedCitations = citationKey ? citationMap[citationKey] || [] : [];
+                       if (!linkedCitations.length) return null;
+                       return (
+                         <div className="space-y-3 bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                           {linkedCitations.map((citation) => (
+                             <div key={citation.id} className="text-xs text-slate-600 space-y-1">
+                               <p className="font-semibold text-slate-800 flex items-center gap-2">
+                                 <Library className="w-3 h-3 text-slate-500" />
+                                 {(citation.eventLabel || 'General')}{citation.dataDate ? ` • ${citation.dataDate}` : ''}
+                               </p>
+                               {citation.page && <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Page {citation.page}</p>}
+                               {citation.dataText && (
+                                 <p className="whitespace-pre-line text-slate-500">
+                                   {citation.dataText}
+                                 </p>
+                               )}
+                               {citation.quality && (
+                                 <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Quality: {citation.quality}</p>
+                               )}
+                             </div>
+                           ))}
+                         </div>
+                       );
+                     })()}
+                 </div>
+               ))}
                 {sources.length === 0 && <p className="text-center py-20 text-xs text-slate-400 italic">No source documents linked to this profile.</p>}
              </div>
           </div>
