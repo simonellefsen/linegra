@@ -75,19 +75,23 @@ export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   return data as FamilyTreeType[];
 };
 
-export const createFamilyTree = async (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => {
+export const createFamilyTree = async (
+  payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string },
+  actor?: ImportActor | null
+) => {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase is not configured. Cannot create tree.');
   }
   const metadata: Record<string, string> = {};
   if (payload.ownerName) metadata.owner_name = payload.ownerName;
   if (payload.ownerEmail) metadata.owner_email = payload.ownerEmail;
-  const { data, error } = await supabase.from('family_trees').insert({
-    name: payload.name,
-    description: payload.description || null,
-    metadata,
-    is_public: false
-  }).select('*').single();
+  const { data, error } = await supabase.rpc('admin_create_tree', {
+    payload_name: payload.name,
+    payload_description: payload.description || null,
+    payload_metadata: metadata,
+    payload_actor_id: actor?.id ?? null,
+    payload_actor_name: actor?.name ?? 'System'
+  });
   if (error) throw new Error(error.message);
   return data as FamilyTreeType;
 };

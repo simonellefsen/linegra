@@ -368,7 +368,14 @@ const App: React.FC = () => {
             )}
             {activeTab === 'records' && (
               <div className="space-y-10 max-w-6xl mx-auto py-4">
-                <ImportExport people={treePeople} relationships={treeRelationships} onImport={handleImport} isAdmin={!!currentUser?.isAdmin} onTreeCreated={refreshTrees} />
+                <ImportExport 
+                  people={treePeople} 
+                  relationships={treeRelationships} 
+                  onImport={handleImport} 
+                  isAdmin={!!currentUser?.isAdmin} 
+                  currentUser={currentUser || undefined}
+                  onTreeCreated={refreshTrees} 
+                />
               </div>
             )}
           </div>
