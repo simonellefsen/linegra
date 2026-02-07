@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { isSupabaseConfigured } from './lib/supabase';
 import { MOCK_PEOPLE, MOCK_RELATIONSHIPS, MOCK_TREES } from './mockData';
 import { ensureTrees, loadArchiveData, importGedcomToSupabase } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship } from './types';
@@ -44,14 +44,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const hydrateLocal = () => {
-      setCurrentUser({
-        id: 'u1',
-        name: 'James Researcher',
-        email: 'james@example.com',
-        isLoggedIn: true,
-        isAdmin: true,
-        avatarUrl: 'https://ui-avatars.com/api/?name=James+Researcher&background=0f172a&color=fff'
-      });
+      setCurrentUser(null);
       setTrees(MOCK_TREES);
       setActiveTree(MOCK_TREES[0]);
       setAllPeople(MOCK_PEOPLE);
@@ -64,20 +57,7 @@ const App: React.FC = () => {
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setCurrentUser({
-          id: session.user.id,
-          name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'Researcher',
-          email: session.user.email || '',
-          isLoggedIn: true,
-          isAdmin: false,
-          avatarUrl: `https://ui-avatars.com/api/?name=${session.user.email}&background=0f172a&color=fff`
-        });
-      } else {
-        setCurrentUser(null);
-      }
-    }).finally(async () => {
+    (async () => {
       try {
         const dbTrees = await ensureTrees();
         setTrees(dbTrees);
@@ -92,24 +72,7 @@ const App: React.FC = () => {
       } finally {
         setLoading(false);
       }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setCurrentUser({
-          id: session.user.id,
-          name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'Researcher',
-          email: session.user.email || '',
-          isLoggedIn: true,
-          isAdmin: false,
-          avatarUrl: `https://ui-avatars.com/api/?name=${session.user.email}&background=0f172a&color=fff`
-        });
-      } else {
-        setCurrentUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    })();
   }, [supabaseActive]);
 
   const treePeople = useMemo(() => {
@@ -146,6 +109,23 @@ const App: React.FC = () => {
       }
       window.history.replaceState({}, '', url);
     }
+  };
+
+  const handleAdminLogin = (username: string) => {
+    const adminUser: User = {
+      id: `admin-${username}`,
+      name: username,
+      email: `${username}@linegra.super`,
+      isLoggedIn: true,
+      isAdmin: true,
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=0f172a&color=fff`
+    };
+    setCurrentUser(adminUser);
+    setShowAuthModal(false);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
   };
 
   useEffect(() => {
@@ -334,13 +314,16 @@ const App: React.FC = () => {
               <div className="flex items-center gap-4">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-black text-slate-900 leading-none">{currentUser.name}</p>
-                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1.5">Lead Genealogist</p>
+                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1.5">{currentUser.isAdmin ? 'Super Administrator' : 'Researcher'}</p>
                 </div>
                 <img src={currentUser.avatarUrl} className="w-12 h-12 rounded-full border-4 border-white shadow-xl" alt="Avatar" />
+                <button onClick={handleLogout} className="px-5 py-2 rounded-[14px] border border-slate-300 text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 transition-all">
+                  Log Out
+                </button>
               </div>
             ) : (
               <button onClick={() => setShowAuthModal(true)} className="bg-slate-900 text-white px-8 py-3 rounded-[18px] font-black text-[12px] uppercase tracking-widest shadow-2xl hover:bg-slate-800 transition-all hover:-translate-y-0.5 active:translate-y-0">
-                Register Portal
+                Login
               </button>
             )}
           </div>
@@ -378,7 +361,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={() => setShowAuthModal(false)} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={handleAdminLogin} />
     </div>
   );
 };

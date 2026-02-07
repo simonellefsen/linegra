@@ -20,3 +20,19 @@ View your app in AI Studio: https://ai.studio/apps/drive/1pWfS3iW2IEOX4MJO3XMvFj
 2. Create `.env.local` with `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` values (see `docs/AI_SETUP.md` + `docs/SUPABASE_SETUP.md`)
 3. Run the app:
    `npm run dev`
+
+## Super Administrator Login
+
+Linegra currently ships with a single local super administrator account. Use the header
+**Login** button and enter the bootstrap credentials:
+
+| Username | Password |
+|----------|----------|
+| `linegra` | `linegra` |
+
+On the first successful login you must immediately set a new username and password;
+this prompt cannot be skipped and ensures the archive is secured before edits occur.
+Updated credentials are stored in the browser/Electron `localStorage`, so if you clear
+storage or move to a new machine you will need to repeat the bootstrap process. Multi‑user
+registration is not yet available—only this super administrator can add, edit, or delete
+archival data in the current release.
