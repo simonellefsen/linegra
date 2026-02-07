@@ -15,11 +15,14 @@ import {
 } from 'lucide-react';
 import { Person, Relationship, PersonEvent, Source } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { createFamilyTree } from '../services/archive';
 
 interface ImportExportProps {
   people: Person[];
   relationships: Relationship[];
   onImport: (data: { people: Person[]; relationships: Relationship[] }) => void;
+  isAdmin?: boolean;
+  onTreeCreated?: () => void;
 }
 
 type ParsedPerson = Partial<Person> & {
@@ -58,7 +61,7 @@ const GEDCOM_EVENT_LABELS: Record<string, string> = {
   EVEN: 'Other'
 };
 
-const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onImport }) => {
+const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onImport, isAdmin = false, onTreeCreated }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importStats, setImportStats] = useState({ people: 0, relationships: 0 });
@@ -66,6 +69,11 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
   const [showConfig, setShowConfig] = useState(!isSupabaseConfigured());
   const [tempUrl, setTempUrl] = useState('');
   const [tempKey, setTempKey] = useState('');
+  const [newTreeName, setNewTreeName] = useState('');
+  const [newTreeDescription, setNewTreeDescription] = useState('');
+  const [newTreeOwner, setNewTreeOwner] = useState('');
+  const [newTreeEmail, setNewTreeEmail] = useState('');
+  const [treeCreationStatus, setTreeCreationStatus] = useState<'idle' | 'success' | 'error'>('idle');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isLive = isSupabaseConfigured();
@@ -409,6 +417,29 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
     reader.readAsText(file);
   };
 
+  const handleCreateTree = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTreeName.trim()) return;
+    setTreeCreationStatus('idle');
+    try {
+      await createFamilyTree({
+        name: newTreeName.trim(),
+        description: newTreeDescription.trim(),
+        ownerName: newTreeOwner.trim(),
+        ownerEmail: newTreeEmail.trim()
+      });
+      setTreeCreationStatus('success');
+      setNewTreeName('');
+      setNewTreeDescription('');
+      setNewTreeOwner('');
+      setNewTreeEmail('');
+      onTreeCreated?.();
+    } catch (err) {
+      console.error('Failed to create tree', err);
+      setTreeCreationStatus('error');
+    }
+  };
+
   const handleExportGEDCOM = () => {
     let ged = "0 HEAD\n1 SOUR LINEGRA\n1 GEDC\n2 VERS 5.5.1\n2 FORM LINEAGE-LINKED\n1 CHAR UTF-8\n";
     people.forEach(p => {
@@ -564,6 +595,40 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           </div>
         )}
       </div>
+
+      {isAdmin && (
+        <div className="p-8 rounded-[32px] border border-slate-200 bg-white shadow-sm space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Administrator Tools</p>
+              <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">Add New Family Tree</h3>
+            </div>
+          </div>
+          <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleCreateTree}>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tree Name</label>
+              <input value={newTreeName} onChange={(e) => setNewTreeName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="e.g. Aulum Heritage" required />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Name</label>
+              <input value={newTreeOwner} onChange={(e) => setNewTreeOwner(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="Researcher display name" />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Description</label>
+              <textarea value={newTreeDescription} onChange={(e) => setNewTreeDescription(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none min-h-[90px]" placeholder="Short description of the archive's geographic or lineage focus" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Email</label>
+              <input type="email" value={newTreeEmail} onChange={(e) => setNewTreeEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="owner@example.com" />
+            </div>
+            <div className="md:col-span-2 flex items-center gap-4">
+              <button type="submit" className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all">Create Tree</button>
+              {treeCreationStatus === 'success' && <span className="text-emerald-600 text-sm font-bold">Tree created</span>}
+              {treeCreationStatus === 'error' && <span className="text-rose-600 text-sm font-bold">Creation failed</span>}
+            </div>
+          </form>
+        </div>
+      )}
 
       <div className="p-6 bg-amber-50 border border-amber-200 rounded-[32px] space-y-4">
         <div className="flex items-center justify-between text-amber-700">

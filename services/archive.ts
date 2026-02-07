@@ -75,6 +75,23 @@ export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   return data as FamilyTreeType[];
 };
 
+export const createFamilyTree = async (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured. Cannot create tree.');
+  }
+  const metadata: Record<string, string> = {};
+  if (payload.ownerName) metadata.owner_name = payload.ownerName;
+  if (payload.ownerEmail) metadata.owner_email = payload.ownerEmail;
+  const { data, error } = await supabase.from('family_trees').insert({
+    name: payload.name,
+    description: payload.description || null,
+    metadata,
+    is_public: false
+  }).select('*').single();
+  if (error) throw new Error(error.message);
+  return data as FamilyTreeType;
+};
+
 export const loadArchiveData = async (treeId: string, search?: string) => {
   if (!isSupabaseConfigured()) {
     return {
@@ -166,19 +183,26 @@ export const loadArchiveData = async (treeId: string, search?: string) => {
   return { people, relationships };
 };
 
-export const importGedcomToSupabase = async (treeId: string, data: { people: Person[]; relationships: Relationship[] }, userId?: string | null) => {
+interface ImportActor {
+  id?: string | null;
+  name?: string | null;
+}
+
+const recordAuditLogs = async (entries: Array<{ tree_id: string; actor_id: string | null; actor_name: string; action: string; entity_type: string; entity_id: string; details?: Record<string, unknown> }>) => {
+  if (!entries.length || !isSupabaseConfigured()) return;
+  await supabase.from('audit_logs').insert(entries);
+};
+
+export const importGedcomToSupabase = async (treeId: string, data: { people: Person[]; relationships: Relationship[] }, actor?: ImportActor | null) => {
   if (!isSupabaseConfigured()) return;
+  const userId = actor?.id ?? null;
+  const actorName = actor?.name ?? 'System';
   const personIdMap = new Map<string, string>();
   const personRows = data.people.map((person) => {
     const row = toDbPerson(person, treeId, userId);
     personIdMap.set(person.id, row.id);
     return row;
   });
-  if (personRows.length) {
-    const { error } = await supabase.from('persons').insert(personRows);
-    if (error) throw new Error(error.message);
-  }
-
   const relationshipRows = data.relationships.map((rel) => {
     const personId = personIdMap.get(rel.personId);
     const relatedId = personIdMap.get(rel.relatedId);
@@ -196,16 +220,44 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
     };
   }).filter(Boolean);
 
-  if (relationshipRows.length) {
-    const { error } = await supabase.from('relationships').insert(relationshipRows as any[]);
-    if (error) throw new Error(error.message);
-  }
-
   const events: any[] = [];
   const notes: any[] = [];
   const sources: any[] = [];
   const citations: any[] = [];
   const sourceExternalToDbId = new Map<string, string>();
+  const auditEntries: Array<{ tree_id: string; actor_id: string | null; actor_name: string; action: string; entity_type: string; entity_id: string; details?: Record<string, unknown> }> = [];
+
+  if (personRows.length) {
+    const { error } = await supabase.from('persons').insert(personRows);
+    if (error) throw new Error(error.message);
+    personRows.forEach((row) => {
+      auditEntries.push({
+        tree_id: treeId,
+        actor_id: userId,
+        actor_name: actorName,
+        action: 'person_import',
+        entity_type: 'person',
+        entity_id: row.id,
+        details: { source: 'GEDCOM' }
+      });
+    });
+  }
+
+  if (relationshipRows.length) {
+    const { error } = await supabase.from('relationships').insert(relationshipRows as any[]);
+    if (error) throw new Error(error.message);
+    (relationshipRows as any[]).forEach((row: any) => {
+      auditEntries.push({
+        tree_id: treeId,
+        actor_id: userId,
+        actor_name: actorName,
+        action: 'relationship_import',
+        entity_type: 'relationship',
+        entity_id: row.id,
+        details: { source: 'GEDCOM', type: row.type }
+      });
+    });
+  }
 
   data.people.forEach((person) => {
     const personId = personIdMap.get(person.id);
@@ -286,6 +338,8 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
     const { error } = await supabase.from('citations').insert(citations);
     if (error) throw new Error(error.message);
   }
+
+  await recordAuditLogs(auditEntries);
 
   await supabase.from('gedcom_imports').insert({
     tree_id: treeId,

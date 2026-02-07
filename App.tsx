@@ -41,6 +41,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     const hydrateLocal = () => {
@@ -146,6 +147,12 @@ const App: React.FC = () => {
     }
   }, [pendingPersonId, treePeople]);
 
+  const refreshTrees = async () => {
+    if (!supabaseActive) return;
+    const dbTrees = await ensureTrees();
+    setTrees(dbTrees);
+  };
+
   const selectTree = (tree: FamilyTreeType) => {
     setActiveTree(tree);
     setShowTreeSelector(false);
@@ -197,7 +204,7 @@ const App: React.FC = () => {
   const handleImport = async (data: { people: Person[]; relationships: Relationship[] }) => {
     if (isSupabaseConfigured()) {
       try {
-        await importGedcomToSupabase(activeTree.id, data, currentUser?.id);
+        await importGedcomToSupabase(activeTree.id, data, currentUser);
         const archive = await loadArchiveData(activeTree.id);
         setAllPeople(archive.people);
         setAllRelationships(archive.relationships);
@@ -225,10 +232,10 @@ const App: React.FC = () => {
     );
   }
 
-  const primaryNavItems: Array<{ id: 'home' | 'tree' | 'records'; icon: LucideIcon; label: string }> = [
+  const primaryNavItems: Array<{ id: 'home' | 'tree' | 'records'; icon: LucideIcon; label: string; adminOnly?: boolean }> = [
     { id: 'home', icon: Home, label: 'Portal Home' },
     { id: 'tree', icon: GitBranch, label: 'Interactive Tree' },
-    { id: 'records', icon: Database, label: 'Historical Archive' }
+    { id: 'records', icon: Database, label: 'Administrator', adminOnly: true }
   ];
 
   return (
@@ -268,18 +275,20 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex-1 px-5 space-y-2">
-          {primaryNavItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-5 px-6 py-4 rounded-[22px] transition-all duration-300 ${
-                activeTab === item.id ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/20 translate-x-2' : 'text-slate-500 hover:bg-slate-100'
-              }`}
-            >
-              <item.icon className="w-6 h-6 shrink-0" />
-              <span className="hidden lg:block font-bold text-[13px] tracking-wide">{item.label}</span>
-            </button>
-          ))}
+          {primaryNavItems
+            .filter(item => !item.adminOnly || currentUser?.isAdmin)
+            .map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center gap-5 px-6 py-4 rounded-[22px] transition-all duration-300 ${
+                  activeTab === item.id ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/20 translate-x-2' : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                <item.icon className="w-6 h-6 shrink-0" />
+                <span className="hidden lg:block font-bold text-[13px] tracking-wide">{item.label}</span>
+              </button>
+            ))}
         </div>
 
         <div className="p-6 border-t border-slate-100 mt-auto">
@@ -309,17 +318,32 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6 relative">
             {currentUser ? (
-              <div className="flex items-center gap-4">
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-black text-slate-900 leading-none">{currentUser.name}</p>
-                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1.5">{currentUser.isAdmin ? 'Super Administrator' : 'Researcher'}</p>
-                </div>
-                <img src={currentUser.avatarUrl} className="w-12 h-12 rounded-full border-4 border-white shadow-xl" alt="Avatar" />
-                <button onClick={handleLogout} className="px-5 py-2 rounded-[14px] border border-slate-300 text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 transition-all">
-                  Log Out
+              <div className="flex items-center gap-4 relative">
+                <button
+                  onClick={() => setShowUserMenu((v) => !v)}
+                  className="flex items-center gap-3 focus:outline-none"
+                >
+                  <div className="text-right hidden sm:block">
+                    <p className="text-sm font-black text-slate-900 leading-none">{currentUser.name}</p>
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1.5">{currentUser.isAdmin ? 'Super Administrator' : 'Researcher'}</p>
+                  </div>
+                  <img src={currentUser.avatarUrl} className="w-12 h-12 rounded-full border-4 border-white shadow-xl cursor-pointer" alt="Avatar" />
                 </button>
+                {showUserMenu && (
+                  <div className="absolute top-full right-0 mt-4 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl z-50">
+                    <button
+                      onClick={() => {
+                        handleLogout();
+                        setShowUserMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 text-sm font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-50 rounded-2xl transition-all"
+                    >
+                      Log Out
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <button onClick={() => setShowAuthModal(true)} className="bg-slate-900 text-white px-8 py-3 rounded-[18px] font-black text-[12px] uppercase tracking-widest shadow-2xl hover:bg-slate-800 transition-all hover:-translate-y-0.5 active:translate-y-0">
@@ -344,7 +368,7 @@ const App: React.FC = () => {
             )}
             {activeTab === 'records' && (
               <div className="space-y-10 max-w-6xl mx-auto py-4">
-                <ImportExport people={treePeople} relationships={treeRelationships} onImport={handleImport} />
+                <ImportExport people={treePeople} relationships={treeRelationships} onImport={handleImport} isAdmin={!!currentUser?.isAdmin} onTreeCreated={refreshTrees} />
               </div>
             )}
           </div>
