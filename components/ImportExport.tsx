@@ -25,6 +25,8 @@ interface ImportExportProps {
   currentUser?: { id?: string | null; name?: string | null };
   onTreeCreated?: (tree: FamilyTree) => void;
   activeTreeName?: string;
+  showGedcomSection?: boolean;
+  showTreeSection?: boolean;
 }
 
 type ParsedPerson = Partial<Person> & {
@@ -63,7 +65,17 @@ const GEDCOM_EVENT_LABELS: Record<string, string> = {
   EVEN: 'Other'
 };
 
-const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onImport, isAdmin = false, currentUser, onTreeCreated, activeTreeName }) => {
+const ImportExport: React.FC<ImportExportProps> = ({
+  people,
+  relationships,
+  onImport,
+  isAdmin = false,
+  currentUser,
+  onTreeCreated,
+  activeTreeName,
+  showGedcomSection = true,
+  showTreeSection = true
+}) => {
   const [isImporting, setIsImporting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importStats, setImportStats] = useState({ people: 0, relationships: 0 });
@@ -505,6 +517,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         className="hidden" 
       />
 
+      {showGedcomSection && (
       <div className={`p-8 rounded-[40px] border-2 transition-all duration-500 ${isLive ? 'bg-white border-emerald-100 shadow-emerald-100/20' : 'bg-amber-50/50 border-amber-200 shadow-amber-200/20'} shadow-2xl`}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
           <div className="flex gap-5">
@@ -603,8 +616,9 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
           </div>
         )}
       </div>
+      )}
 
-      {isAdmin && (
+      {isAdmin && showTreeSection && (
         <div className="pt-8 border-t border-slate-200/50 space-y-8 animate-in slide-in-from-top-4">
           <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm p-8 space-y-6">
             <div>
@@ -640,74 +654,8 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
         </div>
       )}
 
-      {isAdmin && (
-        <div className="p-8 rounded-[32px] border border-slate-200 bg-white shadow-sm space-y-6">
-          <div>
-            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Administrator Tools</p>
-            <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">Create New Family Tree</h3>
-          </div>
-          <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleCreateTree}>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tree Name</label>
-              <input value={newTreeName} onChange={(e) => setNewTreeName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="e.g. Linegra Heritage" required />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Name</label>
-              <input value={newTreeOwner} onChange={(e) => setNewTreeOwner(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="Lead Researcher" />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Description</label>
-              <textarea value={newTreeDescription} onChange={(e) => setNewTreeDescription(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none min-h-[90px]" placeholder="Brief description of the tree's scope" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Email</label>
-              <input type="email" value={newTreeEmail} onChange={(e) => setNewTreeEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="owner@example.com" />
-            </div>
-            <div className="md:col-span-2 flex items-center gap-4">
-              <button type="submit" className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all">
-                Save Tree
-              </button>
-              {treeCreationStatus === 'success' && <span className="text-emerald-600 text-sm font-bold">Tree created.</span>}
-              {treeCreationStatus === 'error' && <span className="text-rose-600 text-sm font-bold">Unable to create tree.</span>}
-            </div>
-          </form>
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="p-8 rounded-[32px] border border-slate-200 bg-white shadow-sm space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Administrator Tools</p>
-              <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">Add New Family Tree</h3>
-            </div>
-          </div>
-          <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleCreateTree}>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tree Name</label>
-              <input value={newTreeName} onChange={(e) => setNewTreeName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="e.g. Aulum Heritage" required />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Name</label>
-              <input value={newTreeOwner} onChange={(e) => setNewTreeOwner(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="Researcher display name" />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Description</label>
-              <textarea value={newTreeDescription} onChange={(e) => setNewTreeDescription(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none min-h-[90px]" placeholder="Short description of the archive's geographic or lineage focus" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Email</label>
-              <input type="email" value={newTreeEmail} onChange={(e) => setNewTreeEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="owner@example.com" />
-            </div>
-            <div className="md:col-span-2 flex items-center gap-4">
-              <button type="submit" className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all">Create Tree</button>
-              {treeCreationStatus === 'success' && <span className="text-emerald-600 text-sm font-bold">Tree created</span>}
-              {treeCreationStatus === 'error' && <span className="text-rose-600 text-sm font-bold">Creation failed</span>}
-            </div>
-          </form>
-        </div>
-      )}
-
+      {showGedcomSection && (
+        <>
       <div className="p-6 bg-amber-50 border border-amber-200 rounded-[32px] space-y-4">
         <div className="flex items-center justify-between text-amber-700">
           <div className="flex items-center gap-2 font-semibold text-sm">
@@ -853,6 +801,8 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
