@@ -109,8 +109,8 @@ export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   }
   const { data, error } = await supabase.from('family_trees').select('*').order('created_at');
   if (error) throw new Error(error.message);
-  if (!data.length) {
-    throw new Error('No family trees found in Supabase. Run the latest migrations to seed the default tree.');
+  if (!data?.length) {
+    return [];
   }
   return data.map((row) => mapDbTree(row));
 };
