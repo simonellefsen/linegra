@@ -13,20 +13,15 @@ import {
   ChevronRight,
   Info
 } from 'lucide-react';
-import { Person, Relationship, PersonEvent, Source, FamilyTree } from '../types';
+import { Person, Relationship, PersonEvent, Source } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { createFamilyTree } from '../services/archive';
 
 interface ImportExportProps {
   people: Person[];
   relationships: Relationship[];
   onImport: (data: { people: Person[]; relationships: Relationship[] }) => void;
-  isAdmin?: boolean;
-  currentUser?: { id?: string | null; name?: string | null };
-  onTreeCreated?: (tree: FamilyTree) => void;
   activeTreeName?: string;
   showGedcomSection?: boolean;
-  showTreeSection?: boolean;
 }
 
 type ParsedPerson = Partial<Person> & {
@@ -73,12 +68,8 @@ const ImportExport: React.FC<ImportExportProps> = ({
   people,
   relationships,
   onImport,
-  isAdmin = false,
-  currentUser,
-  onTreeCreated,
   activeTreeName,
-  showGedcomSection = true,
-  showTreeSection = true
+  showGedcomSection = true
 }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -87,11 +78,6 @@ const ImportExport: React.FC<ImportExportProps> = ({
   const [showConfig, setShowConfig] = useState(!isSupabaseConfigured());
   const [tempUrl, setTempUrl] = useState('');
   const [tempKey, setTempKey] = useState('');
-  const [newTreeName, setNewTreeName] = useState('');
-  const [newTreeDescription, setNewTreeDescription] = useState('');
-  const [newTreeOwner, setNewTreeOwner] = useState('');
-  const [newTreeEmail, setNewTreeEmail] = useState('');
-  const [treeCreationStatus, setTreeCreationStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [pendingImport, setPendingImport] = useState<{ data: { people: Person[]; relationships: Relationship[] }; fileName: string } | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -102,32 +88,6 @@ const ImportExport: React.FC<ImportExportProps> = ({
       localStorage.setItem('LINEGRA_SUPABASE_URL', tempUrl);
       localStorage.setItem('LINEGRA_SUPABASE_ANON_KEY', tempKey);
       window.location.reload(); 
-    }
-  };
-
-  const handleCreateTree = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTreeName.trim()) return;
-    setTreeCreationStatus('idle');
-    try {
-      const created = await createFamilyTree(
-        {
-          name: newTreeName.trim(),
-          description: newTreeDescription.trim(),
-          ownerName: newTreeOwner.trim(),
-          ownerEmail: newTreeEmail.trim()
-        },
-        currentUser
-      );
-      setTreeCreationStatus('success');
-      setNewTreeName('');
-      setNewTreeDescription('');
-      setNewTreeOwner('');
-      setNewTreeEmail('');
-      onTreeCreated?.(created);
-    } catch (err) {
-      console.error('Failed to create tree', err);
-      setTreeCreationStatus('error');
     }
   };
 
@@ -691,42 +651,6 @@ const ImportExport: React.FC<ImportExportProps> = ({
           </div>
         )}
       </div>
-      )}
-
-      {isAdmin && showTreeSection && (
-        <div className="pt-8 border-t border-slate-200/50 space-y-8 animate-in slide-in-from-top-4">
-          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm p-8 space-y-6">
-            <div>
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Administrator Panel</p>
-              <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">Create New Family Tree</h3>
-            </div>
-            <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleCreateTree}>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tree Name</label>
-                <input value={newTreeName} onChange={(e) => setNewTreeName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="e.g. Linegra Heritage" required />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Name</label>
-                <input value={newTreeOwner} onChange={(e) => setNewTreeOwner(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="Lead Researcher" />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Description</label>
-                <textarea value={newTreeDescription} onChange={(e) => setNewTreeDescription(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none min-h-[90px]" placeholder="Brief description of the archive's focus" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Owner Email</label>
-                <input type="email" value={newTreeEmail} onChange={(e) => setNewTreeEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none" placeholder="owner@example.com" />
-              </div>
-              <div className="md:col-span-2 flex items-center gap-4">
-                <button type="submit" className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all">
-                  Save Tree
-                </button>
-                {treeCreationStatus === 'success' && <span className="text-emerald-600 text-sm font-bold">Tree created.</span>}
-                {treeCreationStatus === 'error' && <span className="text-rose-600 text-sm font-bold">Creation failed.</span>}
-              </div>
-            </form>
-          </div>
-        </div>
       )}
 
       {showGedcomSection && (

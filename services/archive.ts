@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { FamilyTree as FamilyTreeType, Person, Relationship, Source, Note, PersonEvent } from '../types';
-import { MOCK_TREES } from '../mockData';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent } from '../types';
+import { MOCK_TREES, MOCK_PEOPLE, MOCK_RELATIONSHIPS } from '../mockData';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 
@@ -63,6 +63,21 @@ const mapDbPerson = (row: any, notesByPerson: Record<string, Note[]>, sourcesByP
   } as Person;
 };
 
+const mapDbTree = (row: any): FamilyTreeType => {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    ownerId: row.owner_id ?? null,
+    isPublic: !!row.is_public,
+    themeColor: row.theme_color ?? undefined,
+    metadata: row.metadata || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastModified: row.updated_at
+  };
+};
+
 export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   if (!isSupabaseConfigured()) {
     return MOCK_TREES;
@@ -72,7 +87,7 @@ export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   if (!data.length) {
     throw new Error('No family trees found in Supabase. Run the latest migrations to seed the default tree.');
   }
-  return data as FamilyTreeType[];
+  return data.map((row) => mapDbTree(row));
 };
 
 export const createFamilyTree = async (
@@ -93,7 +108,36 @@ export const createFamilyTree = async (
     payload_actor_name: actor?.name ?? 'System'
   });
   if (error) throw new Error(error.message);
-  return data as FamilyTreeType;
+  return mapDbTree(data);
+};
+
+export const listFamilyTreesWithCounts = async (): Promise<FamilyTreeSummary[]> => {
+  if (!isSupabaseConfigured()) {
+    return MOCK_TREES.map((tree) => ({
+      ...tree,
+      personCount: MOCK_PEOPLE.length,
+      relationshipCount: MOCK_RELATIONSHIPS.length
+    }));
+  }
+  const { data, error } = await supabase.rpc('admin_list_trees_with_counts');
+  if (error) throw new Error(error.message);
+  return (data || []).map((row: any) => ({
+    ...mapDbTree(row),
+    personCount: Number(row.person_count || 0),
+    relationshipCount: Number(row.relationship_count || 0)
+  }));
+};
+
+export const deleteFamilyTreeRecord = async (treeId: string, actor?: ImportActor | null) => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured. Cannot delete tree.');
+  }
+  const { error } = await supabase.rpc('admin_delete_tree', {
+    target_tree_id: treeId,
+    payload_actor_id: actor?.id ?? null,
+    payload_actor_name: actor?.name ?? 'System'
+  });
+  if (error) throw new Error(error.message);
 };
 
 export const loadArchiveData = async (treeId: string, search?: string) => {

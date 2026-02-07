@@ -1,14 +1,15 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { MOCK_PEOPLE, MOCK_RELATIONSHIPS, MOCK_TREES } from './mockData';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase } from './services/archive';
-import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship } from './types';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord } from './services/archive';
+import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary } from './types';
 import FamilyTree from './components/FamilyTree';
 import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
 import ImportExport from './components/ImportExport';
 import TreeLandingPage from './components/TreeLandingPage';
+import AdminTreesPanel from './components/AdminTreesPanel';
 import { 
   GitBranch, 
   Search, 
@@ -43,6 +44,10 @@ const App: React.FC = () => {
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
   const [adminSection, setAdminSection] = useState<'database' | 'trees' | 'gedcom'>('gedcom');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [adminTrees, setAdminTrees] = useState<FamilyTreeSummary[]>([]);
+  const [adminTreesLoading, setAdminTreesLoading] = useState(false);
+  const [creatingTree, setCreatingTree] = useState(false);
+  const [deletingTreeId, setDeletingTreeId] = useState<string | null>(null);
 
   useEffect(() => {
     const hydrateLocal = () => {
@@ -77,6 +82,26 @@ const App: React.FC = () => {
     })();
   }, [supabaseActive]);
 
+  const fetchAdminTreeStats = useCallback(async () => {
+    if (!supabaseActive || !currentUser?.isAdmin) {
+      setAdminTrees([]);
+      return;
+    }
+    setAdminTreesLoading(true);
+    try {
+      const stats = await listFamilyTreesWithCounts();
+      setAdminTrees(stats);
+    } catch (err) {
+      console.error('Failed to load tree summaries', err);
+    } finally {
+      setAdminTreesLoading(false);
+    }
+  }, [supabaseActive, currentUser?.isAdmin]);
+
+  useEffect(() => {
+    fetchAdminTreeStats();
+  }, [fetchAdminTreeStats]);
+
   const treePeople = useMemo(() => {
     return allPeople.filter(p => p.treeId === activeTree.id || p.treeId === 'imported');
   }, [allPeople, activeTree.id]);
@@ -98,6 +123,20 @@ const App: React.FC = () => {
     const visibleIds = new Set(filteredPeople.map(p => p.id));
     return treeRelationships.filter(rel => visibleIds.has(rel.personId) && visibleIds.has(rel.relatedId));
   }, [treeRelationships, filteredPeople]);
+
+  const localTreeSummaries = useMemo<FamilyTreeSummary[]>(() => {
+    return trees.map((tree) => {
+      const personCount = allPeople.filter((p) => p.treeId === tree.id).length;
+      const relationshipCount = allRelationships.filter((rel) => rel.treeId === tree.id).length;
+      return {
+        ...tree,
+        personCount,
+        relationshipCount
+      };
+    });
+  }, [trees, allPeople, allRelationships]);
+
+  const adminTreeData = adminTrees.length ? adminTrees : localTreeSummaries;
 
   const handlePersonSelect = (person: Person | null) => {
     setSelectedPerson(person);
@@ -148,10 +187,64 @@ const App: React.FC = () => {
     }
   }, [pendingPersonId, treePeople]);
 
-  const handleTreeCreated = (tree: FamilyTreeType) => {
-    setTrees((prev) => [...prev, tree]);
-    setActiveTree(tree);
-  };
+  const handleAdminCreateTree = useCallback(
+    async (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => {
+      if (!supabaseActive) throw new Error('Link Supabase before creating trees.');
+      setCreatingTree(true);
+      try {
+        const created = await createFamilyTree(payload, currentUser);
+        const updatedTrees = await ensureTrees();
+        setTrees(updatedTrees);
+        const nextActive = updatedTrees.find((t) => t.id === created.id) || created;
+        setActiveTree(nextActive);
+        const archive = await loadArchiveData(nextActive.id);
+        setAllPeople(archive.people);
+        setAllRelationships(archive.relationships);
+        await fetchAdminTreeStats();
+      } catch (err) {
+        console.error('Failed to create tree', err);
+        throw err;
+      } finally {
+        setCreatingTree(false);
+      }
+    },
+    [supabaseActive, currentUser, fetchAdminTreeStats]
+  );
+
+  const handleAdminDeleteTree = useCallback(
+    async (treeId: string) => {
+      if (!supabaseActive) throw new Error('Link Supabase before deleting trees.');
+      if (trees.length <= 1) throw new Error('At least one family tree must remain.');
+      setDeletingTreeId(treeId);
+      try {
+        await deleteFamilyTreeRecord(treeId, currentUser);
+        const updatedTrees = await ensureTrees();
+        if (!updatedTrees.length) {
+          setTrees(MOCK_TREES);
+          setActiveTree(MOCK_TREES[0]);
+          setAllPeople(MOCK_PEOPLE);
+          setAllRelationships(MOCK_RELATIONSHIPS);
+          return;
+        }
+        setTrees(updatedTrees);
+        let nextActive = updatedTrees.find((t) => t.id === activeTree.id);
+        if (!nextActive) {
+          nextActive = updatedTrees[0];
+          setActiveTree(nextActive);
+          const archive = await loadArchiveData(nextActive.id);
+          setAllPeople(archive.people);
+          setAllRelationships(archive.relationships);
+        }
+        await fetchAdminTreeStats();
+      } catch (err) {
+        console.error('Failed to delete tree', err);
+        throw err;
+      } finally {
+        setDeletingTreeId(null);
+      }
+    },
+    [supabaseActive, trees.length, currentUser, activeTree, fetchAdminTreeStats]
+  );
 
   const selectTree = (tree: FamilyTreeType) => {
     setActiveTree(tree);
@@ -390,16 +483,14 @@ const App: React.FC = () => {
                   </div>
                 )}
                 {adminSection === 'trees' && (
-                  <ImportExport 
-                    people={treePeople} 
-                    relationships={treeRelationships} 
-                    onImport={handleImport} 
-                    isAdmin={!!currentUser?.isAdmin} 
-                    currentUser={currentUser || undefined}
-                    onTreeCreated={handleTreeCreated}
-                    activeTreeName={activeTree.name}
-                    showGedcomSection={false}
-                    showTreeSection
+                  <AdminTreesPanel
+                    trees={adminTreeData}
+                    isLive={supabaseActive}
+                    onCreate={handleAdminCreateTree}
+                    onDelete={handleAdminDeleteTree}
+                    creating={creatingTree}
+                    deletingTreeId={deletingTreeId}
+                    loading={adminTreesLoading}
                   />
                 )}
                 {adminSection === 'gedcom' && (
@@ -407,12 +498,8 @@ const App: React.FC = () => {
                     people={treePeople} 
                     relationships={treeRelationships} 
                     onImport={handleImport} 
-                    isAdmin={!!currentUser?.isAdmin} 
-                    currentUser={currentUser || undefined}
-                    onTreeCreated={handleTreeCreated}
                     activeTreeName={activeTree.name}
                     showGedcomSection
-                    showTreeSection={false}
                   />
                 )}
               </div>

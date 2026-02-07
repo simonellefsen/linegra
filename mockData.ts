@@ -9,7 +9,10 @@ export const MOCK_TREES: FamilyTree[] = [
     lastModified: '2024-05-20',
     ownerId: 'u1',
     isPublic: true,
-    themeColor: '#0f172a'
+    themeColor: '#0f172a',
+    createdAt: '2024-05-01T00:00:00Z',
+    updatedAt: '2024-05-20T00:00:00Z',
+    metadata: {}
   }
 ];
 

@@ -192,11 +192,19 @@ export interface Person {
 export interface FamilyTree {
   id: string;
   name: string;
-  description: string;
-  lastModified: string;
-  ownerId: string;
+  description?: string | null;
+  ownerId?: string | null;
   isPublic: boolean;
-  themeColor?: string;
+  themeColor?: string | null;
+  metadata?: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+  lastModified?: string;
+}
+
+export interface FamilyTreeSummary extends FamilyTree {
+  personCount: number;
+  relationshipCount: number;
 }
 
 export interface User {
