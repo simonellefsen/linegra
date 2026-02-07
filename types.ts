@@ -162,6 +162,7 @@ export interface Person {
   isPrivate?: boolean;
   firstName: string;
   lastName: string;
+  title?: string;
   maidenName?: string;
   birthDate?: string;
   birthPlace?: string | StructuredPlace;

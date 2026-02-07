@@ -47,6 +47,7 @@ const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
   CHR: 'Christening',
   CONF: 'Confirmation',
   BURI: 'Burial',
+  CREM: 'Cremation',
   EVEN: 'Other'
 };
 
@@ -54,6 +55,7 @@ const GEDCOM_EVENT_LABELS: Record<string, string> = {
   BIRT: 'Birth',
   DEAT: 'Death',
   BURI: 'Burial',
+  CREM: 'Cremation',
   CHR: 'Christening',
   RESI: 'Residence',
   OCCU: 'Occupation',
@@ -152,7 +154,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
     let currentType: 'INDI' | 'FAM' | 'SOUR' | null = null;
     let currentTag = '';
     let currentEvent: PersonEvent | null = null;
-    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', '_LIVING', '_PRIVATE', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI', 'FAMC', 'FAMS']);
+    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', '_LIVING', '_PRIVATE', 'TITL', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI', 'FAMC', 'FAMS']);
     const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR', 'DIV', 'CHAN', 'NOTE', 'DATE', 'PLAC', 'TYPE']);
     const lineRegex = /^(\d+)\s+(?:(@[^@]+@)\s+)?([A-Z0-9_]+)(?:\s+(.*))?$/i;
     let currentEventLabel = '';
@@ -217,6 +219,8 @@ const ImportExport: React.FC<ImportExportProps> = ({
           const nameParts = value.split('/');
           p.firstName = nameParts[0]?.trim() || '';
           p.lastName = nameParts[1]?.trim() || '';
+        } else if (tag === 'TITL') {
+          p.title = value;
         } else if (tag === 'SEX') {
           p.gender = value === 'F' ? 'F' : (value === 'M' ? 'M' : 'O');
         } else if (tag === 'BIRT') {
