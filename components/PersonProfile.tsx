@@ -1196,6 +1196,12 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
   const [removedSpouseIds, setRemovedSpouseIds] = useState<Set<string>>(layoutSeed.removedSpouses);
   const [removedChildIds, setRemovedChildIds] = useState<Set<string>>(layoutSeed.removedChildren);
   const hydratingRef = useRef(false);
+  const lastPersistedRef = useRef<string>(JSON.stringify({
+    assignments: layoutSeed.assignments,
+    manualOrders: layoutSeed.manualOrders,
+    removedSpouseIds: Array.from(layoutSeed.removedSpouses),
+    removedChildIds: Array.from(layoutSeed.removedChildren)
+  }));
 
   useEffect(() => {
     hydratingRef.current = true;
@@ -1203,6 +1209,12 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
     setManualOrders(layoutSeed.manualOrders);
     setRemovedSpouseIds(new Set(layoutSeed.removedSpouses));
     setRemovedChildIds(new Set(layoutSeed.removedChildren));
+    lastPersistedRef.current = JSON.stringify({
+      assignments: layoutSeed.assignments,
+      manualOrders: layoutSeed.manualOrders,
+      removedSpouseIds: Array.from(layoutSeed.removedSpouses),
+      removedChildIds: Array.from(layoutSeed.removedChildren)
+    });
     const timer = setTimeout(() => {
       hydratingRef.current = false;
     }, 0);
@@ -1290,6 +1302,9 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
       removedSpouseIds: Array.from(removedSpouseIds),
       removedChildIds: Array.from(removedChildIds)
     };
+    const snapshot = JSON.stringify(payload);
+    if (snapshot === lastPersistedRef.current) return;
+    lastPersistedRef.current = snapshot;
     onPersist(personId, payload);
   }, [assignments, manualOrders, removedSpouseIds, removedChildIds, onPersist, personId]);
 
