@@ -170,6 +170,8 @@ export interface Person {
   birthPlace?: string | StructuredPlace;
   deathDate?: string;
   deathPlace?: string | StructuredPlace;
+  burialDate?: string;
+  burialPlace?: string | StructuredPlace;
   deathCause?: string;
   deathCauseCategory?: DeathCauseCategory;
   residenceAtDeath?: string | StructuredPlace;

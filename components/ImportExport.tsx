@@ -293,6 +293,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
         } else if (tag === 'DATE' && level === 2) {
           if (currentTag === 'BIRT') p.birthDate = value;
           if (currentTag === 'DEAT') p.deathDate = value;
+          if (currentTag === 'BURI') p.burialDate = value;
           if (currentEvent) currentEvent.date = value;
           if (currentTag === 'CHAN') {
             const parsed = Date.parse(value);
@@ -301,6 +302,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
         } else if (tag === 'PLAC' && level === 2) {
           if (currentTag === 'BIRT') p.birthPlace = value;
           if (currentTag === 'DEAT') p.deathPlace = value;
+          if (currentTag === 'BURI') p.burialPlace = value;
           if (currentEvent) currentEvent.place = value;
         } else if (tag === 'NOTE' && ['BIRT', 'DEAT', 'BURI'].includes(currentTag)) {
           appendNote(value, GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General');
@@ -498,7 +500,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
       (p.sources || []).forEach((src) => mergedSources.push(src));
       return {
         ...p,
-        events: (p.events || []).filter((evt) => !['Birth', 'Death'].includes(evt.type || '')),
+        events: (p.events || []).filter((evt) => !['Birth', 'Death', 'Burial'].includes(evt.type || '')),
         sources: mergedSources,
         citations: p.citations || []
       } as Person;

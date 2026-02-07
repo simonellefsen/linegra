@@ -91,6 +91,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
   const [deathDate, setDeathDate] = useState(person.deathDate || '');
   const [deathPlace, setDeathPlace] = useState<string | StructuredPlace>(person.deathPlace || '');
   const [residenceAtDeath, setResidenceAtDeath] = useState<string | StructuredPlace>(person.residenceAtDeath || '');
+  const [burialDate, setBurialDate] = useState(person.burialDate || '');
+  const [burialPlace, setBurialPlace] = useState<string | StructuredPlace>(person.burialPlace || '');
   const [deathCause, setDeathCause] = useState(person.deathCause || '');
   const [deathCategory, setDeathCategory] = useState<DeathCauseCategory>(person.deathCauseCategory || 'Unknown');
   const [altNames, setAltNames] = useState<AlternateName[]>(person.alternateNames || []);
@@ -125,7 +127,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
 
   // Expanded available events list for dropdowns, including specific event instances if they have identifiers
   const availableEvents = useMemo(() => {
-    const list = ['General', 'Birth', 'Death'];
+    const list = ['General', 'Birth', 'Death', 'Burial'];
     events.forEach(e => {
       const label = e.date ? `${e.type} (${e.date})` : e.type;
       if (!list.includes(label)) list.push(label);
@@ -264,6 +266,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     setDeathDate(person.deathDate || '');
     setDeathPlace(person.deathPlace || '');
     setResidenceAtDeath(person.residenceAtDeath || '');
+    setBurialDate(person.burialDate || '');
+    setBurialPlace(person.burialPlace || '');
     setDeathCause(person.deathCause || '');
     setDeathCategory(person.deathCauseCategory || 'Unknown');
     setAltNames(person.alternateNames || []);
@@ -359,6 +363,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
       case 'emigration': return PlaneTakeoff;
       case 'baptism':
       case 'christening': return Heart;
+      case 'burial': return Home;
+      case 'probate': return FileText;
       default: return Calendar;
     }
   };
@@ -647,6 +653,53 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                          </div>
                       </div>
                    </div>
+
+                   <div className="space-y-4">
+                      <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600 tracking-widest"><Home className="w-3.5 h-3.5" /> Burial Record</div>
+                        <div className="flex gap-2">
+                           <button
+                             onClick={() => handleAddSource('Burial')}
+                             aria-label="Link burial source"
+                             className="relative p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
+                           >
+                             <Library className="w-4 h-4" />
+                             {getSourceCountForEvent('Burial') > 0 && (
+                               <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black rounded-full px-1">
+                                 {getSourceCountForEvent('Burial')}
+                               </span>
+                             )}
+                           </button>
+                           <button
+                             aria-label="View burial notes"
+                             onClick={() => handleNotesBadgeClick('Burial')}
+                             className={`relative p-2 rounded-full transition-colors ${getNoteCountForEvent('Burial') > 0 ? 'text-emerald-500 hover:bg-emerald-50' : 'text-slate-300 cursor-default'}`}
+                           >
+                             <FileText className="w-4 h-4" />
+                             {getNoteCountForEvent('Burial') > 0 && (
+                               <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[9px] font-black rounded-full px-1">
+                                 {getNoteCountForEvent('Burial')}
+                               </span>
+                             )}
+                           </button>
+                           <button
+                             aria-label="View burial media"
+                             className="relative p-2 rounded-full text-sky-600 hover:bg-sky-50 transition-colors"
+                           >
+                             <ImageIcon className="w-4 h-4" />
+                             {getMediaCountForEvent('Burial') > 0 && (
+                               <span className="absolute -top-1 -right-1 bg-sky-600 text-white text-[9px] font-black rounded-full px-1">
+                                 {getMediaCountForEvent('Burial')}
+                               </span>
+                             )}
+                           </button>
+                        </div>
+                      </div>
+                      <div className="bg-white p-6 rounded-[36px] border border-slate-100 shadow-sm space-y-5">
+                         <FluentDateInput label="Date" value={burialDate} onChange={setBurialDate} />
+                         <PlaceInput label="Burial Location (e.g. Cemetery)" value={burialPlace} onChange={setBurialPlace} />
+                      </div>
+                   </div>
                 </div>
              </div>
 
@@ -660,6 +713,9 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                    {events.map((ev) => {
                       const EvIcon = getEventIcon(ev.type);
                       const eventLabel = ev.date ? `${ev.type} (${ev.date})` : ev.type;
+                      const sourceCount = getSourceCountForEvent(ev.type || eventLabel);
+                      const noteCount = getNoteCountForEvent(ev.type || eventLabel);
+                      const mediaCount = getMediaCountForEvent(ev.type || eventLabel);
                       return (
                         <div key={ev.id} className="p-6 bg-white border border-slate-100 rounded-[36px] shadow-sm space-y-4 group/event relative transition-all hover:shadow-md">
                            <div className="flex items-center justify-between mb-2">
@@ -675,8 +731,39 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                                     {EVENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
                                   </select>
                               </div>
-                              <div className="flex items-center gap-3">
-                                 <button onClick={() => handleAddSource(eventLabel)} className="text-[9px] font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest flex items-center gap-1 transition-colors"><Library className="w-3 h-3" /> Citations</button>
+                              <div className="flex items-center gap-2">
+                                 <button
+                                   onClick={() => handleAddSource(ev.type || eventLabel)}
+                                   className="relative p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
+                                 >
+                                   <Library className="w-4 h-4" />
+                                   {sourceCount > 0 && (
+                                     <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black rounded-full px-1">
+                                       {sourceCount}
+                                     </span>
+                                   )}
+                                 </button>
+                                 <button
+                                   onClick={() => handleNotesBadgeClick(ev.type || eventLabel)}
+                                   className={`relative p-2 rounded-full transition-colors ${noteCount > 0 ? 'text-emerald-500 hover:bg-emerald-50' : 'text-slate-300 cursor-default'}`}
+                                 >
+                                   <FileText className="w-4 h-4" />
+                                   {noteCount > 0 && (
+                                     <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[9px] font-black rounded-full px-1">
+                                       {noteCount}
+                                     </span>
+                                   )}
+                                 </button>
+                                 <button
+                                   className="relative p-2 rounded-full text-sky-600 hover:bg-sky-50 transition-colors"
+                                 >
+                                   <ImageIcon className="w-4 h-4" />
+                                   {mediaCount > 0 && (
+                                     <span className="absolute -top-1 -right-1 bg-sky-600 text-white text-[9px] font-black rounded-full px-1">
+                                       {mediaCount}
+                                     </span>
+                                   )}
+                                 </button>
                                  <button onClick={() => setEvents(events.filter(e => e.id !== ev.id))} className="text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-4 h-4" /></button>
                               </div>
                            </div>
