@@ -2,8 +2,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { MOCK_PEOPLE, MOCK_RELATIONSHIPS, MOCK_TREES } from './mockData';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase } from './services/archive';
-import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary } from './types';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits } from './services/archive';
+import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
 import FamilyTree from './components/FamilyTree';
 import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
@@ -54,6 +54,9 @@ const App: React.FC = () => {
   const [nukeInProgress, setNukeInProgress] = useState(false);
   const [nukeError, setNukeError] = useState<string | null>(null);
   const [nukeSuccess, setNukeSuccess] = useState(false);
+  const [layoutAudits, setLayoutAudits] = useState<FamilyLayoutAudit[]>([]);
+  const [auditOffset, setAuditOffset] = useState(0);
+  const [auditTotal, setAuditTotal] = useState(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -134,9 +137,44 @@ const App: React.FC = () => {
     fetchAdminTreeStats();
   }, [fetchAdminTreeStats]);
 
+  useEffect(() => {
+    if (!supabaseActive || !currentUser?.isAdmin || !activeTree?.id) {
+      setLayoutAudits([]);
+      return;
+    }
+    fetchFamilyLayoutAudits(activeTree.id, 5, auditOffset)
+      .then(({ audits, total }) => {
+        if (auditOffset === 0) {
+          setLayoutAudits(audits);
+        } else {
+          setLayoutAudits((prev) => [...prev, ...audits]);
+        }
+        setAuditTotal(total);
+      })
+      .catch((err) => console.error('Failed to fetch layout audits', err));
+  }, [supabaseActive, currentUser?.isAdmin, activeTree?.id, auditOffset]);
+
+const hasMoreAudits = layoutAudits.length < auditTotal;
   const treePeople = useMemo(() => {
     return allPeople.filter(p => p.treeId === activeTree.id || p.treeId === 'imported');
   }, [allPeople, activeTree.id]);
+
+  const handlePersistFamilyLayout = useCallback(async (personId: string, layout: FamilyLayoutState) => {
+    try {
+      const targetPerson = treePeople.find(p => p.id === personId);
+      if (!targetPerson) return;
+      const updatedMetadata = await persistFamilyLayout(
+        personId,
+        targetPerson.treeId,
+        layout,
+        currentUser,
+        targetPerson.metadata
+      );
+      setAllPeople((prev) => prev.map((person) => person.id === personId ? { ...person, metadata: updatedMetadata } : person));
+    } catch (err) {
+      console.error('Failed to persist family layout', err);
+    }
+  }, [treePeople, currentUser]);
 
   const treeRelationships = useMemo(() => {
     return allRelationships.filter(r => r.treeId === activeTree.id || r.treeId === 'imported');
@@ -551,40 +589,81 @@ const App: React.FC = () => {
                 </div>
                 {adminSection === 'database' && (
                   <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 text-slate-600 space-y-6">
-                    <div>
-                      <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Database Panel</p>
-                      <h3 className="text-2xl font-serif font-bold text-slate-900 mb-2">Reset & Maintenance</h3>
-                      <p className="text-sm text-slate-500 max-w-2xl">
-                        Wipe every person, relationship, media record, and audit trail stored in Supabase. This is intended for
-                        staging environments when you need to re-import large GEDCOM datasets from scratch. Production archives
-                        should never run this action during active research sessions.
-                      </p>
-                    </div>
-                    <div className="border border-rose-100 bg-rose-50/70 rounded-[28px] p-6 flex flex-col gap-4">
-                      <div className="flex items-center gap-3 text-rose-600">
-                        <AlertTriangle className="w-6 h-6" />
-                        <div>
-                          <p className="text-[11px] font-black uppercase tracking-[0.3em]">Destructive Operation</p>
-                          <h4 className="text-lg font-serif font-bold text-slate-900">Nuke Supabase Database</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Database Panel</p>
+                        <h3 className="text-2xl font-serif font-bold text-slate-900 mb-2">Reset & Maintenance</h3>
+                        <p className="text-sm text-slate-500 max-w-2xl">
+                          Wipe every person, relationship, media record, and audit trail stored in Supabase. This is intended for
+                          staging environments when you need to re-import large GEDCOM datasets from scratch. Production archives
+                          should never run this action during active research sessions.
+                        </p>
+                      </div>
+                      <div className="border border-rose-100 bg-rose-50/70 rounded-[28px] p-6 flex flex-col gap-4">
+                        <div className="flex items-center gap-3 text-rose-600">
+                          <AlertTriangle className="w-6 h-6" />
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.3em]">Destructive Operation</p>
+                            <h4 className="text-lg font-serif font-bold text-slate-900">Nuke Supabase Database</h4>
+                          </div>
+                        </div>
+                        <p className="text-sm text-rose-700">
+                          This permanently removes all family trees, GEDCOM imports, media, notes, sources, audit logs, and places. A fresh
+                          seed tree will need to be created afterward. The action cannot be undone.
+                        </p>
+                        <div className="flex flex-wrap gap-4">
+                          <button
+                            onClick={() => setShowNukeModal(true)}
+                            className="px-6 py-3 rounded-2xl bg-rose-600 text-white text-xs font-black uppercase tracking-[0.3em] hover:bg-rose-700 transition-all disabled:opacity-60"
+                            disabled={!supabaseActive}
+                          >
+                            {supabaseActive ? 'Launch Nuke' : 'Link Supabase First'}
+                          </button>
+                          {nukeSuccess && (
+                            <span className="text-emerald-600 text-xs font-bold uppercase tracking-[0.3em]">Database Reset</span>
+                          )}
                         </div>
                       </div>
-                      <p className="text-sm text-rose-700">
-                        This permanently removes all family trees, GEDCOM imports, media, notes, sources, audit logs, and places. A fresh
-                        seed tree will need to be created afterward. The action cannot be undone.
-                      </p>
-                      <div className="flex flex-wrap gap-4">
-                        <button
-                          onClick={() => setShowNukeModal(true)}
-                          className="px-6 py-3 rounded-2xl bg-rose-600 text-white text-xs font-black uppercase tracking-[0.3em] hover:bg-rose-700 transition-all disabled:opacity-60"
-                          disabled={!supabaseActive}
-                        >
-                          {supabaseActive ? 'Launch Nuke' : 'Link Supabase First'}
-                        </button>
-                        {nukeSuccess && (
-                          <span className="text-emerald-600 text-xs font-bold uppercase tracking-[0.3em]">Database Reset</span>
+                    </div>
+
+                        {supabaseActive && Array.isArray(layoutAudits) && layoutAudits.length > 0 && (
+                      <div className="border border-slate-100 rounded-[28px] p-6 space-y-4 bg-slate-50/70">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Family Layout History</p>
+                            <h4 className="text-lg font-serif font-bold text-slate-900">Recent Kinship Edits</h4>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          {layoutAudits.map((audit) => {
+                            const assignmentCount = Object.keys(audit.layout.assignments ?? {}).length;
+                            const manualGroups = Object.values(audit.layout.manualOrders ?? {}) as string[][];
+                            const manualCount = manualGroups.reduce((total, group) => total + group.length, 0);
+                            return (
+                              <div key={audit.id} className="p-4 bg-white rounded-2xl border border-slate-100 flex flex-col gap-1">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-bold text-slate-800">{audit.actorName}</p>
+                                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                                    {new Date(audit.createdAt).toLocaleString()}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                  {assignmentCount} child links, {manualCount} manual placements
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {hasMoreAudits && (
+                          <button
+                            onClick={() => setAuditOffset((prev) => prev + 5)}
+                            className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 hover:underline"
+                          >
+                            View More
+                          </button>
                         )}
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
                 {adminSection === 'trees' && (
@@ -618,6 +697,8 @@ const App: React.FC = () => {
               currentUser={currentUser}
               allPeople={treePeople}
               onClose={() => handlePersonSelect(null)} 
+              onNavigateToPerson={(next) => handlePersonSelect(next)}
+              onPersistFamilyLayout={handlePersistFamilyLayout}
             />
           )}
         </div>

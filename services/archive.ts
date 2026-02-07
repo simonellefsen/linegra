@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation } from '../types';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit } from '../types';
 import { MOCK_TREES, MOCK_PEOPLE, MOCK_RELATIONSHIPS } from '../mockData';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
@@ -45,7 +45,8 @@ const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
     is_dna_match: person.isDNAMatch || false,
     dna_match_info: person.dnaMatchInfo || null,
     tags: [],
-    user_role: person.userRole || null
+    user_role: person.userRole || null,
+    metadata: person.metadata || null
   };
 };
 
@@ -82,7 +83,8 @@ const mapDbPerson = (
     sources: sourcesByPerson[row.id] || [],
     citations: citationsByPerson[row.id] || [],
     events: eventsByPerson[row.id] || [],
-    mediaIds: []
+    mediaIds: [],
+    metadata: row.metadata || undefined
   } as Person;
 };
 
@@ -276,10 +278,74 @@ export const loadArchiveData = async (treeId: string, search?: string) => {
     status: row.status || undefined,
     confidence: row.confidence || undefined,
     order: row.sort_order || undefined,
-    notes: row.notes || undefined
+    notes: row.notes || undefined,
+    metadata: row.metadata || undefined
   }));
 
   return { people, relationships };
+};
+
+export const persistFamilyLayout = async (
+  personId: string,
+  treeId: string,
+  layout: FamilyLayoutState,
+  actor?: ImportActor | null,
+  existingMetadata?: Record<string, unknown>
+) => {
+  if (!isSupabaseConfigured()) return { ...(existingMetadata || {}), familyLayout: layout };
+  const metadata = { ...(existingMetadata || {}), familyLayout: layout };
+  const { data, error } = await supabase
+    .from('persons')
+    .update({ metadata })
+    .eq('id', personId)
+    .select('metadata')
+    .single();
+  if (error) throw new Error(error.message);
+
+  const normalizedActor = normalizeActor(actor);
+  await recordAuditLogs([
+    {
+      tree_id: treeId,
+      actor_id: normalizedActor.id,
+      actor_name: normalizedActor.name,
+      action: 'family_layout_update',
+      entity_type: 'person',
+      entity_id: personId,
+      details: { layout }
+    }
+  ]);
+
+  return (data?.metadata as Record<string, unknown>) || metadata;
+};
+
+export const fetchFamilyLayoutAudits = async (treeId: string, limit = 10, offset = 0): Promise<{ audits: FamilyLayoutAudit[]; total: number }> => {
+  if (!isSupabaseConfigured()) {
+    return { audits: [], total: 0 };
+  }
+  const [{ data, error }, { count }] = await Promise.all([
+    supabase
+      .from('audit_logs')
+      .select('id, tree_id, actor_id, actor_name, created_at, details')
+      .eq('tree_id', treeId)
+      .eq('action', 'family_layout_update')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1),
+    supabase
+      .from('audit_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('tree_id', treeId)
+      .eq('action', 'family_layout_update')
+  ]);
+  if (error) throw new Error(error.message);
+  const audits = (data || []).map((row: any) => ({
+    id: row.id,
+    treeId: row.tree_id,
+    actorId: row.actor_id,
+    actorName: row.actor_name,
+    createdAt: row.created_at,
+    layout: (row.details?.layout || {}) as FamilyLayoutState
+  }));
+  return { audits, total: count || 0 };
 };
 
 interface ImportActor {
@@ -300,6 +366,12 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
   const personIdMap = new Map<string, string>();
   const personRows = data.people.map((person) => {
     const row = toDbPerson(person, treeId, userId);
+    if (person.metadata?.familyLayout) {
+      row.metadata = {
+        ...row.metadata,
+        familyLayout: person.metadata.familyLayout
+      };
+    }
     personIdMap.set(person.id, row.id);
     return row;
   });
@@ -316,7 +388,8 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
       status: rel.status || null,
       confidence: rel.confidence || null,
       notes: rel.notes || null,
-      sort_order: rel.order || null
+      sort_order: rel.order || null,
+      metadata: rel.metadata || null
     };
   }).filter(Boolean);
 

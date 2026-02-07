@@ -154,6 +154,7 @@ export interface Relationship {
   order?: number;
   confidence?: RelationshipConfidence;
   sourceEvidenceIds?: string[]; // IDs of sources proving this link
+  metadata?: Record<string, unknown>;
 }
 
 export interface Person {
@@ -191,6 +192,23 @@ export interface Person {
   isDNAMatch?: boolean;
   dnaMatchInfo?: DNAMatchInfo;
   citations?: Citation[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface FamilyLayoutState {
+  assignments: Record<string, string | null>;
+  manualOrders: Record<string, string[]>;
+  removedSpouseIds: string[];
+  removedChildIds: string[];
+}
+
+export interface FamilyLayoutAudit {
+  id: string;
+  treeId: string;
+  actorId?: string | null;
+  actorName: string;
+  createdAt: string;
+  layout: FamilyLayoutState;
 }
 
 export interface FamilyTree {

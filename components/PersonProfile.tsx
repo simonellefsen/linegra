@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { 
   Person, 
   User as UserType, 
@@ -18,18 +18,19 @@ import {
   DNAVendor,
   DNATestType,
   MediaType,
-  Citation
+  Citation,
+  FamilyLayoutState
 } from '../types';
 import { FluentDateInput } from './FluentDate';
 import { PlaceInput } from './PlaceInput';
 import { MOCK_TREES, MOCK_MEDIA } from '../mockData';
 import { 
   X, Library, Image as ImageIcon, FileText, Plus, Info, Lock, ShieldCheck, 
-  Target, Microscope, Dna, Share2, ChevronRight, Search, Link2, 
+  Target, Microscope, Dna, Share2, Search, Link2, 
   Skull, Heart, Trash2, Calendar,
   CheckCircle, HelpCircle, Edit3, Link, Music, Video, File,
   Upload as UploadIcon, Globe, Fingerprint, Sparkles, Home, GraduationCap, Sword, PlaneLanding, PlaneTakeoff,
-  History
+  History, ArrowUp, ArrowDown, Unlink as UnlinkIcon
 } from 'lucide-react';
 
 interface PersonProfileProps {
@@ -38,6 +39,8 @@ interface PersonProfileProps {
   currentUser: UserType | null;
   onClose: () => void;
   allPeople: Person[];
+  onNavigateToPerson?: (person: Person) => void;
+  onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
 }
 
 type ProfileSection = 'vital' | 'story' | 'family' | 'sources' | 'media' | 'dna' | 'notes';
@@ -78,7 +81,15 @@ const NOTE_TYPES: NoteType[] = ['Generic', 'To-do', 'Research Note', 'Discrepanc
 const DNA_VENDORS: DNAVendor[] = ['FamilyTreeDNA', 'AncestryDNA', '23andMe', 'MyHeritage', 'LivingDNA', 'Other'];
 const DNA_TEST_TYPES: DNATestType[] = ['Autosomal', 'Y-DNA', 'mtDNA', 'X-DNA', 'Other'];
 
-const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, currentUser, onClose, allPeople }) => {
+const parentLinkTypes = ['bio_father','bio_mother','adoptive_father','adoptive_mother','step_parent','guardian'];
+
+const formatYear = (input?: string) => {
+  if (!input) return null;
+  const match = input.match(/(\d{4})/);
+  return match ? match[1] : input;
+};
+
+const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, currentUser, onClose, allPeople, onNavigateToPerson, onPersistFamilyLayout }) => {
   const [activeSection, setActiveSection] = useState<ProfileSection>('vital');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -154,7 +165,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
 
   const parents = useMemo(() => {
     return relationships
-      .filter(r => r.relatedId === person.id && ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'step_parent', 'guardian'].includes(r.type))
+      .filter(r => r.relatedId === person.id && parentLinkTypes.includes(r.type))
       .map(r => ({
         rel: r,
         person: allPeople.find(p => p.id === r.personId)
@@ -177,7 +188,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
 
   const children = useMemo(() => {
     const asParent = relationships
-      .filter(r => r.personId === person.id && ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'step_parent', 'guardian'].includes(r.type))
+      .filter(r => r.personId === person.id && parentLinkTypes.includes(r.type))
       .map(r => ({
         rel: r,
         person: allPeople.find(p => p.id === r.relatedId)
@@ -379,39 +390,48 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     }
   };
 
-  const RelationCard: React.FC<{ item: { person: Person; rel: Relationship }; label: string }> = ({ item, label }) => {
+  const RelationCard: React.FC<{ item: { person: Person; rel: Relationship }; label: string; metadata?: string | null }> = ({ item, label, metadata }) => {
     const confidence = relConfidences[item.rel.id] || 'Unknown';
     const style = getConfidenceStyle(confidence);
     const StatusIcon = style.icon;
 
+    const initials = `${item.person.firstName?.[0] ?? ''}${item.person.lastName?.[0] ?? ''}`.toUpperCase() || '??';
+
     return (
-      <div className="p-4 bg-white border border-slate-100 rounded-[32px] hover:border-slate-300 transition-all cursor-pointer group space-y-4 shadow-sm hover:shadow-md">
-        <div className="flex items-center justify-between">
-           <div className="flex items-center gap-4">
-              <img src={item.person.photoUrl || `https://ui-avatars.com/api/?name=${item.person.firstName}`} className="w-12 h-12 rounded-2xl object-cover shadow-sm bg-slate-100" />
-              <div>
-                 <p className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{item.person.firstName} {item.person.lastName}</p>
-                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{label}</p>
-              </div>
-           </div>
-           <ChevronRight className="w-4 h-4 text-slate-300 group-hover:translate-x-1 transition-transform" />
-        </div>
-        
-        <div className={`px-4 py-2.5 rounded-2xl border ${style.bg} ${style.border} flex items-center justify-between group/conf`}>
-           <div className="flex items-center gap-2">
-              <StatusIcon className={`w-3.5 h-3.5 ${style.text}`} />
-              <span className={`text-[10px] font-black uppercase tracking-widest ${style.text}`}>{confidence}</span>
-           </div>
-           <select 
-              value={confidence} 
-              onClick={(e) => e.stopPropagation()}
+      <button
+        type="button"
+        onClick={() => onNavigateToPerson?.(item.person)}
+        className="w-full text-left p-4 bg-white border border-slate-100 rounded-3xl hover:border-slate-300 transition-all group shadow-sm hover:shadow-md focus:outline-none"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center font-black tracking-widest">
+              {item.person.photoUrl ? (
+                <img src={item.person.photoUrl} className="w-full h-full object-cover rounded-2xl" />
+              ) : (
+                initials
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                {item.person.firstName} {item.person.lastName}
+              </p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{label}</p>
+              {metadata && <p className="text-[10px] text-slate-400 mt-1">{metadata}</p>}
+            </div>
+          </div>
+          <div className={`flex items-center gap-2 px-3 py-1 rounded-2xl border ${style.bg} ${style.border}`} onClick={(e) => e.stopPropagation()}>
+            <StatusIcon className={`w-3.5 h-3.5 ${style.text}`} />
+            <select
+              value={confidence}
               onChange={(e) => handleUpdateConfidence(item.rel.id, e.target.value as RelationshipConfidence)}
-              className="bg-transparent border-none text-[9px] font-bold text-slate-500 uppercase tracking-widest outline-none cursor-pointer hover:text-slate-900"
-           >
+              className={`bg-transparent border-none text-[9px] font-black uppercase tracking-widest ${style.text} outline-none cursor-pointer`}
+            >
               {CONFIDENCE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
-           </select>
+            </select>
+          </div>
         </div>
-      </div>
+      </button>
     );
   };
 
@@ -793,24 +813,29 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
         )}
 
         {activeSection === 'family' && (
-          <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">Kinship Map & Confidence</p>
             <div className="space-y-8">
                <div className="space-y-4">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Parental Connections</p>
-                  {parents.map(item => <RelationCard key={item.rel.id} item={item} label="Ancestral Link" />)}
+                  {parents.map(item => {
+                    const meta = item.rel.notes || formatYear(item.rel.date) ? `Linked ${formatYear(item.rel.date) || ''}`.trim() : null;
+                    return <RelationCard key={item.rel.id} item={item} label="Ancestral Link" metadata={meta || undefined} />;
+                  })}
                   {parents.length === 0 && <p className="text-xs text-slate-400 italic p-4">No parental records found.</p>}
                </div>
-               <div className="space-y-4">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Spousal Unions</p>
-                  {spouses.map(item => <RelationCard key={item.rel.id} item={item} label="Partner Link" />)}
-                  {spouses.length === 0 && <p className="text-xs text-slate-400 italic p-4">No partner records found.</p>}
-               </div>
-               <div className="space-y-4">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Descendant Links</p>
-                  {children.map(item => <RelationCard key={item.rel.id} item={item} label="Offspring Link" />)}
-                  {children.length === 0 && <p className="text-xs text-slate-400 italic p-4">No child records found.</p>}
-               </div>
+               <FamilyGroups
+                 personId={person.id}
+                 spouses={spouses}
+                 children={children}
+                 relationships={relationships}
+                 initialLayout={person.metadata?.familyLayout as FamilyLayoutState | undefined}
+                 onNavigate={onNavigateToPerson}
+                 onPersist={onPersistFamilyLayout}
+                 renderRelationCard={(item, label, metadata) => (
+                   <RelationCard item={item} label={label} metadata={metadata || undefined} />
+                 )}
+               />
             </div>
           </div>
         )}
@@ -1123,3 +1148,313 @@ const DetailEdit: React.FC<{ label: string; value?: string; onChange: (v: string
 );
 
 export default PersonProfile;
+
+interface FamilyGroupProps {
+  personId: string;
+  spouses: Array<{ person: Person; rel: Relationship }>;
+  children: Array<{ person: Person; rel: Relationship }>;
+  relationships: Relationship[];
+  onNavigate?: (person: Person) => void;
+  initialLayout?: FamilyLayoutState;
+  onPersist?: (layout: FamilyLayoutState) => void;
+  renderRelationCard: (item: { person: Person; rel: Relationship }, label: string, metadata?: string | null) => React.ReactNode;
+}
+
+const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children, relationships, onNavigate, initialLayout, onPersist, renderRelationCard }) => {
+  const layoutSeed = useMemo(() => {
+    const baseAssignments: Record<string, string | null> = {};
+    const spouseIds = new Set(spouses.map((sp) => sp.rel.id));
+    const childIds = new Set(children.map((child) => child.rel.id));
+    children.forEach((child) => {
+      const linkedSpouse = spouses.find((spouse) =>
+        relationships.some(
+          (rel) => rel.personId === spouse.person.id && rel.relatedId === child.person.id && parentLinkTypes.includes(rel.type)
+        )
+      );
+      baseAssignments[child.rel.id] = linkedSpouse?.rel.id ?? null;
+    });
+
+    const layoutAssignments = (initialLayout?.assignments ?? {}) as Record<string, string | null>;
+    Object.entries(layoutAssignments).forEach(([childId, spouseId]) => {
+      if (childIds.has(childId) && (!spouseId || spouseIds.has(spouseId))) {
+        baseAssignments[childId] = spouseId;
+      }
+    });
+
+    const manualOrders: Record<string, string[]> = {};
+    const layoutOrders = (initialLayout?.manualOrders ?? {}) as Record<string, string[]>;
+    Object.entries(layoutOrders).forEach(([key, order]) => {
+      const filtered = order.filter((childId) => childIds.has(childId));
+      if (filtered.length) manualOrders[key] = filtered;
+    });
+
+    return {
+      assignments: baseAssignments,
+      manualOrders,
+      removedSpouses: new Set(((initialLayout?.removedSpouseIds ?? []) as string[]).filter((id) => spouseIds.has(id))),
+      removedChildren: new Set(((initialLayout?.removedChildIds ?? []) as string[]).filter((id) => childIds.has(id)))
+    };
+  }, [children, spouses, relationships, initialLayout]);
+
+  const [assignments, setAssignments] = useState<Record<string, string | null>>(layoutSeed.assignments);
+  const [manualOrders, setManualOrders] = useState<Record<string, string[]>>(layoutSeed.manualOrders);
+  const [removedSpouseIds, setRemovedSpouseIds] = useState<Set<string>>(layoutSeed.removedSpouses);
+  const [removedChildIds, setRemovedChildIds] = useState<Set<string>>(layoutSeed.removedChildren);
+  const hydratingRef = useRef(false);
+
+  useEffect(() => {
+    hydratingRef.current = true;
+    setAssignments(layoutSeed.assignments);
+    setManualOrders(layoutSeed.manualOrders);
+    setRemovedSpouseIds(new Set(layoutSeed.removedSpouses));
+    setRemovedChildIds(new Set(layoutSeed.removedChildren));
+    const timer = setTimeout(() => {
+      hydratingRef.current = false;
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [personId, layoutSeed]);
+
+  const keyForGroup = (groupId: string | null) => groupId ?? 'unassigned';
+
+  const parseBirthValue = (value?: string) => {
+    if (!value) return Number.MAX_SAFE_INTEGER;
+    const match = value.match(/(\d{4})/);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+  };
+
+  const activeSpouses = spouses.filter((sp) => !removedSpouseIds.has(sp.rel.id));
+  const activeChildren = children.filter((child) => !removedChildIds.has(child.rel.id));
+
+  const getBaseChildren = useCallback(
+    (groupId: string | null): Array<{ person: Person; rel: Relationship }> => {
+      return activeChildren
+        .filter((child) => keyForGroup(assignments[child.rel.id] ?? null) === keyForGroup(groupId))
+        .sort((a, b) => {
+          const aVal = parseBirthValue(a.person.birthDate);
+          const bVal = parseBirthValue(b.person.birthDate);
+          if (aVal !== bVal) return aVal - bVal;
+          return `${a.person.lastName}${a.person.firstName}`.localeCompare(`${b.person.lastName}${b.person.firstName}`);
+        });
+    },
+    [activeChildren, assignments]
+  );
+
+  const getDisplayChildren = useCallback(
+    (groupId: string | null): Array<{ person: Person; rel: Relationship }> => {
+      const base = getBaseChildren(groupId);
+      const manual = manualOrders[keyForGroup(groupId)];
+      if (!manual || manual.length === 0) return base;
+      const remaining = new Map<string, { person: Person; rel: Relationship }>(
+        base.map((child) => [child.rel.id, child])
+      );
+      const ordered: Array<{ person: Person; rel: Relationship }> = [];
+      manual.forEach((relId) => {
+        const child = remaining.get(relId);
+        if (child) {
+          ordered.push(child);
+          remaining.delete(relId);
+        }
+      });
+      return ordered.concat(Array.from(remaining.values()));
+    },
+    [getBaseChildren, manualOrders]
+  );
+
+  const handleMoveChild = (groupId: string | null, childRelId: string, direction: 'up' | 'down') => {
+    const list = getDisplayChildren(groupId).map((child) => child.rel.id);
+    const idx = list.indexOf(childRelId);
+    if (idx === -1) return;
+    if (direction === 'up' && idx === 0) return;
+    if (direction === 'down' && idx === list.length - 1) return;
+    const newOrder = [...list];
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+    setManualOrders((prev) => ({ ...prev, [keyForGroup(groupId)]: newOrder }));
+  };
+
+  const scrubChildFromManualOrders = (childRelId: string) => {
+    setManualOrders((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((key) => {
+        const filtered = next[key].filter((id) => id !== childRelId);
+        if (filtered.length === 0) {
+          delete next[key];
+        } else {
+          next[key] = filtered;
+        }
+      });
+      return next;
+    });
+  };
+
+  const persistLayout = useCallback(() => {
+    if (hydratingRef.current || !onPersist) return;
+    const payload: FamilyLayoutState = {
+      assignments,
+      manualOrders,
+      removedSpouseIds: Array.from(removedSpouseIds),
+      removedChildIds: Array.from(removedChildIds)
+    };
+    onPersist(personId, payload);
+  }, [assignments, manualOrders, removedSpouseIds, removedChildIds, onPersist, personId]);
+
+  useEffect(() => {
+    if (hydratingRef.current) return;
+    const debounce = setTimeout(() => {
+      persistLayout();
+    }, 500);
+    return () => clearTimeout(debounce);
+  }, [assignments, manualOrders, removedSpouseIds, removedChildIds, persistLayout]);
+
+  const handleReassignChild = (childRelId: string, targetValue: string) => {
+    const targetId = targetValue === 'unassigned' ? null : targetValue;
+    setAssignments((prev) => ({ ...prev, [childRelId]: targetId }));
+    scrubChildFromManualOrders(childRelId);
+  };
+
+  const handleUnlinkChild = (childRelId: string) => {
+    setRemovedChildIds((prev) => new Set(prev).add(childRelId));
+    setAssignments((prev) => {
+      const next = { ...prev };
+      delete next[childRelId];
+      return next;
+    });
+    scrubChildFromManualOrders(childRelId);
+  };
+
+  const handleUnlinkSpouse = (spouseId: string) => {
+    setRemovedSpouseIds((prev) => {
+      const next = new Set(prev);
+      next.add(spouseId);
+      return next;
+    });
+    setAssignments((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((childRelId) => {
+        if (next[childRelId] === spouseId) {
+          next[childRelId] = null;
+        }
+      });
+      return next;
+    });
+    setManualOrders((prev) => {
+      const next = { ...prev };
+      delete next[keyForGroup(spouseId)];
+      return next;
+    });
+  };
+
+  const availableSpouseOptions = activeSpouses.map((sp) => ({
+    id: sp.rel.id,
+    name: `${sp.person.firstName} ${sp.person.lastName}`
+  }));
+
+  const renderChildRow = (child: { person: Person; rel: Relationship }, groupKey: string | null, position: number, total: number) => {
+    const assignment = assignments[child.rel.id] ?? null;
+    const selectedValue = assignment ?? 'unassigned';
+    return (
+      <div key={child.rel.id} className="p-4 bg-white rounded-2xl border border-slate-100 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">{child.person.firstName} {child.person.lastName}</p>
+            {child.person.birthDate && (
+              <p className="text-[10px] text-slate-400">Born {formatYear(child.person.birthDate)}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              aria-label="Move child earlier"
+              onClick={() => handleMoveChild(assignment, child.rel.id, 'up')}
+              disabled={total <= 1 || position === 0}
+              className={`p-2 rounded-full border text-slate-500 hover:text-slate-900 hover:border-slate-300 transition ${total <= 1 || position === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
+            >
+              <ArrowUp className="w-4 h-4" />
+            </button>
+            <button
+              aria-label="Move child later"
+              onClick={() => handleMoveChild(assignment, child.rel.id, 'down')}
+              disabled={total <= 1 || position === total - 1}
+              className={`p-2 rounded-full border text-slate-500 hover:text-slate-900 hover:border-slate-300 transition ${total <= 1 || position === total - 1 ? 'opacity-30 cursor-not-allowed' : ''}`}
+            >
+              <ArrowDown className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            value={selectedValue}
+            onChange={(e) => handleReassignChild(child.rel.id, e.target.value)}
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest"
+          >
+            <option value="unassigned">Unassigned</option>
+            {availableSpouseOptions.map((option) => (
+              <option key={option.id} value={option.id}>{option.name}</option>
+            ))}
+          </select>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => onNavigate?.(child.person)}
+            className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 hover:underline"
+          >
+            View Profile
+          </button>
+          <button
+            type="button"
+            onClick={() => handleUnlinkChild(child.rel.id)}
+            className="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-600 text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+          >
+            <UnlinkIcon className="w-3.5 h-3.5" /> Unlink
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const unassignedChildren = getDisplayChildren(null);
+
+  return (
+    <div className="space-y-6">
+      {activeSpouses.length === 0 && (
+        <div className="space-y-4">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Spousal Unions</p>
+          <p className="text-xs text-slate-400 italic p-4">No partner records found.</p>
+        </div>
+      )}
+      {activeSpouses.map((spouse) => {
+        const metaBits: string[] = [];
+        if (spouse.rel.date) metaBits.push(`Since ${formatYear(spouse.rel.date)}`);
+        if (spouse.rel.status) metaBits.push(spouse.rel.status.replace(/_/g, ' '));
+        const childrenForSpouse = getDisplayChildren(spouse.rel.id);
+        return (
+          <div key={spouse.rel.id} className="space-y-3">
+            <div className="flex items-center justify-between">
+              {renderRelationCard(spouse, 'Spousal Link', metaBits.join(' • ') || undefined)}
+              <button
+                className="text-[9px] font-black uppercase tracking-[0.3em] text-rose-500 hover:text-rose-600"
+                onClick={() => handleUnlinkSpouse(spouse.rel.id)}
+              >
+                Unlink Spouse
+              </button>
+            </div>
+            {childrenForSpouse.length > 0 ? (
+              <div className="ml-4 border-l border-slate-200 pl-4 space-y-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Children of this union</p>
+                {childrenForSpouse.map((child, idx) => renderChildRow(child, spouse.rel.id, idx, childrenForSpouse.length))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic ml-6">No children linked to this spouse.</p>
+            )}
+          </div>
+        );
+      })}
+
+      {unassignedChildren.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Unassigned Descendants</p>
+          {unassignedChildren.map((child, idx) => renderChildRow(child, null, idx, unassignedChildren.length))}
+        </div>
+      )}
+    </div>
+  );
+};
