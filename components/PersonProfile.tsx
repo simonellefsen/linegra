@@ -108,6 +108,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
   const [relConfidences, setRelConfidences] = useState<Record<string, RelationshipConfidence>>(
     relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {})
   );
+  const [shareFeedback, setShareFeedback] = useState<string>('');
 
   const getSourceCountForEvent = (eventLabel: string) => {
     return sources.filter((source) => (source.event || 'General') === eventLabel).length;
@@ -397,24 +398,44 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
       <div className="z-30 shrink-0">
         <div className="relative bg-slate-900 pt-12 pb-6 px-8 text-white shadow-lg">
           <div className="absolute top-4 right-6 flex items-center gap-3 z-20">
-            <button
-              onClick={() => {
-                const shareData = {
-                  title: `${person.firstName} ${person.lastName} · Linegra`,
-                  text: `Linegra profile for ${person.firstName} ${person.lastName}`,
-                  url: typeof window !== 'undefined' ? window.location.href : ''
-                };
-                if (navigator.share) {
-                  navigator.share(shareData).catch(() => {});
-                } else {
-                  navigator.clipboard?.writeText(shareData.url);
-                }
-              }}
-              className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white"
-              aria-label="Share profile"
-            >
-              <Share2 className="w-5 h-5" />
-            </button>
+            <div className="relative">
+              <button
+                onClick={async () => {
+                  const shareData = {
+                    title: `${person.firstName} ${person.lastName} · Linegra`,
+                    text: `Linegra profile for ${person.firstName} ${person.lastName}`,
+                    url: typeof window !== 'undefined' ? window.location.href : ''
+                  };
+                  try {
+                    if (navigator.share) {
+                      await navigator.share(shareData);
+                      setShareFeedback('Shared');
+                    } else if (shareData.url) {
+                      await navigator.clipboard?.writeText(shareData.url);
+                      setShareFeedback('Link copied');
+                    }
+                  } catch {
+                    if (shareData.url) {
+                      await navigator.clipboard?.writeText(shareData.url);
+                      setShareFeedback('Link copied');
+                    } else {
+                      setShareFeedback('Unable to share');
+                    }
+                  } finally {
+                    setTimeout(() => setShareFeedback(''), 2500);
+                  }
+                }}
+                className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white"
+                aria-label="Share profile"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
+              {shareFeedback && (
+                <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-[10px] font-bold text-white bg-slate-900/60 px-2 py-0.5 rounded-full">
+                  {shareFeedback}
+                </span>
+              )}
+            </div>
             <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white"><X className="w-5 h-5" /></button>
           </div>
           <div className="relative z-10 flex items-center gap-6">
