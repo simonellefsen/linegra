@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Info
 } from 'lucide-react';
-import { Person, Relationship, PersonEvent, Source } from '../types';
+import { Person, Relationship, PersonEvent, Source, FamilyTree } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { createFamilyTree } from '../services/archive';
 
@@ -23,7 +23,7 @@ interface ImportExportProps {
   onImport: (data: { people: Person[]; relationships: Relationship[] }) => void;
   isAdmin?: boolean;
   currentUser?: { id?: string | null; name?: string | null };
-  onTreeCreated?: () => void;
+  onTreeCreated?: (tree: FamilyTree) => void;
   activeTreeName?: string;
 }
 
@@ -94,7 +94,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
     if (!newTreeName.trim()) return;
     setTreeCreationStatus('idle');
     try {
-      await createFamilyTree(
+      const created = await createFamilyTree(
         {
           name: newTreeName.trim(),
           description: newTreeDescription.trim(),
@@ -108,7 +108,7 @@ const ImportExport: React.FC<ImportExportProps> = ({ people, relationships, onIm
       setNewTreeDescription('');
       setNewTreeOwner('');
       setNewTreeEmail('');
-      onTreeCreated?.();
+      onTreeCreated?.(created);
     } catch (err) {
       console.error('Failed to create tree', err);
       setTreeCreationStatus('error');

@@ -41,6 +41,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
+  const [adminSection, setAdminSection] = useState<'database' | 'trees' | 'gedcom'>('gedcom');
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
@@ -147,10 +148,9 @@ const App: React.FC = () => {
     }
   }, [pendingPersonId, treePeople]);
 
-  const refreshTrees = async () => {
-    if (!supabaseActive) return;
-    const dbTrees = await ensureTrees();
-    setTrees(dbTrees);
+  const handleTreeCreated = (tree: FamilyTreeType) => {
+    setTrees((prev) => [...prev, tree]);
+    setActiveTree(tree);
   };
 
   const selectTree = (tree: FamilyTreeType) => {
@@ -366,17 +366,55 @@ const App: React.FC = () => {
                 <FamilyTree people={filteredPeople} relationships={filteredRelationships} onPersonSelect={handlePersonSelect} layout={layoutType} />
               </div>
             )}
-            {activeTab === 'records' && (
-              <div className="space-y-10 max-w-6xl mx-auto py-4">
-                <ImportExport 
-                  people={treePeople} 
-                  relationships={treeRelationships} 
-                  onImport={handleImport} 
-                  isAdmin={!!currentUser?.isAdmin} 
-                  currentUser={currentUser || undefined}
-                  onTreeCreated={refreshTrees}
-                  activeTreeName={activeTree.name}
-                />
+            {activeTab === 'records' && currentUser?.isAdmin && (
+              <div className="space-y-8 max-w-6xl mx-auto py-6">
+                <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-4 flex items-center gap-3">
+                  {(['database','trees','gedcom'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setAdminSection(tab)}
+                      className={`px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] ${
+                        adminSection === tab ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
+                      }`}
+                    >
+                      {tab === 'database' && 'Database'}
+                      {tab === 'trees' && 'Trees'}
+                      {tab === 'gedcom' && 'GEDCOM'}
+                    </button>
+                  ))}
+                </div>
+                {adminSection === 'database' && (
+                  <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 text-slate-600">
+                    <h3 className="text-2xl font-serif font-bold text-slate-900 mb-2">Database Controls</h3>
+                    <p className="text-sm">System-level database management tools will appear here (backups, dedupe jobs, etc.).</p>
+                  </div>
+                )}
+                {adminSection === 'trees' && (
+                  <ImportExport 
+                    people={treePeople} 
+                    relationships={treeRelationships} 
+                    onImport={handleImport} 
+                    isAdmin={!!currentUser?.isAdmin} 
+                    currentUser={currentUser || undefined}
+                    onTreeCreated={handleTreeCreated}
+                    activeTreeName={activeTree.name}
+                    showGedcomSection={false}
+                    showTreeSection
+                  />
+                )}
+                {adminSection === 'gedcom' && (
+                  <ImportExport 
+                    people={treePeople} 
+                    relationships={treeRelationships} 
+                    onImport={handleImport} 
+                    isAdmin={!!currentUser?.isAdmin} 
+                    currentUser={currentUser || undefined}
+                    onTreeCreated={handleTreeCreated}
+                    activeTreeName={activeTree.name}
+                    showGedcomSection
+                    showTreeSection={false}
+                  />
+                )}
               </div>
             )}
           </div>
