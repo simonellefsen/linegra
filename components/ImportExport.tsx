@@ -535,7 +535,15 @@ const ImportExport: React.FC<ImportExportProps> = ({
       });
     });
 
-    return { people: finalPeople, relationships: finalRelationships, warnings };
+    const seenRelationshipKeys = new Set<string>();
+    const dedupedRelationships = finalRelationships.filter((rel) => {
+      const key = `${rel.type}:${rel.personId}:${rel.relatedId}`;
+      if (seenRelationshipKeys.has(key)) return false;
+      seenRelationshipKeys.add(key);
+      return true;
+    });
+
+    return { people: finalPeople, relationships: dedupedRelationships, warnings };
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
