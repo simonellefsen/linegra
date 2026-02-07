@@ -4,7 +4,7 @@ This repo already contains the `supabase/` directory and the initial migration.
 Follow these steps any time you need to authenticate with Supabase, link a project, 
 and apply migrations locally or remotely.
 
-> **Important:** Linegra does **not** ship with mock data or an in-app Supabase connection prompt. The UI refuses to load unless `SUPABASE_URL` and `SUPABASE_ANON_KEY` are present in your environment (e.g., `.env.local`). Complete the steps below before running `npm run dev`.
+> **Important:** Linegra does **not** ship with mock data or an in-app Supabase connection prompt. The UI refuses to load unless `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (formerly `SUPABASE_ANON_KEY`) are present in your environment (e.g., `.env.local`). Complete the steps below before running `npm run dev`.
 
 ## 1. Prerequisites
 - [Supabase CLI](https://supabase.com/docs/guides/cli) v1.216.8 or newer installed on your machine.
@@ -56,7 +56,7 @@ supabase db reset
 The familiar dev loop is:
 1. `supabase start`
 2. `supabase db reset`
-3. Run the Linegra app (`npm run dev`) pointing to `http://127.0.0.1:54321` via your `SUPABASE_URL`/`SUPABASE_ANON_KEY`.
+3. Run the Linegra app (`npm run dev`) pointing to `http://127.0.0.1:54321` via your `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY`.
 
 Stop the Supabase stack when finished:
 
@@ -90,7 +90,7 @@ Ensure `.env.local` (excluded from git) contains the Supabase credentials for th
 
 ```
 SUPABASE_URL=<https://your-project.supabase.co>
-SUPABASE_ANON_KEY=<public-anon-key>
+SUPABASE_PUBLISHABLE_KEY=<public-publishable-key>
 ```
 
 For Vercel, set the same values in the project settings (Environment Variables → Production/Preview) so builds use the correct Supabase instance.

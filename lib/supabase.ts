@@ -12,7 +12,12 @@ const getRuntimeEnv = (): RuntimeEnv => {
 const getSupabaseConfig = () => {
   const runtimeEnv = getRuntimeEnv();
   const envUrl = runtimeEnv.VITE_SUPABASE_URL ?? runtimeEnv.SUPABASE_URL ?? '';
-  const envKey = runtimeEnv.VITE_SUPABASE_ANON_KEY ?? runtimeEnv.SUPABASE_ANON_KEY ?? '';
+  const envKey =
+    runtimeEnv.VITE_SUPABASE_PUBLISHABLE_KEY ??
+    runtimeEnv.SUPABASE_PUBLISHABLE_KEY ??
+    runtimeEnv.VITE_SUPABASE_ANON_KEY ??
+    runtimeEnv.SUPABASE_ANON_KEY ??
+    '';
 
   return {
     url: envUrl || 'https://placeholder.invalid-supabase.local',
@@ -26,7 +31,7 @@ const config = getSupabaseConfig();
 export const isSupabaseConfigured = () => config.isReal;
 
 if (!isSupabaseConfigured()) {
-  console.warn('Supabase environment variables are missing. Set SUPABASE_URL and SUPABASE_ANON_KEY.');
+  console.warn('Supabase environment variables are missing. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY (formerly SUPABASE_ANON_KEY).');
 }
 
 export const supabase = createClient(config.url, config.key);

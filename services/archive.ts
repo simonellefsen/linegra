@@ -104,7 +104,7 @@ const mapDbTree = (row: any): FamilyTreeType => {
 
 export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   if (!isSupabaseConfigured()) {
-    throw new Error('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_ANON_KEY.');
+    throw new Error('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
   }
   const { data, error } = await supabase.from('family_trees').select('*').order('created_at');
   if (error) throw new Error(error.message);

@@ -17,11 +17,11 @@ View your app in AI Studio: https://ai.studio/apps/drive/1pWfS3iW2IEOX4MJO3XMvFj
 
 1. Install dependencies:
    `npm install`
-2. Create `.env.local` with `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` values (see `docs/AI_SETUP.md` + `docs/SUPABASE_SETUP.md`)
+2. Create `.env.local` with `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` values (see `docs/AI_SETUP.md` + `docs/SUPABASE_SETUP.md`)
 3. Run the app:
    `npm run dev`
 
-> ⚠️ Linegra no longer ships with mock archives or an in-app Supabase connection form. You must provide valid `SUPABASE_URL` and `SUPABASE_ANON_KEY` values (as described in `docs/SUPABASE_SETUP.md`) before the UI will load.
+> ⚠️ Linegra no longer ships with mock archives or an in-app Supabase connection form. You must provide valid `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` values (as described in `docs/SUPABASE_SETUP.md`) before the UI will load.
 
 ## Super Administrator Login
 

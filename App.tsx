@@ -88,7 +88,7 @@ const App: React.FC = () => {
       setActiveTree(null);
       setAllPeople([]);
       setAllRelationships([]);
-      setConfigError('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_ANON_KEY in your .env.local before running Linegra.');
+      setConfigError('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY (formerly SUPABASE_ANON_KEY) in your .env.local before running Linegra.');
       setLoading(false);
       return;
     }
@@ -433,7 +433,7 @@ const App: React.FC = () => {
         <div className="space-y-3 max-w-xl">
           <h1 className="text-3xl font-serif font-bold text-slate-900">Supabase Configuration Required</h1>
           <p className="text-slate-600">
-            Linegra no longer ships with mock archives. Add <code className="px-1 bg-slate-100 rounded">SUPABASE_URL</code> and <code className="px-1 bg-slate-100 rounded">SUPABASE_ANON_KEY</code>
+            Linegra no longer ships with mock archives. Add <code className="px-1 bg-slate-100 rounded">SUPABASE_URL</code> and <code className="px-1 bg-slate-100 rounded">SUPABASE_PUBLISHABLE_KEY</code>
             to your <code className="px-1 bg-slate-100 rounded">.env.local</code> (or Vercel project settings) and restart the app.
           </p>
           <p className="text-sm text-slate-500">

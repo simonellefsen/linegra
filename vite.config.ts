@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
       'OPENROUTER_MODEL',
       'OPENROUTER_BASE_URL',
       'SUPABASE_URL',
+      'SUPABASE_PUBLISHABLE_KEY',
       'SUPABASE_ANON_KEY'
     ];
     const definedEnv = passthroughEnvKeys.reduce<Record<string, string>>((acc, key) => {
