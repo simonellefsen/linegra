@@ -50,8 +50,30 @@ const App: React.FC = () => {
   const [deletingTreeId, setDeletingTreeId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem('LINEGRA_SUPERADMIN');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as User;
+        setCurrentUser(parsed);
+      } catch (err) {
+        console.error('Failed to parse stored admin session', err);
+        window.localStorage.removeItem('LINEGRA_SUPERADMIN');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (currentUser) {
+      window.localStorage.setItem('LINEGRA_SUPERADMIN', JSON.stringify(currentUser));
+    } else {
+      window.localStorage.removeItem('LINEGRA_SUPERADMIN');
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
     const hydrateLocal = () => {
-      setCurrentUser(null);
       setTrees(MOCK_TREES);
       setActiveTree(MOCK_TREES[0]);
       setAllPeople(MOCK_PEOPLE);
@@ -167,6 +189,9 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     setCurrentUser(null);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('LINEGRA_SUPERADMIN');
+    }
   };
 
   useEffect(() => {
