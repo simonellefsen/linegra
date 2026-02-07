@@ -23,7 +23,6 @@ import {
 } from '../types';
 import { FluentDateInput } from './FluentDate';
 import { PlaceInput } from './PlaceInput';
-import { MOCK_TREES, MOCK_MEDIA } from '../mockData';
 import { 
   X, Library, Image as ImageIcon, FileText, Plus, Info, Lock, ShieldCheck, 
   Target, Microscope, Dna, Share2, Search, Link2, 
@@ -114,10 +113,14 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
   const [sources, setSources] = useState<Source[]>(person.sources || []);
   const [notes, setNotes] = useState<Note[]>(person.notes || []);
   const [dnaTests, setDnaTests] = useState<DNATest[]>(person.dnaTests || []);
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>(() => {
-    const ids = person.mediaIds || [];
-    return MOCK_MEDIA.filter(m => ids.includes(m.id) || m.linkedPersonIds.includes(person.id));
-  });
+  const extractMediaItems = (target: Person): MediaItem[] => {
+    const metadataMedia = (target.metadata as { mediaItems?: MediaItem[] } | undefined)?.mediaItems;
+    if (Array.isArray(metadataMedia)) {
+      return metadataMedia;
+    }
+    return [];
+  };
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>(extractMediaItems(person));
 
   const [relConfidences, setRelConfidences] = useState<Record<string, RelationshipConfidence>>(
     relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {})
@@ -156,12 +159,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     return map;
   }, [person.citations]);
 
-  const canAccessDNA = useMemo(() => {
-    if (!currentUser) return false;
-    if (currentUser.isAdmin) return true;
-    const activeTree = MOCK_TREES.find(t => t.id === person.treeId);
-    return person.addedByUserId === currentUser.id || activeTree?.ownerId === currentUser.id;
-  }, [currentUser, person]);
+  const canAccessDNA = !!currentUser?.isAdmin;
 
   const parents = useMemo(() => {
     return relationships
@@ -286,10 +284,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     setSources(person.sources || []);
     setNotes(person.notes || []);
     setDnaTests(person.dnaTests || []);
-    setMediaItems(() => {
-      const ids = person.mediaIds || [];
-      return MOCK_MEDIA.filter(m => ids.includes(m.id) || m.linkedPersonIds.includes(person.id));
-    });
+    setMediaItems(extractMediaItems(person));
     setRelConfidences(relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {}));
     setActiveSection('vital');
   }, [person, relationships]);

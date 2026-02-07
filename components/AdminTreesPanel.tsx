@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { FamilyTreeSummary } from '../types';
-import { Users, GitBranch, Trash2, AlertTriangle, Inbox, Loader2, Database } from 'lucide-react';
+import { Users, GitBranch, Trash2, Inbox, Loader2, Database, AlertTriangle } from 'lucide-react';
 
 interface AdminTreesPanelProps {
   trees: FamilyTreeSummary[];
-  isLive: boolean;
   onCreate: (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => Promise<void>;
   onDelete: (treeId: string) => Promise<void>;
   creating?: boolean;
@@ -14,7 +13,6 @@ interface AdminTreesPanelProps {
 
 const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   trees,
-  isLive,
   onCreate,
   onDelete,
   creating = false,
@@ -54,11 +52,6 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
       setFormError('A family tree with this name already exists.');
       return;
     }
-    if (!isLive) {
-      setFormError('Link a Supabase project before creating additional trees.');
-      return;
-    }
-
     try {
       await onCreate({
         name: trimmedName,
@@ -96,12 +89,6 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
           <div>
             <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Administrator Panel</p>
             <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">Create New Family Tree</h3>
-            {!isLive && (
-              <p className="text-xs text-amber-600 mt-2 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                Connect Supabase to enable multi-tree management.
-              </p>
-            )}
           </div>
           {statusMessage && (
             <span className="text-emerald-600 text-xs font-bold uppercase tracking-widest">{statusMessage}</span>
@@ -115,7 +102,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
               onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none"
               placeholder="e.g. Linegra Heritage"
-              disabled={!isLive || creating}
+              disabled={creating}
               required
             />
           </div>
@@ -126,7 +113,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
               onChange={(e) => setOwnerName(e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none"
               placeholder="Lead Researcher"
-              disabled={!isLive || creating}
+              disabled={creating}
             />
           </div>
           <div className="space-y-2 md:col-span-2">
@@ -136,7 +123,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none min-h-[90px]"
               placeholder="Brief summary of the archive's focus"
-              disabled={!isLive || creating}
+              disabled={creating}
             />
           </div>
           <div className="space-y-2">
@@ -147,18 +134,16 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
               onChange={(e) => setOwnerEmail(e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 outline-none"
               placeholder="owner@example.com"
-              disabled={!isLive || creating}
+              disabled={creating}
             />
           </div>
           <div className="md:col-span-2">
             <button
               type="submit"
               className={`px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-xs transition-all ${
-                !isLive
-                  ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                  : 'bg-slate-900 text-white hover:bg-slate-800'
+                creating ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-slate-800'
               }`}
-              disabled={!isLive || creating}
+              disabled={creating}
             >
               {creating ? 'Creating…' : 'Save Tree'}
             </button>
@@ -200,19 +185,17 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                       Updated {tree.updatedAt ? new Date(tree.updatedAt).toLocaleDateString() : 'Recently'}
                     </p>
                   </div>
-                  {(!isLive || disableDelete) && (
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">
-                      {disableDelete ? 'At least one tree required' : 'Link Supabase to delete'}
-                    </p>
+                  {disableDelete && (
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">At least one tree required</p>
                   )}
                   <button
                     onClick={() => setPendingDeleteId(tree.id)}
                     className={`px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 ${
-                      disableDelete || deletingTreeId === tree.id || !isLive
+                      disableDelete || deletingTreeId === tree.id
                         ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                         : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
                     }`}
-                    disabled={disableDelete || deletingTreeId === tree.id || !isLive}
+                    disabled={disableDelete || deletingTreeId === tree.id}
                   >
                     <Trash2 className="w-4 h-4" />
                     Delete
@@ -274,7 +257,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
               <button
                 onClick={handleConfirmDelete}
                 className="flex-1 px-6 py-3 rounded-2xl bg-rose-600 text-white text-sm font-black uppercase tracking-[0.2em] hover:bg-rose-700 transition-all disabled:opacity-60"
-                disabled={deletingTreeId === confirmTarget.id || !isLive}
+                disabled={deletingTreeId === confirmTarget.id}
               >
                 {deletingTreeId === confirmTarget.id ? 'Deleting…' : 'Delete Tree'}
               </button>

@@ -1,6 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit } from '../types';
-import { MOCK_TREES, MOCK_PEOPLE, MOCK_RELATIONSHIPS } from '../mockData';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -105,7 +104,7 @@ const mapDbTree = (row: any): FamilyTreeType => {
 
 export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   if (!isSupabaseConfigured()) {
-    return MOCK_TREES;
+    throw new Error('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_ANON_KEY.');
   }
   const { data, error } = await supabase.from('family_trees').select('*').order('created_at');
   if (error) throw new Error(error.message);
@@ -139,11 +138,7 @@ export const createFamilyTree = async (
 
 export const listFamilyTreesWithCounts = async (): Promise<FamilyTreeSummary[]> => {
   if (!isSupabaseConfigured()) {
-    return MOCK_TREES.map((tree) => ({
-      ...tree,
-      personCount: MOCK_PEOPLE.length,
-      relationshipCount: MOCK_RELATIONSHIPS.length
-    }));
+    throw new Error('Supabase credentials are missing.');
   }
   const { data, error } = await supabase.rpc('admin_list_trees_with_counts');
   if (error) throw new Error(error.message);
@@ -179,10 +174,7 @@ export const nukeSupabaseDatabase = async (confirmText = 'NUKE') => {
 
 export const loadArchiveData = async (treeId: string, search?: string) => {
   if (!isSupabaseConfigured()) {
-    return {
-      people: [],
-      relationships: []
-    };
+    throw new Error('Supabase credentials are missing.');
   }
   let personQuery = supabase.from('persons').select('*').eq('tree_id', treeId).order('last_name');
   if (search) {
@@ -292,7 +284,9 @@ export const persistFamilyLayout = async (
   actor?: ImportActor | null,
   existingMetadata?: Record<string, unknown>
 ) => {
-  if (!isSupabaseConfigured()) return { ...(existingMetadata || {}), familyLayout: layout };
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
   const metadata = { ...(existingMetadata || {}), familyLayout: layout };
   const { data, error } = await supabase
     .from('persons')
@@ -320,7 +314,7 @@ export const persistFamilyLayout = async (
 
 export const fetchFamilyLayoutAudits = async (treeId: string, limit = 10, offset = 0): Promise<{ audits: FamilyLayoutAudit[]; total: number }> => {
   if (!isSupabaseConfigured()) {
-    return { audits: [], total: 0 };
+    throw new Error('Supabase credentials are missing.');
   }
   const [{ data, error }, { count }] = await Promise.all([
     supabase
@@ -359,7 +353,9 @@ const recordAuditLogs = async (entries: Array<{ tree_id: string; actor_id: strin
 };
 
 export const importGedcomToSupabase = async (treeId: string, data: { people: Person[]; relationships: Relationship[] }, actor?: ImportActor | null) => {
-  if (!isSupabaseConfigured()) return;
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
   const normalizedActor = normalizeActor(actor);
   const userId = normalizedActor.id;
   const actorName = normalizedActor.name;

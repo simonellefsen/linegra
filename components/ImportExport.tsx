@@ -5,16 +5,9 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Loader2, 
-  Key, 
-  Globe,
-  Settings2,
-  Wifi,
-  WifiOff,
-  ChevronRight,
-  Info
+  Wifi
 } from 'lucide-react';
 import { Person, Relationship, PersonEvent, Source, Citation } from '../types';
-import { isSupabaseConfigured } from '../lib/supabase';
 
 interface ImportExportProps {
   people: Person[];
@@ -79,16 +72,12 @@ const ImportExport: React.FC<ImportExportProps> = ({
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importStats, setImportStats] = useState({ people: 0, relationships: 0 });
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
-  const [showConfig, setShowConfig] = useState(!isSupabaseConfigured());
-  const [tempUrl, setTempUrl] = useState('');
-  const [tempKey, setTempKey] = useState('');
   const [pendingImport, setPendingImport] = useState<{ data: { people: Person[]; relationships: Relationship[] }; fileName: string } | null>(null);
   const [showProgressBanner, setShowProgressBanner] = useState(false);
   const [progressValue, setProgressValue] = useState(0);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isLive = isSupabaseConfigured();
 
   const clearProgressInterval = () => {
     if (progressIntervalRef.current) {
@@ -123,14 +112,6 @@ const ImportExport: React.FC<ImportExportProps> = ({
       clearProgressInterval();
     };
   }, []);
-
-  const handleSaveConfig = () => {
-    if (tempUrl && tempKey) {
-      localStorage.setItem('LINEGRA_SUPABASE_URL', tempUrl);
-      localStorage.setItem('LINEGRA_SUPABASE_ANON_KEY', tempKey);
-      window.location.reload(); 
-    }
-  };
 
   const parseGEDCOM = (text: string) => {
     const lines = text.split(/\r?\n/);
@@ -663,104 +644,28 @@ const ImportExport: React.FC<ImportExportProps> = ({
       )}
 
       {showGedcomSection && (
-        <div className={`p-8 rounded-[40px] border-2 transition-all duration-500 ${isLive ? 'bg-white border-emerald-100 shadow-emerald-100/20' : 'bg-amber-50/50 border-amber-200 shadow-amber-200/20'} shadow-2xl`}>
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-          <div className="flex gap-5">
-            <div className={`w-16 h-16 rounded-[22px] flex items-center justify-center shadow-lg transition-transform hover:scale-105 ${isLive ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}`}>
-              {isLive ? <Wifi className="w-8 h-8" /> : <WifiOff className="w-8 h-8" />}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-2xl font-serif font-bold text-slate-900">
-                  {isLive ? 'Archive Synchronized' : 'Standalone Mode'}
-                </h3>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${isLive ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {isLive ? 'Real-time' : 'Simulated'}
-                </span>
+        <div className="p-8 rounded-[40px] border-2 bg-white border-emerald-100 shadow-emerald-100/20 shadow-2xl">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div className="flex gap-5">
+              <div className="w-16 h-16 rounded-[22px] flex items-center justify-center shadow-lg bg-emerald-500 text-white">
+                <Wifi className="w-8 h-8" />
               </div>
-              <p className="text-sm text-slate-500 mt-1 max-w-md leading-relaxed">
-                {isLive 
-                  ? `Your lineage is safely stored in the cloud. All changes are persisted to your Supabase project.`
-                  : "Currently exploring with offline mock data. Link your database to start building a real family legacy."}
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-2xl font-serif font-bold text-slate-900">Archive Synchronized</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-100 text-emerald-700">
+                    Real-time
+                  </span>
+                </div>
+                <p className="text-sm text-slate-500 mt-1 max-w-xl leading-relaxed">
+                  {activeTreeName
+                    ? `All GEDCOM imports flow directly into the "${activeTreeName}" Supabase tree.`
+                    : 'Select a family tree to enable Supabase-backed imports.'}
+                </p>
+              </div>
             </div>
           </div>
-          <button 
-            onClick={() => setShowConfig(!showConfig)}
-            className={`px-6 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 transition-all shadow-md active:scale-95 ${isLive ? 'bg-slate-100 text-slate-900 hover:bg-slate-200' : 'bg-amber-600 text-white hover:bg-amber-700'}`}
-          >
-            {showConfig ? 'Hide Settings' : isLive ? 'Edit Connection' : 'Get Started'}
-            <Settings2 className="w-4 h-4" />
-          </button>
         </div>
-
-        {showConfig && (
-          <div className="pt-8 border-t border-slate-200/50 space-y-8 animate-in slide-in-from-top-4">
-            <div className="bg-slate-900 text-white p-6 rounded-3xl space-y-4">
-              <div className="flex items-center gap-3">
-                <Info className="w-5 h-5 text-blue-400" />
-                <h4 className="font-bold">Setup Guide</h4>
-              </div>
-              <ol className="text-sm text-slate-300 space-y-3 list-decimal ml-5">
-                <li>Create a free project at <a href="https://supabase.com" target="_blank" className="text-blue-400 underline font-bold">Supabase.com</a></li>
-                <li>Go to <b>Project Settings &gt; API</b> in your Supabase dashboard.</li>
-                <li>Copy the <b>Project URL</b> and <b>anon / public key</b> into the fields below.</li>
-                <li>Click <b>"Link Live Database"</b> and the app will refresh.</li>
-              </ol>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Project URL</label>
-                <div className="relative group">
-                  <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-slate-900 transition-colors" />
-                  <input 
-                    type="text" 
-                    placeholder="https://your-project.supabase.co"
-                    className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all text-sm shadow-sm"
-                    value={tempUrl}
-                    onChange={(e) => setTempUrl(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Anon / Public Key</label>
-                <div className="relative group">
-                  <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-slate-900 transition-colors" />
-                  <input 
-                    type="password" 
-                    placeholder="eyJhbGciOiJIUzI1NiI..."
-                    className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all text-sm shadow-sm"
-                    value={tempKey}
-                    onChange={(e) => setTempKey(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-4 bg-slate-50 rounded-3xl border border-slate-100">
-              <p className="text-xs text-slate-500 italic max-w-sm">
-                <b>Note:</b> These keys are stored locally in your browser and never sent to our servers.
-              </p>
-              <div className="flex gap-3 w-full sm:w-auto">
-                <button 
-                  onClick={() => { localStorage.clear(); window.location.reload(); }}
-                  className="px-6 py-3 text-sm font-bold text-rose-600 hover:bg-rose-100/50 rounded-xl transition-colors"
-                >
-                  Clear Config
-                </button>
-                <button 
-                  onClick={handleSaveConfig}
-                  className="flex-1 sm:flex-none px-8 py-3 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-slate-800 transition-all shadow-xl hover:shadow-slate-200 flex items-center justify-center gap-2"
-                >
-                  Link Live Database
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
       )}
 
       {showGedcomSection && (

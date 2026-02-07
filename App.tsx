@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { MOCK_PEOPLE, MOCK_RELATIONSHIPS, MOCK_TREES } from './mockData';
 import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
 import FamilyTree from './components/FamilyTree';
@@ -28,16 +27,17 @@ const App: React.FC = () => {
   const [layoutType] = useState<TreeLayoutType>('pedigree');
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [supabaseActive] = useState(isSupabaseConfigured());
+  const supabaseActive = isSupabaseConfigured();
 
   // Tree State
-  const [trees, setTrees] = useState<FamilyTreeType[]>(MOCK_TREES);
-  const [activeTree, setActiveTree] = useState<FamilyTreeType>(MOCK_TREES[0]);
-  const [allPeople, setAllPeople] = useState<Person[]>(MOCK_PEOPLE);
-  const [allRelationships, setAllRelationships] = useState<Relationship[]>(MOCK_RELATIONSHIPS);
+  const [trees, setTrees] = useState<FamilyTreeType[]>([]);
+  const [activeTree, setActiveTree] = useState<FamilyTreeType | null>(null);
+  const [allPeople, setAllPeople] = useState<Person[]>([]);
+  const [allRelationships, setAllRelationships] = useState<Relationship[]>([]);
 
   const [showTreeSelector, setShowTreeSelector] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [configError, setConfigError] = useState<string | null>(null);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -82,35 +82,36 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    const hydrateLocal = () => {
-      setTrees(MOCK_TREES);
-      setActiveTree(MOCK_TREES[0]);
-      setAllPeople(MOCK_PEOPLE);
-      setAllRelationships(MOCK_RELATIONSHIPS);
-      setLoading(false);
-    };
-
     if (!supabaseActive) {
-      hydrateLocal();
+      setTrees([]);
+      setActiveTree(null);
+      setAllPeople([]);
+      setAllRelationships([]);
+      setConfigError('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_ANON_KEY in your .env.local before running Linegra.');
+      setLoading(false);
       return;
     }
 
     (async () => {
       try {
         const dbTrees = await ensureTrees();
-        if (!dbTrees.length) {
-          hydrateLocal();
-          return;
-        }
         setTrees(dbTrees);
-        const selected = dbTrees[0];
-        setActiveTree(selected);
-        const archive = await loadArchiveData(selected.id);
-        setAllPeople(archive.people.length ? archive.people : MOCK_PEOPLE);
-        setAllRelationships(archive.relationships.length ? archive.relationships : MOCK_RELATIONSHIPS);
+        if (dbTrees.length) {
+          const selected = dbTrees[0];
+          setActiveTree(selected);
+          const archive = await loadArchiveData(selected.id);
+          setAllPeople(archive.people);
+          setAllRelationships(archive.relationships);
+        } else {
+          setActiveTree(null);
+          setAllPeople([]);
+          setAllRelationships([]);
+        }
+        setConfigError(null);
       } catch (err) {
         console.error('Failed to load archive data', err);
-        hydrateLocal();
+        const message = err instanceof Error ? err.message : 'Failed to load data from Supabase.';
+        setConfigError(message);
       } finally {
         setLoading(false);
       }
@@ -138,11 +139,11 @@ const App: React.FC = () => {
   }, [fetchAdminTreeStats]);
 
   useEffect(() => {
-    if (!supabaseActive || !currentUser?.isAdmin || !activeTree?.id) {
+    if (!supabaseActive || !currentUser?.isAdmin || !activeTreeId) {
       setLayoutAudits([]);
       return;
     }
-    fetchFamilyLayoutAudits(activeTree.id, 5, auditOffset)
+    fetchFamilyLayoutAudits(activeTreeId, 5, auditOffset)
       .then(({ audits, total }) => {
         if (auditOffset === 0) {
           setLayoutAudits(audits);
@@ -152,12 +153,14 @@ const App: React.FC = () => {
         setAuditTotal(total);
       })
       .catch((err) => console.error('Failed to fetch layout audits', err));
-  }, [supabaseActive, currentUser?.isAdmin, activeTree?.id, auditOffset]);
+  }, [supabaseActive, currentUser?.isAdmin, activeTreeId, auditOffset]);
 
 const hasMoreAudits = layoutAudits.length < auditTotal;
+  const activeTreeId = activeTree?.id ?? null;
   const treePeople = useMemo(() => {
-    return allPeople.filter(p => p.treeId === activeTree.id || p.treeId === 'imported');
-  }, [allPeople, activeTree.id]);
+    if (!activeTreeId) return [];
+    return allPeople.filter((p) => p.treeId === activeTreeId);
+  }, [allPeople, activeTreeId]);
 
   const handlePersistFamilyLayout = useCallback(async (personId: string, layout: FamilyLayoutState) => {
     try {
@@ -177,17 +180,13 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
   }, [treePeople, currentUser]);
 
   const treeRelationships = useMemo(() => {
-    return allRelationships.filter(r => r.treeId === activeTree.id || r.treeId === 'imported');
-  }, [allRelationships, activeTree.id]);
+    if (!activeTreeId) return [];
+    return allRelationships.filter((r) => r.treeId === activeTreeId);
+  }, [allRelationships, activeTreeId]);
 
   const filteredPeople = useMemo(() => {
-    if (supabaseActive) {
-      return treePeople;
-    }
-    return treePeople.filter(p => 
-      `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [treePeople, searchQuery, supabaseActive]);
+    return treePeople;
+  }, [treePeople]);
 
   const filteredRelationships = useMemo(() => {
     const visibleIds = new Set(filteredPeople.map(p => p.id));
@@ -287,26 +286,28 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
   const handleAdminDeleteTree = useCallback(
     async (treeId: string) => {
       if (!supabaseActive) throw new Error('Link Supabase before deleting trees.');
-      if (trees.length <= 1) throw new Error('At least one family tree must remain.');
       setDeletingTreeId(treeId);
       try {
         await deleteFamilyTreeRecord(treeId, currentUser);
         const updatedTrees = await ensureTrees();
         if (!updatedTrees.length) {
-          setTrees(MOCK_TREES);
-          setActiveTree(MOCK_TREES[0]);
-          setAllPeople(MOCK_PEOPLE);
-          setAllRelationships(MOCK_RELATIONSHIPS);
+          setTrees([]);
+          setActiveTree(null);
+          setAllPeople([]);
+          setAllRelationships([]);
+          await fetchAdminTreeStats();
           return;
         }
         setTrees(updatedTrees);
-        let nextActive = updatedTrees.find((t) => t.id === activeTree.id);
+        let nextActive = activeTree ? updatedTrees.find((t) => t.id === activeTree.id) : updatedTrees[0];
         if (!nextActive) {
           nextActive = updatedTrees[0];
           setActiveTree(nextActive);
           const archive = await loadArchiveData(nextActive.id);
           setAllPeople(archive.people);
           setAllRelationships(archive.relationships);
+        } else {
+          setActiveTree(nextActive);
         }
         await fetchAdminTreeStats();
       } catch (err) {
@@ -316,7 +317,7 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
         setDeletingTreeId(null);
       }
     },
-    [supabaseActive, trees.length, currentUser, activeTree, fetchAdminTreeStats]
+    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats]
   );
 
   const handleNukeConfirm = useCallback(async () => {
@@ -335,10 +336,13 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
       setShowNukeModal(false);
       setNukeConfirmText('');
       setNukeSuccess(true);
-      setTrees(MOCK_TREES);
-      setActiveTree(MOCK_TREES[0]);
-      setAllPeople(MOCK_PEOPLE);
-      setAllRelationships(MOCK_RELATIONSHIPS);
+      setTrees([]);
+      setActiveTree(null);
+      setAllPeople([]);
+      setAllRelationships([]);
+      setLayoutAudits([]);
+      setAuditOffset(0);
+      setAuditTotal(0);
       await fetchAdminTreeStats();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to reset database.';
@@ -360,20 +364,19 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
     setActiveTree(tree);
     setShowTreeSelector(false);
     setActiveTab('home');
-    if (isSupabaseConfigured()) {
+    if (!supabaseActive) return;
       loadArchiveData(tree.id, searchQuery).then((archive) => {
         setAllPeople(archive.people);
         setAllRelationships(archive.relationships);
       }).catch((err) => {
         console.error('Failed to load tree data', err);
       });
-    }
   };
 
-  const isRealTreeId = supabaseActive && activeTree?.id && activeTree.id.includes('-');
+  const isRealTreeId = Boolean(supabaseActive && activeTreeId);
 
   useEffect(() => {
-    if (!isRealTreeId) return;
+    if (!isRealTreeId || !activeTreeId) return;
     let cancelled = false;
     if (!searchQuery.trim()) {
       setIsSearching(false);
@@ -381,7 +384,7 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
       setIsSearching(true);
     }
     const timer = setTimeout(() => {
-      loadArchiveData(activeTree.id, searchQuery)
+      loadArchiveData(activeTreeId, searchQuery)
         .then((archive) => {
           if (cancelled) return;
           setAllPeople(archive.people);
@@ -402,28 +405,44 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isRealTreeId, activeTree?.id, searchQuery]);
+  }, [isRealTreeId, activeTreeId, searchQuery]);
 
   const handleImport = async (data: { people: Person[]; relationships: Relationship[] }) => {
-    if (isSupabaseConfigured()) {
-      try {
-        await importGedcomToSupabase(activeTree.id, data, currentUser);
-        const archive = await loadArchiveData(activeTree.id);
-        setAllPeople(archive.people);
-        setAllRelationships(archive.relationships);
-        await fetchAdminTreeStats();
-        setActiveTab('tree');
-        return;
-      } catch (err) {
-        console.error('Failed to import GEDCOM to Supabase', err);
-      }
+    if (!supabaseActive || !activeTreeId) {
+      console.error('Cannot import GEDCOM without an active Supabase-backed tree.');
+      return;
     }
-    const importedPeople = data.people.map(p => ({ ...p, treeId: 'imported' }));
-    const importedRels = data.relationships.map(r => ({ ...r, treeId: 'imported' }));
-    setAllPeople(prev => [...prev, ...importedPeople]);
-    setAllRelationships(prev => [...prev, ...importedRels]);
-    setActiveTab('tree');
+    try {
+      await importGedcomToSupabase(activeTreeId, data, currentUser);
+      const archive = await loadArchiveData(activeTreeId);
+      setAllPeople(archive.people);
+      setAllRelationships(archive.relationships);
+      await fetchAdminTreeStats();
+      setActiveTab('tree');
+    } catch (err) {
+      console.error('Failed to import GEDCOM to Supabase', err);
+    }
   };
+
+  if (!supabaseActive) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 text-center p-10 space-y-6">
+        <div className="mx-auto w-16 h-16 rounded-3xl bg-slate-900 text-white flex items-center justify-center shadow-2xl">
+          <GitBranch className="w-8 h-8" />
+        </div>
+        <div className="space-y-3 max-w-xl">
+          <h1 className="text-3xl font-serif font-bold text-slate-900">Supabase Configuration Required</h1>
+          <p className="text-slate-600">
+            Linegra no longer ships with mock archives. Add <code className="px-1 bg-slate-100 rounded">SUPABASE_URL</code> and <code className="px-1 bg-slate-100 rounded">SUPABASE_ANON_KEY</code>
+            to your <code className="px-1 bg-slate-100 rounded">.env.local</code> (or Vercel project settings) and restart the app.
+          </p>
+          <p className="text-sm text-slate-500">
+            See <code className="px-1 bg-slate-100 rounded">docs/SUPABASE_SETUP.md</code> for CLI linking and migration instructions.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -460,16 +479,23 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
-                <span className="hidden lg:block font-black text-[10px] uppercase tracking-widest truncate text-slate-700">{activeTree.name}</span>
+                <span className="hidden lg:block font-black text-[10px] uppercase tracking-widest truncate text-slate-700">
+                  {activeTree?.name ?? 'No Tree Selected'}
+                </span>
               </div>
               <ChevronDown className={`hidden lg:block w-4 h-4 text-slate-400 transition-transform duration-300 ${showTreeSelector ? 'rotate-180' : ''}`} />
             </button>
             
             {showTreeSelector && (
               <div className="absolute top-full left-0 w-full mt-3 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.1)] z-50 py-3 animate-in fade-in slide-in-from-top-4 duration-300">
-                {trees.map(t => (
+                {trees.length === 0 && (
+                  <div className="px-6 py-4 text-xs font-bold uppercase tracking-[0.2em] text-slate-400 text-center">
+                    No trees available
+                  </div>
+                )}
+                {trees.map((t) => (
                   <button key={t.id} onClick={() => selectTree(t)} className="w-full flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors">
-                    <div className={`w-2.5 h-2.5 rounded-full ${t.id === activeTree.id ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-slate-200'}`}></div>
+                    <div className={`w-2.5 h-2.5 rounded-full ${t.id === activeTree?.id ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-slate-200'}`}></div>
                     <span className="text-sm font-bold text-slate-700">{t.name}</span>
                   </button>
                 ))}
@@ -512,7 +538,7 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-slate-900 transition-colors" />
               <input 
                 type="text" 
-                placeholder={`Query the ${activeTree.name}...`} 
+                placeholder={`Query the ${activeTree?.name ?? 'Linegra Archive'}...`} 
                 className="w-full pl-12 pr-6 py-3.5 bg-slate-100/50 border-transparent rounded-[20px] outline-none text-[13px] font-medium transition-all focus:bg-white focus:ring-4 focus:ring-slate-900/5"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -559,16 +585,65 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
 
         <div className="flex-1 flex overflow-hidden relative">
           <div className="flex-1 p-10 overflow-y-auto no-scrollbar scroll-smooth">
+            {configError && (
+              <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 px-6 py-4 rounded-2xl flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 mt-0.5" />
+                <div className="text-left">
+                  <p className="text-sm font-semibold">{configError}</p>
+                  <p className="text-xs mt-1 text-amber-700">Review docs/SUPABASE_SETUP.md to verify environment variables and migrations.</p>
+                </div>
+              </div>
+            )}
             {activeTab === 'home' && (
-              <TreeLandingPage tree={activeTree} people={treePeople} onPersonSelect={handlePersonSelect} isAdmin={currentUser?.isAdmin || false} />
+              activeTree ? (
+                <TreeLandingPage
+                  tree={activeTree}
+                  people={treePeople}
+                  onPersonSelect={handlePersonSelect}
+                  isAdmin={currentUser?.isAdmin || false}
+                />
+              ) : (
+                <div className="bg-white border border-slate-200 rounded-[32px] p-12 text-center space-y-4 shadow-sm">
+                  <h2 className="text-3xl font-serif font-bold text-slate-900">No Family Trees Yet</h2>
+                  <p className="text-slate-500 max-w-2xl mx-auto">
+                    Create your first archive from the Administrator → Trees panel to begin importing GEDCOM data and visualizing your kinship map.
+                  </p>
+                  {currentUser?.isAdmin ? (
+                    <button
+                      onClick={() => setActiveTab('records')}
+                      className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-[0.3em]"
+                    >
+                      Open Administrator
+                    </button>
+                  ) : (
+                    <p className="text-xs text-slate-400 uppercase tracking-[0.3em]">
+                      Ask an administrator to provision a tree.
+                    </p>
+                  )}
+                </div>
+              )
             )}
             {activeTab === 'tree' && (
-              <div className="space-y-10 animate-in fade-in duration-700">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-3xl font-serif font-bold text-slate-900">Kinship Map</h2>
+              activeTree ? (
+                <div className="space-y-10 animate-in fade-in duration-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-3xl font-serif font-bold text-slate-900">Kinship Map</h2>
+                  </div>
+                  <FamilyTree
+                    people={filteredPeople}
+                    relationships={filteredRelationships}
+                    onPersonSelect={handlePersonSelect}
+                    layout={layoutType}
+                  />
                 </div>
-                <FamilyTree people={filteredPeople} relationships={filteredRelationships} onPersonSelect={handlePersonSelect} layout={layoutType} />
-              </div>
+              ) : (
+                <div className="bg-white border border-slate-200 rounded-[32px] p-12 text-center space-y-4 shadow-sm">
+                  <h2 className="text-3xl font-serif font-bold text-slate-900">No Active Tree Selected</h2>
+                  <p className="text-slate-500">
+                    Choose or create a family tree from the sidebar before opening the kinship map.
+                  </p>
+                </div>
+              )
             )}
             {activeTab === 'records' && currentUser?.isAdmin && (
               <div className="space-y-8 max-w-6xl mx-auto py-6">
@@ -669,7 +744,6 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
                 {adminSection === 'trees' && (
                   <AdminTreesPanel
                     trees={adminTreeData}
-                    isLive={supabaseActive}
                     onCreate={handleAdminCreateTree}
                     onDelete={handleAdminDeleteTree}
                     creating={creatingTree}
@@ -682,7 +756,7 @@ const hasMoreAudits = layoutAudits.length < auditTotal;
                     people={treePeople} 
                     relationships={treeRelationships} 
                     onImport={handleImport} 
-                    activeTreeName={activeTree.name}
+                    activeTreeName={activeTree?.name}
                     showGedcomSection
                   />
                 )}

@@ -9,26 +9,26 @@ const getRuntimeEnv = (): RuntimeEnv => {
   return { ...envFromProcess, ...envFromImport };
 };
 
-// Helper to get keys from env or localStorage fallback
 const getSupabaseConfig = () => {
   const runtimeEnv = getRuntimeEnv();
-  const envUrl = runtimeEnv.VITE_SUPABASE_URL ?? runtimeEnv.SUPABASE_URL;
-  const envKey = runtimeEnv.VITE_SUPABASE_ANON_KEY ?? runtimeEnv.SUPABASE_ANON_KEY;
-  
-  const localUrl = typeof window !== 'undefined' ? localStorage.getItem('LINEGRA_SUPABASE_URL') : null;
-  const localKey = typeof window !== 'undefined' ? localStorage.getItem('LINEGRA_SUPABASE_ANON_KEY') : null;
+  const envUrl = runtimeEnv.VITE_SUPABASE_URL ?? runtimeEnv.SUPABASE_URL ?? '';
+  const envKey = runtimeEnv.VITE_SUPABASE_ANON_KEY ?? runtimeEnv.SUPABASE_ANON_KEY ?? '';
 
   return {
-    url: envUrl || localUrl || 'https://placeholder-project.supabase.co',
-    key: envKey || localKey || 'placeholder-key',
-    isReal: !!(envUrl || localUrl) && !!(envKey || localKey)
+    url: envUrl || 'https://placeholder.invalid-supabase.local',
+    key: envKey || 'placeholder-key',
+    isReal: Boolean(envUrl && envKey)
   };
 };
 
 const config = getSupabaseConfig();
 
-export const supabase = createClient(config.url, config.key);
+export const isSupabaseConfigured = () => config.isReal;
 
-export const isSupabaseConfigured = () => getSupabaseConfig().isReal;
+if (!isSupabaseConfigured()) {
+  console.warn('Supabase environment variables are missing. Set SUPABASE_URL and SUPABASE_ANON_KEY.');
+}
+
+export const supabase = createClient(config.url, config.key);
 
 export const getActiveConfig = () => getSupabaseConfig();

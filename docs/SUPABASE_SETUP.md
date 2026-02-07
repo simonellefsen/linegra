@@ -4,6 +4,8 @@ This repo already contains the `supabase/` directory and the initial migration.
 Follow these steps any time you need to authenticate with Supabase, link a project, 
 and apply migrations locally or remotely.
 
+> **Important:** Linegra does **not** ship with mock data or an in-app Supabase connection prompt. The UI refuses to load unless `SUPABASE_URL` and `SUPABASE_ANON_KEY` are present in your environment (e.g., `.env.local`). Complete the steps below before running `npm run dev`.
+
 ## 1. Prerequisites
 - [Supabase CLI](https://supabase.com/docs/guides/cli) v1.216.8 or newer installed on your machine.
 - Access to the Supabase project you created for Linegra.

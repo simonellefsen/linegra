@@ -21,6 +21,8 @@ View your app in AI Studio: https://ai.studio/apps/drive/1pWfS3iW2IEOX4MJO3XMvFj
 3. Run the app:
    `npm run dev`
 
+> ⚠️ Linegra no longer ships with mock archives or an in-app Supabase connection form. You must provide valid `SUPABASE_URL` and `SUPABASE_ANON_KEY` values (as described in `docs/SUPABASE_SETUP.md`) before the UI will load.
+
 ## Super Administrator Login
 
 Linegra currently ships with a single local super administrator account. Use the header
