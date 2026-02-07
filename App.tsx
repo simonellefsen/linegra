@@ -57,6 +57,7 @@ const App: React.FC = () => {
   const [layoutAudits, setLayoutAudits] = useState<FamilyLayoutAudit[]>([]);
   const [auditOffset, setAuditOffset] = useState(0);
   const [auditTotal, setAuditTotal] = useState(0);
+  const activeTreeId = activeTree?.id ?? null;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -155,8 +156,7 @@ const App: React.FC = () => {
       .catch((err) => console.error('Failed to fetch layout audits', err));
   }, [supabaseActive, currentUser?.isAdmin, activeTreeId, auditOffset]);
 
-const hasMoreAudits = layoutAudits.length < auditTotal;
-  const activeTreeId = activeTree?.id ?? null;
+  const hasMoreAudits = layoutAudits.length < auditTotal;
   const treePeople = useMemo(() => {
     if (!activeTreeId) return [];
     return allPeople.filter((p) => p.treeId === activeTreeId);
