@@ -385,7 +385,7 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
       confidence: rel.confidence || null,
       notes: rel.notes || null,
       sort_order: rel.order || null,
-      metadata: rel.metadata || null
+      metadata: rel.metadata ? rel.metadata : {}
     };
   }).filter(Boolean);
 
