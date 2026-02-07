@@ -45,7 +45,7 @@ const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
     dna_match_info: person.dnaMatchInfo || null,
     tags: [],
     user_role: person.userRole || null,
-    metadata: person.metadata || null
+    metadata: person.metadata ? person.metadata : {}
   };
 };
 
