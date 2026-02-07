@@ -44,6 +44,7 @@ const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
   MILI: 'Military Service',
   EDUC: 'Education',
   BAPM: 'Baptism',
+  CHR: 'Christening',
   CONF: 'Confirmation',
   BURI: 'Burial',
   EVEN: 'Other'
@@ -53,6 +54,7 @@ const GEDCOM_EVENT_LABELS: Record<string, string> = {
   BIRT: 'Birth',
   DEAT: 'Death',
   BURI: 'Burial',
+  CHR: 'Christening',
   RESI: 'Residence',
   OCCU: 'Occupation',
   IMMI: 'Immigration',
@@ -138,7 +140,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
     let currentType: 'INDI' | 'FAM' | 'SOUR' | null = null;
     let currentTag = '';
     let currentEvent: PersonEvent | null = null;
-    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI']);
+    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI', 'FAMC']);
     const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR']);
     const lineRegex = /^(\d+)\s+(?:(@[^@]+@)\s+)?([A-Z0-9_]+)(?:\s+(.*))?$/i;
     let currentEventLabel = '';
@@ -169,7 +171,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
         } else if (pointerToken && tag === 'FAM') {
           currentId = pointerId;
           currentType = 'FAM';
-          parsedFamilies[currentId] = { children: [] };
+          parsedFamilies[currentId] = parsedFamilies[currentId] || { children: [] };
         } else if (pointerToken && tag === 'SOUR') {
           currentId = pointerId;
           currentType = 'SOUR';
@@ -217,6 +219,16 @@ const ImportExport: React.FC<ImportExportProps> = ({
           currentTag = 'BURI';
           currentEvent = null;
           currentEventLabel = GEDCOM_EVENT_LABELS[tag];
+        } else if (tag === 'FAMC') {
+          const famId = value.replace(/@/g, '');
+          if (famId) {
+            if (!parsedFamilies[famId]) {
+              parsedFamilies[famId] = { children: [] };
+            }
+            if (!parsedFamilies[famId].children.includes(currentId)) {
+              parsedFamilies[famId].children.push(currentId);
+            }
+          }
         } else if (tag === 'CHAN') {
           currentTag = 'CHAN';
           currentEventLabel = '';
