@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { MOCK_PEOPLE, MOCK_RELATIONSHIPS, MOCK_TREES } from './mockData';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord } from './services/archive';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary } from './types';
 import FamilyTree from './components/FamilyTree';
 import PersonProfile from './components/PersonProfile';
@@ -17,7 +17,8 @@ import {
   Home, 
   Database,
   User as UserIcon,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -48,6 +49,11 @@ const App: React.FC = () => {
   const [adminTreesLoading, setAdminTreesLoading] = useState(false);
   const [creatingTree, setCreatingTree] = useState(false);
   const [deletingTreeId, setDeletingTreeId] = useState<string | null>(null);
+  const [showNukeModal, setShowNukeModal] = useState(false);
+  const [nukeConfirmText, setNukeConfirmText] = useState('');
+  const [nukeInProgress, setNukeInProgress] = useState(false);
+  const [nukeError, setNukeError] = useState<string | null>(null);
+  const [nukeSuccess, setNukeSuccess] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -89,6 +95,10 @@ const App: React.FC = () => {
     (async () => {
       try {
         const dbTrees = await ensureTrees();
+        if (!dbTrees.length) {
+          hydrateLocal();
+          return;
+        }
         setTrees(dbTrees);
         const selected = dbTrees[0];
         setActiveTree(selected);
@@ -270,6 +280,43 @@ const App: React.FC = () => {
     },
     [supabaseActive, trees.length, currentUser, activeTree, fetchAdminTreeStats]
   );
+
+  const handleNukeConfirm = useCallback(async () => {
+    if (!supabaseActive) {
+      setNukeError('Link a Supabase project before issuing a reset.');
+      return;
+    }
+    if (nukeConfirmText !== 'NUKE') {
+      setNukeError('Type "NUKE" to confirm.');
+      return;
+    }
+    setNukeInProgress(true);
+    setNukeError(null);
+    try {
+      await nukeSupabaseDatabase('NUKE');
+      setShowNukeModal(false);
+      setNukeConfirmText('');
+      setNukeSuccess(true);
+      setTrees(MOCK_TREES);
+      setActiveTree(MOCK_TREES[0]);
+      setAllPeople(MOCK_PEOPLE);
+      setAllRelationships(MOCK_RELATIONSHIPS);
+      await fetchAdminTreeStats();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to reset database.';
+      setNukeError(message);
+      setNukeSuccess(false);
+    } finally {
+      setNukeInProgress(false);
+    }
+  }, [supabaseActive, nukeConfirmText, fetchAdminTreeStats]);
+
+  useEffect(() => {
+    if (!showNukeModal) {
+      setNukeConfirmText('');
+      setNukeError(null);
+    }
+  }, [showNukeModal]);
 
   const selectTree = (tree: FamilyTreeType) => {
     setActiveTree(tree);
@@ -503,9 +550,41 @@ const App: React.FC = () => {
                   ))}
                 </div>
                 {adminSection === 'database' && (
-                  <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 text-slate-600">
-                    <h3 className="text-2xl font-serif font-bold text-slate-900 mb-2">Database Controls</h3>
-                    <p className="text-sm">System-level database management tools will appear here (backups, dedupe jobs, etc.).</p>
+                  <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 text-slate-600 space-y-6">
+                    <div>
+                      <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Database Panel</p>
+                      <h3 className="text-2xl font-serif font-bold text-slate-900 mb-2">Reset & Maintenance</h3>
+                      <p className="text-sm text-slate-500 max-w-2xl">
+                        Wipe every person, relationship, media record, and audit trail stored in Supabase. This is intended for
+                        staging environments when you need to re-import large GEDCOM datasets from scratch. Production archives
+                        should never run this action during active research sessions.
+                      </p>
+                    </div>
+                    <div className="border border-rose-100 bg-rose-50/70 rounded-[28px] p-6 flex flex-col gap-4">
+                      <div className="flex items-center gap-3 text-rose-600">
+                        <AlertTriangle className="w-6 h-6" />
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-[0.3em]">Destructive Operation</p>
+                          <h4 className="text-lg font-serif font-bold text-slate-900">Nuke Supabase Database</h4>
+                        </div>
+                      </div>
+                      <p className="text-sm text-rose-700">
+                        This permanently removes all family trees, GEDCOM imports, media, notes, sources, audit logs, and places. A fresh
+                        seed tree will need to be created afterward. The action cannot be undone.
+                      </p>
+                      <div className="flex flex-wrap gap-4">
+                        <button
+                          onClick={() => setShowNukeModal(true)}
+                          className="px-6 py-3 rounded-2xl bg-rose-600 text-white text-xs font-black uppercase tracking-[0.3em] hover:bg-rose-700 transition-all disabled:opacity-60"
+                          disabled={!supabaseActive}
+                        >
+                          {supabaseActive ? 'Launch Nuke' : 'Link Supabase First'}
+                        </button>
+                        {nukeSuccess && (
+                          <span className="text-emerald-600 text-xs font-bold uppercase tracking-[0.3em]">Database Reset</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
                 {adminSection === 'trees' && (
@@ -543,6 +622,50 @@ const App: React.FC = () => {
           )}
         </div>
       </main>
+      {showNukeModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-[32px] border border-slate-200 shadow-2xl max-w-lg w-full p-8 space-y-6">
+            <div className="flex items-center gap-3 text-rose-600">
+              <AlertTriangle className="w-6 h-6" />
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.3em]">Confirm Database Reset</p>
+                <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">Type "NUKE" to proceed</h3>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              This action truncates every record in Supabase and cannot be undone. Only run this on staging projects when you
+              need a clean slate for GEDCOM ingestion tests. Production archives should take a backup first.
+            </p>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em]">Confirmation Text</label>
+              <input
+                value={nukeConfirmText}
+                onChange={(e) => setNukeConfirmText(e.target.value.toUpperCase())}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-slate-900/5 outline-none uppercase tracking-[0.3em]"
+                placeholder="NUKE"
+                disabled={nukeInProgress}
+              />
+            </div>
+            {nukeError && <p className="text-rose-600 text-xs font-bold">{nukeError}</p>}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setShowNukeModal(false)}
+                className="px-6 py-3 rounded-2xl border border-slate-200 text-slate-500 text-sm font-bold uppercase tracking-widest hover:bg-slate-100 transition-all"
+                disabled={nukeInProgress}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleNukeConfirm}
+                className="flex-1 px-6 py-3 rounded-2xl bg-rose-600 text-white text-sm font-black uppercase tracking-[0.3em] hover:bg-rose-700 transition-all disabled:opacity-60"
+                disabled={nukeInProgress}
+              >
+                {nukeInProgress ? 'Purging…' : 'Confirm Reset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={handleAdminLogin} />
     </div>

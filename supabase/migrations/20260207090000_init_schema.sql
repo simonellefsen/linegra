@@ -259,9 +259,9 @@ create table public.media_items (
 create table public.media_person_links (
   media_id uuid references public.media_items(id) on delete cascade,
   person_id uuid references public.persons(id) on delete cascade,
-  event_label text,
+  event_label text not null default '',
   created_at timestamptz not null default now(),
-  primary key (media_id, person_id, coalesce(event_label,''))
+  primary key (media_id, person_id, event_label)
 );
 
 create table public.media_event_links (

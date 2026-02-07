@@ -165,6 +165,16 @@ export const deleteFamilyTreeRecord = async (treeId: string, actor?: ImportActor
   if (error) throw new Error(error.message);
 };
 
+export const nukeSupabaseDatabase = async (confirmText = 'NUKE') => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured.');
+  }
+  const { error } = await supabase.rpc('admin_nuke_database', {
+    confirm_text: confirmText
+  });
+  if (error) throw new Error(error.message);
+};
+
 export const loadArchiveData = async (treeId: string, search?: string) => {
   if (!isSupabaseConfigured()) {
     return {
