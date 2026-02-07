@@ -43,6 +43,7 @@ const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
   CONF: 'Confirmation',
   BURI: 'Burial',
   CREM: 'Cremation',
+  PROB: 'Probate',
   EVEN: 'Other'
 };
 
@@ -52,6 +53,7 @@ const GEDCOM_EVENT_LABELS: Record<string, string> = {
   BURI: 'Burial',
   CREM: 'Cremation',
   CHR: 'Christening',
+  PROB: 'Probate',
   RESI: 'Residence',
   OCCU: 'Occupation',
   IMMI: 'Immigration',
@@ -837,11 +839,14 @@ const ImportExport: React.FC<ImportExportProps> = ({
               </button>
               <button
                 onClick={async () => {
+                  if (!pendingImport) return;
+                  const importPayload = pendingImport;
                   const requiresProgress = importStats.people >= LARGE_IMPORT_THRESHOLD || importStats.relationships >= LARGE_IMPORT_THRESHOLD;
                   if (requiresProgress) beginProgress();
                   setIsImporting(true);
+                  setPendingImport(null);
                   try {
-                    await onImport(pendingImport.data);
+                    await onImport(importPayload.data);
                     setStatus('success');
                   } catch (err) {
                     console.error('Confirm import failed', err);
@@ -849,7 +854,6 @@ const ImportExport: React.FC<ImportExportProps> = ({
                   } finally {
                     if (requiresProgress) finishProgress();
                     setIsImporting(false);
-                    setPendingImport(null);
                   }
                 }}
                 className="flex-1 px-6 py-3 rounded-2xl bg-slate-900 text-white text-sm font-black uppercase tracking-[0.2em] hover:bg-slate-800 transition-all"
