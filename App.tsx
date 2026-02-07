@@ -40,7 +40,7 @@ const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
+  const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
 
   useEffect(() => {
     const hydrateLocal = () => {
@@ -136,6 +136,7 @@ const App: React.FC = () => {
 
   const handlePersonSelect = (person: Person | null) => {
     setSelectedPerson(person);
+    setPendingPersonId(null);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       if (person) {
@@ -148,19 +149,22 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (deepLinkHandled) return;
-    if (treePeople.length === 0) return;
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     const personId = url.searchParams.get('person');
     if (personId) {
-      const found = treePeople.find((p) => p.id === personId);
-      if (found) {
-        setSelectedPerson(found);
-      }
+      setPendingPersonId(personId);
     }
-    setDeepLinkHandled(true);
-  }, [treePeople, deepLinkHandled]);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingPersonId) return;
+    const match = treePeople.find((p) => p.id === pendingPersonId);
+    if (match) {
+      setSelectedPerson(match);
+      setPendingPersonId(null);
+    }
+  }, [pendingPersonId, treePeople]);
 
   const selectTree = (tree: FamilyTreeType) => {
     setActiveTree(tree);
