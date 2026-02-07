@@ -401,22 +401,27 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
             <div className="relative">
               <button
                 onClick={async () => {
-                  const shareData = {
-                    title: `${person.firstName} ${person.lastName} · Linegra`,
-                    text: `Linegra profile for ${person.firstName} ${person.lastName}`,
-                    url: typeof window !== 'undefined' ? window.location.href : ''
-                  };
-                  try {
-                    if (navigator.share) {
-                      await navigator.share(shareData);
-                      setShareFeedback('Shared');
-                    } else if (shareData.url) {
-                      await navigator.clipboard?.writeText(shareData.url);
-                      setShareFeedback('Link copied');
-                    }
-                  } catch {
-                    if (shareData.url) {
-                      await navigator.clipboard?.writeText(shareData.url);
+                const currentUrl = typeof window !== 'undefined' ? new URL(window.location.href) : null;
+                if (currentUrl) {
+                  currentUrl.searchParams.set('person', person.id);
+                }
+                const shareUrl = currentUrl ? currentUrl.toString() : '';
+                const shareData = {
+                  title: `${person.firstName} ${person.lastName} · Linegra`,
+                  text: `Linegra profile for ${person.firstName} ${person.lastName}`,
+                  url: shareUrl
+                };
+                try {
+                  if (navigator.share) {
+                    await navigator.share(shareData);
+                    setShareFeedback('Shared');
+                  } else if (shareUrl) {
+                    await navigator.clipboard?.writeText(shareUrl);
+                    setShareFeedback('Link copied');
+                  }
+                } catch {
+                    if (shareUrl) {
+                      await navigator.clipboard?.writeText(shareUrl);
                       setShareFeedback('Link copied');
                     } else {
                       setShareFeedback('Unable to share');

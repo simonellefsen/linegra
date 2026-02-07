@@ -40,6 +40,7 @@ const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
 
   useEffect(() => {
     const hydrateLocal = () => {
@@ -132,6 +133,34 @@ const App: React.FC = () => {
     const visibleIds = new Set(filteredPeople.map(p => p.id));
     return treeRelationships.filter(rel => visibleIds.has(rel.personId) && visibleIds.has(rel.relatedId));
   }, [treeRelationships, filteredPeople]);
+
+  const handlePersonSelect = (person: Person | null) => {
+    setSelectedPerson(person);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (person) {
+        url.searchParams.set('person', person.id);
+      } else {
+        url.searchParams.delete('person');
+      }
+      window.history.replaceState({}, '', url);
+    }
+  };
+
+  useEffect(() => {
+    if (deepLinkHandled) return;
+    if (treePeople.length === 0) return;
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const personId = url.searchParams.get('person');
+    if (personId) {
+      const found = treePeople.find((p) => p.id === personId);
+      if (found) {
+        setSelectedPerson(found);
+      }
+    }
+    setDeepLinkHandled(true);
+  }, [treePeople, deepLinkHandled]);
 
   const selectTree = (tree: FamilyTreeType) => {
     setActiveTree(tree);
@@ -316,14 +345,14 @@ const App: React.FC = () => {
         <div className="flex-1 flex overflow-hidden relative">
           <div className="flex-1 p-10 overflow-y-auto no-scrollbar scroll-smooth">
             {activeTab === 'home' && (
-              <TreeLandingPage tree={activeTree} people={treePeople} onPersonSelect={setSelectedPerson} isAdmin={currentUser?.isAdmin || false} />
+              <TreeLandingPage tree={activeTree} people={treePeople} onPersonSelect={handlePersonSelect} isAdmin={currentUser?.isAdmin || false} />
             )}
             {activeTab === 'tree' && (
               <div className="space-y-10 animate-in fade-in duration-700">
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="text-3xl font-serif font-bold text-slate-900">Kinship Map</h2>
                 </div>
-                <FamilyTree people={filteredPeople} relationships={filteredRelationships} onPersonSelect={setSelectedPerson} layout={layoutType} />
+                <FamilyTree people={filteredPeople} relationships={filteredRelationships} onPersonSelect={handlePersonSelect} layout={layoutType} />
               </div>
             )}
             {activeTab === 'records' && (
@@ -339,7 +368,7 @@ const App: React.FC = () => {
               relationships={treeRelationships}
               currentUser={currentUser}
               allPeople={treePeople}
-              onClose={() => setSelectedPerson(null)} 
+              onClose={() => handlePersonSelect(null)} 
             />
           )}
         </div>
