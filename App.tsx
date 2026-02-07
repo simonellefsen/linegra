@@ -147,8 +147,10 @@ const App: React.FC = () => {
     }
   };
 
+  const isRealTreeId = supabaseActive && activeTree?.id && activeTree.id.includes('-');
+
   useEffect(() => {
-    if (!supabaseActive || !activeTree?.id) return;
+    if (!isRealTreeId) return;
     let cancelled = false;
     if (!searchQuery.trim()) {
       setIsSearching(false);
@@ -177,7 +179,7 @@ const App: React.FC = () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [supabaseActive, activeTree?.id, searchQuery]);
+  }, [isRealTreeId, activeTree?.id, searchQuery]);
 
   const handleImport = async (data: { people: Person[]; relationships: Relationship[] }) => {
     if (isSupabaseConfigured()) {

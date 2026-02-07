@@ -396,7 +396,27 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
       {/* Header with Photo & Name */}
       <div className="z-30 shrink-0">
         <div className="relative bg-slate-900 pt-12 pb-6 px-8 text-white shadow-lg">
-          <button onClick={onClose} className="absolute top-4 right-6 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white z-20"><X className="w-5 h-5" /></button>
+          <div className="absolute top-4 right-6 flex items-center gap-3 z-20">
+            <button
+              onClick={() => {
+                const shareData = {
+                  title: `${person.firstName} ${person.lastName} · Linegra`,
+                  text: `Linegra profile for ${person.firstName} ${person.lastName}`,
+                  url: typeof window !== 'undefined' ? window.location.href : ''
+                };
+                if (navigator.share) {
+                  navigator.share(shareData).catch(() => {});
+                } else {
+                  navigator.clipboard?.writeText(shareData.url);
+                }
+              }}
+              className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white"
+              aria-label="Share profile"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
+            <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white"><X className="w-5 h-5" /></button>
+          </div>
           <div className="relative z-10 flex items-center gap-6">
             <div className="w-24 h-24 rounded-3xl overflow-hidden ring-4 ring-white shadow-2xl relative group bg-slate-800">
               <img src={person.photoUrl || `https://ui-avatars.com/api/?name=${person.firstName}+${person.lastName}&background=0f172a&color=fff&size=128`} className="w-full h-full object-cover" />

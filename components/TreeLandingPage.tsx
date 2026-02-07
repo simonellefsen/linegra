@@ -101,13 +101,17 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
           </div>
           <div className="space-y-4 flex-1">
             {anniversaries.length > 0 ? anniversaries.map(p => (
-              <div key={p.id} className="p-4 bg-rose-50 rounded-2xl border border-rose-100/50">
+              <button
+                key={p.id}
+                onClick={() => onPersonSelect(p)}
+                className="w-full text-left p-4 bg-rose-50 rounded-2xl border border-rose-100/50 hover:border-rose-200 transition-all cursor-pointer"
+              >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] font-bold text-rose-600 uppercase">Birthday</span>
                   <span className="text-[10px] font-bold text-rose-400 uppercase">{new Date(p.birthDate!).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                 </div>
-                <p className="font-bold text-slate-900">{p.firstName} {p.lastName}</p>
-              </div>
+                <p className="font-bold text-slate-900 group-hover:text-rose-700 transition-colors">{p.firstName} {p.lastName}</p>
+              </button>
             )) : (
               <p className="text-slate-400 text-sm italic py-4">No events found for this month.</p>
             )}
