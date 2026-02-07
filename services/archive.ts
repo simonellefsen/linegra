@@ -3,6 +3,18 @@ import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, 
 import { MOCK_TREES, MOCK_PEOPLE, MOCK_RELATIONSHIPS } from '../mockData';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const normalizeActor = (actor?: ImportActor | null) => {
+  if (!actor) {
+    return { id: null, name: 'System' };
+  }
+  const safeId = actor.id && UUID_REGEX.test(actor.id) ? actor.id : null;
+  return {
+    id: safeId,
+    name: actor.name ?? 'System'
+  };
+};
 
 const normalizePlace = (place?: string | { fullText?: string }) => {
   if (!place) return null;
@@ -100,12 +112,13 @@ export const createFamilyTree = async (
   const metadata: Record<string, string> = {};
   if (payload.ownerName) metadata.owner_name = payload.ownerName;
   if (payload.ownerEmail) metadata.owner_email = payload.ownerEmail;
+  const normalizedActor = normalizeActor(actor);
   const { data, error } = await supabase.rpc('admin_create_tree', {
     payload_name: payload.name,
     payload_description: payload.description || null,
     payload_metadata: metadata,
-    payload_actor_id: actor?.id ?? null,
-    payload_actor_name: actor?.name ?? 'System'
+    payload_actor_id: normalizedActor.id,
+    payload_actor_name: normalizedActor.name
   });
   if (error) throw new Error(error.message);
   return mapDbTree(data);
@@ -132,10 +145,11 @@ export const deleteFamilyTreeRecord = async (treeId: string, actor?: ImportActor
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase is not configured. Cannot delete tree.');
   }
+  const normalizedActor = normalizeActor(actor);
   const { error } = await supabase.rpc('admin_delete_tree', {
     target_tree_id: treeId,
-    payload_actor_id: actor?.id ?? null,
-    payload_actor_name: actor?.name ?? 'System'
+    payload_actor_id: normalizedActor.id,
+    payload_actor_name: normalizedActor.name
   });
   if (error) throw new Error(error.message);
 };
@@ -243,8 +257,9 @@ const recordAuditLogs = async (entries: Array<{ tree_id: string; actor_id: strin
 
 export const importGedcomToSupabase = async (treeId: string, data: { people: Person[]; relationships: Relationship[] }, actor?: ImportActor | null) => {
   if (!isSupabaseConfigured()) return;
-  const userId = actor?.id ?? null;
-  const actorName = actor?.name ?? 'System';
+  const normalizedActor = normalizeActor(actor);
+  const userId = normalizedActor.id;
+  const actorName = normalizedActor.name;
   const personIdMap = new Map<string, string>();
   const personRows = data.people.map((person) => {
     const row = toDbPerson(person, treeId, userId);
