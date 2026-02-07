@@ -22,6 +22,8 @@ export interface Source {
   actualText?: string;
   notes?: string;
   event?: string;
+  abbreviation?: string;
+  callNumber?: string;
 }
 
 export type MediaCategory = 'Portrait' | 'Family' | 'Location' | 'Document' | 'Event' | 'Other';
@@ -226,5 +228,8 @@ export interface Citation {
   noteId?: string;
   label?: string;
   page?: string;
+  dataDate?: string;
+  dataText?: string;
+  quality?: string;
   extra?: Record<string, unknown>;
 }

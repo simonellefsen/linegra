@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent } from '../types';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation } from '../types';
 import { MOCK_TREES, MOCK_PEOPLE, MOCK_RELATIONSHIPS } from '../mockData';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
@@ -47,7 +47,13 @@ const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
   };
 };
 
-const mapDbPerson = (row: any, notesByPerson: Record<string, Note[]>, sourcesByPerson: Record<string, Source[]>, eventsByPerson: Record<string, PersonEvent[]>) : Person => {
+const mapDbPerson = (
+  row: any,
+  notesByPerson: Record<string, Note[]>,
+  sourcesByPerson: Record<string, Source[]>,
+  eventsByPerson: Record<string, PersonEvent[]>,
+  citationsByPerson: Record<string, Citation[]>
+) : Person => {
   return {
     id: row.id,
     treeId: row.tree_id,
@@ -70,6 +76,7 @@ const mapDbPerson = (row: any, notesByPerson: Record<string, Note[]>, sourcesByP
     addedByUserId: row.created_by || undefined,
     notes: notesByPerson[row.id] || [],
     sources: sourcesByPerson[row.id] || [],
+    citations: citationsByPerson[row.id] || [],
     events: eventsByPerson[row.id] || [],
     mediaIds: []
   } as Person;
@@ -171,6 +178,7 @@ export const loadArchiveData = async (treeId: string, search?: string) => {
   const notesByPerson: Record<string, Note[]> = {};
   const sourcesByPerson: Record<string, Source[]> = {};
   const eventsByPerson: Record<string, PersonEvent[]> = {};
+  const citationsByPerson: Record<string, Citation[]> = {};
 
   if (personIds.length > 0) {
     const { data: noteRows } = await supabase.from('notes').select('*').in('person_id', personIds);
@@ -202,12 +210,25 @@ export const loadArchiveData = async (treeId: string, search?: string) => {
     const sourceMap = new Map<string, any>();
     sourceRows?.forEach((row) => sourceMap.set(row.id, row));
     const { data: citationRows } = await supabase.from('citations').select('*').in('person_id', personIds);
-    citationRows?.forEach((citation) => {
+    citationRows?.forEach((citation: any) => {
       const src = sourceMap.get(citation.source_id);
       if (!src) return;
       const extra = (citation as any)?.extra || {};
       const inlineNotes = extra.inline_notes as string | undefined;
-      const combinedNotes = [inlineNotes, src.notes].filter(Boolean).join('\n\n') || undefined;
+      const citationEntry: Citation = {
+        id: citation.id,
+        sourceId: citation.source_id,
+        eventLabel: citation.event_label || undefined,
+        label: citation.label || undefined,
+        page: citation.page_text || src.page || undefined,
+        dataDate: citation.data_date || extra.data_date || undefined,
+        dataText: citation.data_text || extra.data_text || undefined,
+        quality: citation.quality || extra.quality || undefined,
+        extra
+      };
+      const citationList = citationsByPerson[citation.person_id] || (citationsByPerson[citation.person_id] = []);
+      citationList.push(citationEntry);
+      const combinedNotes = [inlineNotes, src.notes, citationEntry.dataText].filter(Boolean).join('\n\n') || undefined;
       const list = sourcesByPerson[citation.person_id] || (sourcesByPerson[citation.person_id] = []);
       list.push({
         id: `${src.id}:${citation.id}`,
@@ -220,6 +241,8 @@ export const loadArchiveData = async (treeId: string, search?: string) => {
         page: citation.page_text || src.page || undefined,
         reliability: src.reliability || undefined,
         actualText: src.actual_text || undefined,
+        abbreviation: src.abbreviation || undefined,
+        callNumber: src.call_number || undefined,
         notes: combinedNotes,
         event: citation.event_label || 'General'
       });
@@ -229,7 +252,7 @@ export const loadArchiveData = async (treeId: string, search?: string) => {
   const { data: relationshipRows, error: relError } = await supabase.from('relationships').select('*').eq('tree_id', treeId);
   if (relError) throw new Error(relError.message);
 
-  const people = personRows.map((row) => mapDbPerson(row, notesByPerson, sourcesByPerson, eventsByPerson));
+  const people = personRows.map((row) => mapDbPerson(row, notesByPerson, sourcesByPerson, eventsByPerson, citationsByPerson));
   const relationships = (relationshipRows || []).map((row) => ({
     id: row.id,
     treeId: row.tree_id,
@@ -288,6 +311,7 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
   const sources: any[] = [];
   const citations: any[] = [];
   const sourceExternalToDbId = new Map<string, string>();
+  const sourceLocalToDbId = new Map<string, string>();
   const auditEntries: Array<{ tree_id: string; actor_id: string | null; actor_name: string; action: string; entity_type: string; entity_id: string; details?: Record<string, unknown> }> = [];
 
   if (personRows.length) {
@@ -368,19 +392,48 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
           page: basePage,
           reliability: source.reliability || null,
           actual_text: source.actualText || null,
-          notes: baseNotes
+          notes: baseNotes,
+          abbreviation: source.abbreviation || null,
+          call_number: source.callNumber || null
         });
       }
+      const localKey = source.id || source.externalId || externalKey;
+      if (localKey) {
+        sourceLocalToDbId.set(localKey, sourceId);
+      }
       const inlineNotes = source.event === 'General' ? null : (source.notes || null);
+      // legacy general association without citation metadata
+      if (!person.citations?.length) {
+        citations.push({
+          id: randomId(),
+          tree_id: treeId,
+          source_id: sourceId,
+          person_id: personId,
+          event_label: source.event || 'General',
+          label: source.title || source.event || 'Citation',
+          page_text: source.page || null,
+          extra: inlineNotes ? { inline_notes: inlineNotes } : {}
+        });
+      }
+    });
+
+    (person.citations || []).forEach((citation) => {
+      const lookupId =
+        sourceLocalToDbId.get(citation.sourceId) ||
+        sourceExternalToDbId.get(citation.sourceId);
+      if (!lookupId) return;
       citations.push({
         id: randomId(),
         tree_id: treeId,
-        source_id: sourceId,
+        source_id: lookupId,
         person_id: personId,
-        event_label: source.event || 'General',
-        label: source.title || source.event || 'Citation',
-        page_text: source.page || null,
-        extra: inlineNotes ? { inline_notes: inlineNotes } : {}
+        event_label: citation.eventLabel || null,
+        label: citation.label || null,
+        page_text: citation.page || null,
+        data_date: citation.dataDate || citation.extra?.data_date || null,
+        data_text: citation.dataText || citation.extra?.data_text || null,
+        quality: citation.quality || citation.extra?.quality || null,
+        extra: citation.extra || {}
       });
     });
   });

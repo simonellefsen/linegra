@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Info
 } from 'lucide-react';
-import { Person, Relationship, PersonEvent, Source } from '../types';
+import { Person, Relationship, PersonEvent, Source, Citation } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 interface ImportExportProps {
@@ -28,6 +28,7 @@ type ParsedPerson = Partial<Person> & {
   events?: PersonEvent[];
   sourceIds?: string[];
   inlineSources?: Source[];
+  citations?: Citation[];
 };
 
 const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
@@ -160,6 +161,10 @@ const ImportExport: React.FC<ImportExportProps> = ({
     let currentEventLabel = '';
     let currentEventSource: Source | null = null;
     let currentEventSourceLevel = 0;
+    let currentCitation: Citation | null = null;
+    let currentCitationLevel = 0;
+    let currentCitationDataLevel = 0;
+    let lastCitationTextTarget: Citation | null = null;
 
     lines.forEach((line) => {
       const match = line.match(lineRegex);
@@ -173,6 +178,11 @@ const ImportExport: React.FC<ImportExportProps> = ({
       if (currentEventSource && level <= currentEventSourceLevel) {
         currentEventSource = null;
         currentEventSourceLevel = 0;
+      }
+      if (currentCitation && level <= currentCitationLevel && tag !== 'CONT') {
+        currentCitation = null;
+        currentCitationDataLevel = 0;
+        lastCitationTextTarget = null;
       }
 
       if (level === 0) {
@@ -296,8 +306,32 @@ const ImportExport: React.FC<ImportExportProps> = ({
           appendNote(value, GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General');
         } else if (tag === 'NOTE' && currentEvent && level === 2) {
           currentEvent.description = `${currentEvent.description || ''}\nNote: ${value}`.trim();
-        } else if (tag === 'PAGE' && currentEventSource) {
-          currentEventSource.page = value;
+        } else if (tag === 'PAGE') {
+          if (currentEventSource) {
+            currentEventSource.page = value;
+          }
+          if (currentCitation) {
+            currentCitation.page = value;
+          }
+        } else if (tag === 'QUAY' && currentCitation) {
+          currentCitation.quality = value;
+          currentCitation.extra = { ...(currentCitation.extra || {}), quality: value };
+        } else if (tag === 'DATA' && currentCitation) {
+          currentCitationDataLevel = level;
+        } else if (tag === 'DATE' && currentCitation && currentCitationDataLevel && level > currentCitationDataLevel) {
+          currentCitation.dataDate = value;
+          currentCitation.extra = { ...(currentCitation.extra || {}), data_date: value };
+        } else if (tag === 'TEXT' && currentCitation) {
+          const existing = currentCitation.dataText || currentCitation.extra?.data_text || '';
+          const combined = existing ? `${existing}\n${value}` : value;
+          currentCitation.dataText = combined;
+          currentCitation.extra = { ...(currentCitation.extra || {}), data_text: combined };
+          lastCitationTextTarget = currentCitation;
+        } else if (tag === 'CONT' && lastCitationTextTarget) {
+          const existing = lastCitationTextTarget.dataText || lastCitationTextTarget.extra?.data_text || '';
+          const combined = existing ? `${existing}\n${value}` : value;
+          lastCitationTextTarget.dataText = combined;
+          lastCitationTextTarget.extra = { ...(lastCitationTextTarget.extra || {}), data_text: combined };
         } else if (tag === 'NOTE' && currentEventSource && level > currentEventSourceLevel) {
           currentEventSource.notes = `${currentEventSource.notes || ''}\n${value}`.trim();
         } else if (tag === 'SOUR' && level >= 2 && currentEventLabel) {
@@ -334,6 +368,21 @@ const ImportExport: React.FC<ImportExportProps> = ({
           personSources.push(sourceEntry);
           currentEventSource = sourceEntry;
           currentEventSourceLevel = level;
+          const citationList = p.citations || (p.citations = []);
+          const citationId = `cite-${currentId}-${citationList.length + 1}`;
+          const citation: Citation = {
+            id: citationId,
+            sourceId: sourceEntry.id || pointerId || nextId,
+            eventLabel,
+            label: sourceEntry.title || sourceEntry.abbreviation || eventLabel,
+            page: sourceEntry.page,
+            extra: {}
+          };
+          citationList.push(citation);
+          currentCitation = citation;
+          currentCitationLevel = level;
+          currentCitationDataLevel = 0;
+          lastCitationTextTarget = null;
         } else if (tag === 'NOTE' && currentEvent) {
           currentEvent.description = `${currentEvent.description || ''}\nNote: ${value}`.trim();
         } else if (tag === 'TYPE' && currentEvent) {
@@ -450,7 +499,8 @@ const ImportExport: React.FC<ImportExportProps> = ({
       return {
         ...p,
         events: (p.events || []).filter((evt) => !['Birth', 'Death'].includes(evt.type || '')),
-        sources: mergedSources
+        sources: mergedSources,
+        citations: p.citations || []
       } as Person;
     });
 

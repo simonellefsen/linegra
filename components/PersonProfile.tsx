@@ -198,6 +198,12 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     setEvents(events.map(e => e.id === id ? { ...e, [field]: value } : e));
   };
 
+  const handleNotesBadgeClick = (eventLabel: string) => {
+    if (getNoteCountForEvent(eventLabel) > 0) {
+      setActiveSection('notes');
+    }
+  };
+
   const handleAddEvent = () => {
     const newEvent: PersonEvent = {
       id: Math.random().toString(36).substr(2, 9),
@@ -217,7 +223,9 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
       citationDate: new Date().getFullYear().toString(),
       reliability: 1,
       actualText: '',
-      event: linkedEvent || 'General'
+      event: linkedEvent || 'General',
+      abbreviation: '',
+      callNumber: ''
     };
     setSources([newSource, ...sources]);
     setActiveSection('sources');
@@ -545,7 +553,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                            </button>
                            <button
                              aria-label="View birth notes"
-                             className="relative p-2 rounded-full text-emerald-500 hover:bg-emerald-50 transition-colors"
+                             onClick={() => handleNotesBadgeClick('Birth')}
+                             className={`relative p-2 rounded-full transition-colors ${getNoteCountForEvent('Birth') > 0 ? 'text-emerald-500 hover:bg-emerald-50' : 'text-slate-300 cursor-default'}`}
                            >
                              <FileText className="w-4 h-4" />
                              {getNoteCountForEvent('Birth') > 0 && (
@@ -591,7 +600,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                            </button>
                            <button
                              aria-label="View death notes"
-                             className="relative p-2 rounded-full text-emerald-500 hover:bg-emerald-50 transition-colors"
+                             onClick={() => handleNotesBadgeClick('Death')}
+                             className={`relative p-2 rounded-full transition-colors ${getNoteCountForEvent('Death') > 0 ? 'text-emerald-500 hover:bg-emerald-50' : 'text-slate-300 cursor-default'}`}
                            >
                              <FileText className="w-4 h-4" />
                              {getNoteCountForEvent('Death') > 0 && (
@@ -752,14 +762,19 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                         <button onClick={() => setSources(sources.filter(s => s.id !== source.id))} className="text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
                      </div>
                      <input 
-                       value={source.title} 
+                       value={source.title || source.abbreviation || source.externalId || ''}
                        onChange={(e) => setSources(sources.map(s => s.id === source.id ? { ...s, title: e.target.value } : s))}
                        className="w-full font-bold text-slate-900 border-none outline-none bg-transparent text-lg font-serif" 
                        placeholder="Record Title..."
                      />
+                     {source.abbreviation && (
+                       <p className="text-xs text-slate-500 italic">{source.abbreviation}</p>
+                     )}
                      <div className="grid grid-cols-2 gap-3">
                         <DetailEdit label="Citation Date" value={source.citationDate} onChange={(v) => setSources(sources.map(s => s.id === source.id ? { ...s, citationDate: v } : s))} />
                         <DetailEdit label="URL / Link" value={source.url} onChange={(v) => setSources(sources.map(s => s.id === source.id ? { ...s, url: v } : s))} />
+                        <DetailEdit label="Short Title / Abbreviation" value={source.abbreviation || ''} onChange={(v) => setSources(sources.map(s => s.id === source.id ? { ...s, abbreviation: v } : s))} />
+                        <DetailEdit label="Call Number" value={source.callNumber || ''} onChange={(v) => setSources(sources.map(s => s.id === source.id ? { ...s, callNumber: v } : s))} />
                      </div>
                      <textarea 
                        value={source.actualText || ''} 
