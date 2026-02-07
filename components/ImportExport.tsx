@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Upload, 
   Download, 
@@ -71,6 +71,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
   activeTreeName,
   showGedcomSection = true
 }) => {
+  const LARGE_IMPORT_THRESHOLD = 250;
   const [isImporting, setIsImporting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importStats, setImportStats] = useState({ people: 0, relationships: 0 });
@@ -79,9 +80,46 @@ const ImportExport: React.FC<ImportExportProps> = ({
   const [tempUrl, setTempUrl] = useState('');
   const [tempKey, setTempKey] = useState('');
   const [pendingImport, setPendingImport] = useState<{ data: { people: Person[]; relationships: Relationship[] }; fileName: string } | null>(null);
+  const [showProgressBanner, setShowProgressBanner] = useState(false);
+  const [progressValue, setProgressValue] = useState(0);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isLive = isSupabaseConfigured();
+
+  const clearProgressInterval = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  };
+
+  const beginProgress = () => {
+    setShowProgressBanner(true);
+    setProgressValue(5);
+    clearProgressInterval();
+    progressIntervalRef.current = setInterval(() => {
+      setProgressValue((prev) => {
+        const next = prev + Math.random() * 8;
+        return next >= 92 ? 92 : next;
+      });
+    }, 700);
+  };
+
+  const finishProgress = () => {
+    clearProgressInterval();
+    setProgressValue(100);
+    setTimeout(() => {
+      setShowProgressBanner(false);
+      setProgressValue(0);
+    }, 1200);
+  };
+
+  useEffect(() => {
+    return () => {
+      clearProgressInterval();
+    };
+  }, []);
 
   const handleSaveConfig = () => {
     if (tempUrl && tempKey) {
@@ -552,8 +590,26 @@ const ImportExport: React.FC<ImportExportProps> = ({
         className="hidden" 
       />
 
+      {showGedcomSection && showProgressBanner && (
+        <div className="p-5 rounded-[32px] border border-slate-200 bg-white shadow-sm flex flex-col gap-3 animate-in fade-in duration-500">
+          <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
+            <span>Importing {importStats.people} individuals / {importStats.relationships} links</span>
+            <span>{Math.round(progressValue)}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className="h-full bg-slate-900 transition-all duration-300"
+              style={{ width: `${Math.min(progressValue, 100)}%` }}
+            />
+          </div>
+          <p className="text-xs text-slate-500">
+            Large archives can take a moment while we sync every record into Supabase.
+          </p>
+        </div>
+      )}
+
       {showGedcomSection && (
-      <div className={`p-8 rounded-[40px] border-2 transition-all duration-500 ${isLive ? 'bg-white border-emerald-100 shadow-emerald-100/20' : 'bg-amber-50/50 border-amber-200 shadow-amber-200/20'} shadow-2xl`}>
+        <div className={`p-8 rounded-[40px] border-2 transition-all duration-500 ${isLive ? 'bg-white border-emerald-100 shadow-emerald-100/20' : 'bg-amber-50/50 border-amber-200 shadow-amber-200/20'} shadow-2xl`}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
           <div className="flex gap-5">
             <div className={`w-16 h-16 rounded-[22px] flex items-center justify-center shadow-lg transition-transform hover:scale-105 ${isLive ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}`}>
@@ -781,6 +837,8 @@ const ImportExport: React.FC<ImportExportProps> = ({
               </button>
               <button
                 onClick={async () => {
+                  const requiresProgress = importStats.people >= LARGE_IMPORT_THRESHOLD || importStats.relationships >= LARGE_IMPORT_THRESHOLD;
+                  if (requiresProgress) beginProgress();
                   setIsImporting(true);
                   try {
                     await onImport(pendingImport.data);
@@ -789,6 +847,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
                     console.error('Confirm import failed', err);
                     setStatus('error');
                   } finally {
+                    if (requiresProgress) finishProgress();
                     setIsImporting(false);
                     setPendingImport(null);
                   }
