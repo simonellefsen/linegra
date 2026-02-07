@@ -132,16 +132,28 @@ const ImportExport: React.FC<ImportExportProps> = ({
   const parseGEDCOM = (text: string) => {
     const lines = text.split(/\r?\n/);
     const parsedPeople: Record<string, ParsedPerson> = {};
-    const parsedFamilies: Record<string, { husb?: string; wife?: string; children: string[]; date?: string; place?: string; type?: string }> = {};
-    const parsedSources: Record<string, Source> = {};
+    const parsedFamilies: Record<string, { 
+      husb?: string; 
+      wife?: string; 
+      children: string[]; 
+      date?: string; 
+      place?: string; 
+      type?: string; 
+      marriageNotes?: string[];
+      generalNotes?: string[];
+      divorceDate?: string; 
+      divorceNotes?: string; 
+      updatedAt?: string 
+    }> = {};
+    const parsedSources: Record<string, Source & { abbreviation?: string; callNumber?: string }> = {};
     const warnings: string[] = [];
     
     let currentId = '';
     let currentType: 'INDI' | 'FAM' | 'SOUR' | null = null;
     let currentTag = '';
     let currentEvent: PersonEvent | null = null;
-    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI', 'FAMC']);
-    const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR']);
+    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', '_LIVING', '_PRIVATE', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI', 'FAMC', 'FAMS']);
+    const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR', 'DIV', 'CHAN', 'NOTE', 'DATE', 'PLAC', 'TYPE']);
     const lineRegex = /^(\d+)\s+(?:(@[^@]+@)\s+)?([A-Z0-9_]+)(?:\s+(.*))?$/i;
     let currentEventLabel = '';
     let currentEventSource: Source | null = null;
@@ -229,9 +241,29 @@ const ImportExport: React.FC<ImportExportProps> = ({
               parsedFamilies[famId].children.push(currentId);
             }
           }
+        } else if (tag === 'FAMS') {
+          const famId = value.replace(/@/g, '');
+          if (famId) {
+            if (!parsedFamilies[famId]) {
+              parsedFamilies[famId] = { children: [] };
+            }
+            const fam = parsedFamilies[famId];
+            if (p.gender === 'F') {
+              fam.wife = fam.wife || currentId;
+            } else if (p.gender === 'M') {
+              fam.husb = fam.husb || currentId;
+            } else {
+              if (!fam.husb) fam.husb = currentId;
+              else if (!fam.wife) fam.wife = currentId;
+            }
+          }
         } else if (tag === 'CHAN') {
           currentTag = 'CHAN';
           currentEventLabel = '';
+        } else if (tag === '_LIVING') {
+          p.isLiving = value.trim().toUpperCase() === 'Y';
+        } else if (tag === '_PRIVATE') {
+          p.isPrivate = value.trim().toUpperCase() === 'Y';
         } else if (GEDCOM_EVENT_MAP[tag]) {
           currentTag = tag;
           const events = p.events || (p.events = []);
@@ -336,10 +368,23 @@ const ImportExport: React.FC<ImportExportProps> = ({
         else if (tag === 'WIFE') f.wife = value.replace(/@/g, '');
         else if (tag === 'CHIL') f.children.push(value.replace(/@/g, ''));
         else if (tag === 'MARR') currentTag = 'MARR';
+        else if (tag === 'DIV') currentTag = 'DIV';
+        else if (tag === 'CHAN') currentTag = 'CHAN';
         else if (tag === 'DATE' && level === 2 && currentTag === 'MARR') f.date = value;
+        else if (tag === 'DATE' && level === 2 && currentTag === 'DIV') f.divorceDate = value;
+        else if (tag === 'DATE' && level === 2 && currentTag === 'CHAN') f.updatedAt = value;
         else if (tag === 'PLAC' && level === 2 && currentTag === 'MARR') f.place = value;
         else if (tag === 'TYPE' && level === 2 && currentTag === 'MARR') f.type = value;
-        else if (level === 1 && !supportedFamilyTags.has(tag)) {
+        else if (tag === 'NOTE' && level >= 2 && currentTag === 'MARR') {
+          if (!f.marriageNotes) f.marriageNotes = [];
+          f.marriageNotes.push(value);
+        }
+        else if (tag === 'NOTE' && level >= 2 && currentTag === 'DIV') {
+          f.divorceNotes = f.divorceNotes ? `${f.divorceNotes}\n${value}` : value;
+        } else if (tag === 'NOTE' && level === 1) {
+          if (!f.generalNotes) f.generalNotes = [];
+          f.generalNotes.push(value);
+        } else if (level === 1 && !supportedFamilyTags.has(tag)) {
           warnings.push(`Ignored family tag "${tag}" on record ${currentId}`);
         }
       } else if (currentType === 'SOUR' && parsedSources[currentId]) {
@@ -368,6 +413,12 @@ const ImportExport: React.FC<ImportExportProps> = ({
             break;
           case 'DATE':
             source.citationDate = value;
+            break;
+          case 'ABBR':
+            source.abbreviation = value;
+            break;
+          case 'CALN':
+            source.callNumber = value;
             break;
           default:
             warnings.push(`Ignored source tag "${tag}" on source ${currentId}`);
@@ -403,6 +454,14 @@ const ImportExport: React.FC<ImportExportProps> = ({
 
     Object.values(parsedFamilies).forEach((f, idx) => {
       if (f.husb && f.wife) {
+        const noteParts: string[] = [];
+        if (f.type) noteParts.push(f.type);
+        if (f.marriageNotes?.length) noteParts.push(...f.marriageNotes);
+        if (f.generalNotes?.length) noteParts.push(...f.generalNotes);
+        if (f.divorceDate) {
+          noteParts.push(`Divorce: ${f.divorceDate}`);
+          if (f.divorceNotes) noteParts.push(f.divorceNotes);
+        }
         finalRelationships.push({
           id: `rel-m-${idx}`,
           treeId: 'imported',
@@ -411,7 +470,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
           relatedId: f.wife,
           date: f.date,
           place: f.place,
-          notes: f.type,
+          notes: noteParts.length ? noteParts.join('\n') : undefined,
           confidence: 'Confirmed'
         });
       }

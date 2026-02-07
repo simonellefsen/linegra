@@ -158,6 +158,8 @@ export interface Person {
   id: string;
   treeId: string;
   addedByUserId?: string;
+  isLiving?: boolean;
+  isPrivate?: boolean;
   firstName: string;
   lastName: string;
   maidenName?: string;
