@@ -18,9 +18,14 @@ export default defineConfig(({ mode }) => {
       'SUPABASE_PUBLISHABLE_KEY',
       'SUPABASE_ANON_KEY'
     ];
-    const definedEnv = passthroughEnvKeys.reduce<Record<string, string>>((acc, key) => {
-      const value = runtimeEnv[key] ?? runtimeEnv[`VITE_${key}`] ?? '';
+    const passthroughValues = passthroughEnvKeys.reduce<Record<string, string>>((acc, key) => {
+      acc[key] = runtimeEnv[key] ?? runtimeEnv[`VITE_${key}`] ?? '';
+      return acc;
+    }, {});
+
+    const definedEnv = Object.entries(passthroughValues).reduce<Record<string, string>>((acc, [key, value]) => {
       acc[`process.env.${key}`] = JSON.stringify(value);
+      acc[`import.meta.env.${key}`] = JSON.stringify(value);
       return acc;
     }, {});
     return {
