@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { FamilyLayoutState, Person, Relationship, RelationshipConfidence } from '../../types';
 import { CONFIDENCE_LEVELS, PARENT_LINK_TYPES } from './constants';
+import { getAvatarForPerson } from '../../lib/avatar';
 
 interface FamilyTabProps {
   parents: Array<{ person: Person; rel: Relationship }>;
@@ -57,7 +58,7 @@ const RelationCard: React.FC<{
 }> = ({ item, label, metadata, confidence, onConfidenceChange, onNavigate, canEdit = true }) => {
   const style = getConfidenceStyle(confidence);
   const StatusIcon = style.icon;
-  const initials = `${item.person.firstName?.[0] ?? ''}${item.person.lastName?.[0] ?? ''}`.toUpperCase() || '??';
+  const avatarSrc = getAvatarForPerson(item.person);
 
   return (
     <button
@@ -67,12 +68,8 @@ const RelationCard: React.FC<{
     >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center font-black tracking-widest">
-            {item.person.photoUrl ? (
-              <img src={item.person.photoUrl} className="w-full h-full object-cover rounded-2xl" />
-            ) : (
-              initials
-            )}
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden">
+            <img src={avatarSrc} className="w-full h-full object-cover rounded-2xl" />
           </div>
           <div>
             <p className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">

@@ -24,6 +24,7 @@ import SourcesTab from './person-profile/SourcesTab';
 import MediaTab from './person-profile/MediaTab';
 import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
+import { getAvatarForPerson } from '../lib/avatar';
 
 interface PersonProfileProps {
   person: Person;
@@ -396,7 +397,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
           </div>
           <div className="relative z-10 flex items-center gap-6">
             <div className="w-24 h-24 rounded-3xl overflow-hidden ring-4 ring-white shadow-2xl relative group bg-slate-800">
-              <img src={person.photoUrl || `https://ui-avatars.com/api/?name=${person.firstName}+${person.lastName}&background=0f172a&color=fff&size=128`} className="w-full h-full object-cover" />
+              <img src={getAvatarForPerson(person)} className="w-full h-full object-cover" />
             </div>
             <div>
               <h3 className="text-3xl font-serif font-bold tracking-tight leading-tight">

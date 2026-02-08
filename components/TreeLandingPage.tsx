@@ -9,6 +9,7 @@ import {
   TrendingUp,
   Image as ImageIcon
 } from 'lucide-react';
+import { getAvatarForPerson } from '../lib/avatar';
 
 interface TreeLandingPageProps {
   tree: FamilyTree;
@@ -80,7 +81,7 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
                 className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer group"
               >
                 <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 shrink-0">
-                  <img src={p.photoUrl || `https://ui-avatars.com/api/?name=${p.firstName}`} className="w-full h-full object-cover" />
+                  <img src={getAvatarForPerson(p)} className="w-full h-full object-cover" />
                 </div>
                 <div className="min-w-0">
                   <p className="font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">{p.firstName} {p.lastName}</p>
