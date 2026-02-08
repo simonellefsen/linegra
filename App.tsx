@@ -10,6 +10,7 @@ import AuthModal from './components/AuthModal';
 import ImportExport from './components/ImportExport';
 import TreeLandingPage from './components/TreeLandingPage';
 import AdminTreesPanel from './components/AdminTreesPanel';
+import { getAvatarForPerson } from './lib/avatar';
 import { 
   GitBranch, 
   Search, 
@@ -20,7 +21,8 @@ import {
   Loader2,
   AlertTriangle,
   Menu,
-  X
+  X,
+  SlidersHorizontal
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -69,6 +71,13 @@ const App: React.FC = () => {
   const [treeViewReady, setTreeViewReady] = useState(false);
   const [ancestorDepth, setAncestorDepth] = useState(DEFAULT_ANCESTOR_DEPTH);
   const [descendantDepth, setDescendantDepth] = useState(DEFAULT_DESCENDANT_DEPTH);
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [searchModalBaseResults, setSearchModalBaseResults] = useState<Person[]>([]);
+  const [searchModalResults, setSearchModalResults] = useState<Person[]>([]);
+  const [searchFilters, setSearchFilters] = useState<{ livingOnly: boolean; missingData: boolean }>({
+    livingOnly: false,
+    missingData: false
+  });
   const activeTreeId = activeTree?.id ?? null;
 
   const loadTreeArchive = useCallback(
@@ -153,6 +162,12 @@ useEffect(() => {
     setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
     setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
   }, [activeTreeId]);
+
+  useEffect(() => {
+    if (searchModalBaseResults.length) {
+      setSearchModalResults(applySearchFilters(searchModalBaseResults, searchFilters));
+    }
+  }, [searchModalBaseResults, searchFilters, applySearchFilters]);
 
   useEffect(() => {
     if (!supabaseActive) {
@@ -315,6 +330,38 @@ useEffect(() => {
   }, [trees, allPeople, allRelationships]);
 
   const adminTreeData = adminTrees.length ? adminTrees : localTreeSummaries;
+
+  const executeSearch = useCallback(() => {
+    const trimmed = searchQuery.trim().toLowerCase();
+    if (!trimmed) {
+      setSearchModalBaseResults([]);
+      setSearchModalResults([]);
+      setSearchModalOpen(false);
+      return;
+    }
+    const terms = trimmed.split(/\s+/).filter(Boolean);
+    const results = treePeople.filter((person) => {
+      const haystack = [
+        person.firstName,
+        person.lastName,
+        person.maidenName,
+        person.birthDate,
+        person.deathDate,
+        typeof person.birthPlace === 'string' ? person.birthPlace : (person.birthPlace as any)?.fullText,
+        typeof person.deathPlace === 'string' ? person.deathPlace : (person.deathPlace as any)?.fullText,
+        person.bio,
+        ...(person.alternateNames?.map((alt) => `${alt.firstName ?? ''} ${alt.lastName ?? ''}`) ?? [])
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
+    setSearchModalBaseResults(results);
+    setSearchFilters({ livingOnly: false, missingData: false });
+    setSearchModalResults(applySearchFilters(results, { livingOnly: false, missingData: false }));
+    setSearchModalOpen(true);
+  }, [searchQuery, treePeople, applySearchFilters]);
 
   const handlePersonSelect = useCallback(
     (person: Person | null) => {
@@ -647,6 +694,12 @@ useEffect(() => {
                 className="w-full pl-12 pr-6 py-3.5 bg-slate-100/70 border-transparent rounded-[20px] outline-none text-[13px] font-medium transition-all focus:bg-white focus:ring-4 focus:ring-slate-900/5"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    executeSearch();
+                  }
+                }}
               />
             </div>
           </div>
@@ -976,6 +1029,73 @@ useEffect(() => {
           )}
         </div>
       </main>
+      {searchModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="w-full max-w-3xl bg-white rounded-[32px] shadow-2xl border border-slate-200 max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Search Results</p>
+                <h3 className="text-2xl font-serif font-bold text-slate-900">{searchModalResults.length} matches</h3>
+                <p className="text-xs text-slate-500">Query: “{searchQuery.trim()}”</p>
+              </div>
+              <button
+                onClick={() => setSearchModalOpen(false)}
+                className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-8 py-4 border-b border-slate-100 flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+              <SlidersHorizontal className="w-4 h-4" />
+              <button
+                onClick={() => setSearchFilters((prev) => ({ ...prev, livingOnly: !prev.livingOnly }))}
+                className={`px-4 py-2 rounded-2xl border ${searchFilters.livingOnly ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200 text-slate-600'}`}
+              >
+                Living Only
+              </button>
+              <button
+                onClick={() => setSearchFilters((prev) => ({ ...prev, missingData: !prev.missingData }))}
+                className={`px-4 py-2 rounded-2xl border ${searchFilters.missingData ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200 text-slate-600'}`}
+              >
+                Needs Research
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-8 py-6">
+              {searchModalResults.length ? (
+                <div className="space-y-4">
+                  {searchModalResults.map((person) => (
+                    <button
+                      key={person.id}
+                      onClick={() => {
+                        handlePersonSelect(person);
+                        setSearchModalOpen(false);
+                      }}
+                      className="w-full text-left p-4 rounded-2xl border border-slate-200 hover:border-slate-400 transition-all flex items-center gap-4"
+                    >
+                      <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-100 shrink-0">
+                        <img src={getAvatarForPerson(person)} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-900 truncate">
+                          {person.firstName} {person.lastName}
+                        </p>
+                        <p className="text-[11px] text-slate-500 uppercase tracking-[0.3em] truncate">
+                          {person.birthDate || 'Unknown'} • {person.deathDate || 'Living'}
+                        </p>
+                      </div>
+                      <div className="text-right text-[10px] uppercase tracking-[0.3em] text-slate-400">
+                        {person.birthPlace && typeof person.birthPlace === 'string' ? person.birthPlace : ''}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-slate-400 text-sm py-20">No matches yet. Type a query and press Enter.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {showNukeModal && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
           <div className="bg-white rounded-[32px] border border-slate-200 shadow-2xl max-w-lg w-full p-8 space-y-6">
