@@ -42,6 +42,11 @@ Linegra is a modern, high-performance web application designed to replace legacy
 ### 3.5. Advanced Interoperability (ImportExport.tsx)
 - **Enhanced GEDCOM Support**: Robust ingestion of standard `.ged` files (v5.5.1) including INDI, FAM, MARR, and CHIL tags to automatically reconstruct complex family structures and vital records.
 
+### 3.6. Access Control & Editing Permissions
+- **Read-first policy**: Anonymous and logged-out visitors may browse archives, but all destructive actions (unlinking or reordering family relationships, editing confidence, creating/deleting trees, GEDCOM import/export, Supabase “nuke”) require an authenticated user with the appropriate administrator role.
+- **UI gating**: When `currentUser.isAdmin` is false, editing affordances must visually degrade (buttons hidden/disabled, drag handles inert) so accidental changes cannot occur. The Family tab, for example, only enables drag-and-drop or unlink buttons when the viewer is authorized.
+- **Spec requirement**: Any new feature that mutates archival data must check permissions server-side (via RLS/RPC) and client-side before presenting controls.
+
 ## 4. Visual Identity
 - **Color Palette**: Deep Slate (#0f172a), crisp whites, and accent Blue-500 for genetic and identity data. 
 - **Confidence Coding**: 

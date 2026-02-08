@@ -109,6 +109,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
   }, [person.citations]);
 
   const canAccessDNA = !!currentUser?.isAdmin;
+  const canEditFamily = !!currentUser?.isAdmin;
 
   const parents = useMemo(() => {
     return relationships
@@ -483,6 +484,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
             onNavigateToPerson={onNavigateToPerson}
             familyLayout={person.metadata?.familyLayout as FamilyLayoutState | undefined}
             onPersistFamilyLayout={onPersistFamilyLayout}
+            canEdit={canEditFamily}
           />
         )}
 

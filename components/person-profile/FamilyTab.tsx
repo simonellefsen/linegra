@@ -22,6 +22,7 @@ interface FamilyTabProps {
   onNavigateToPerson?: (person: Person) => void;
   familyLayout?: FamilyLayoutState;
   onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
+  canEdit: boolean;
 }
 
 const formatYear = (input?: string) => {
@@ -52,7 +53,8 @@ const RelationCard: React.FC<{
   confidence: RelationshipConfidence;
   onConfidenceChange: (relId: string, confidence: RelationshipConfidence) => void;
   onNavigate?: (person: Person) => void;
-}> = ({ item, label, metadata, confidence, onConfidenceChange, onNavigate }) => {
+  canEdit?: boolean;
+}> = ({ item, label, metadata, confidence, onConfidenceChange, onNavigate, canEdit = true }) => {
   const style = getConfidenceStyle(confidence);
   const StatusIcon = style.icon;
   const initials = `${item.person.firstName?.[0] ?? ''}${item.person.lastName?.[0] ?? ''}`.toUpperCase() || '??';
@@ -81,14 +83,19 @@ const RelationCard: React.FC<{
           </div>
         </div>
         <div
-          className={`flex items-center gap-2 px-3 py-1 rounded-2xl border ${style.bg} ${style.border}`}
+          className={`flex items-center gap-2 px-3 py-1 rounded-2xl border ${style.bg} ${style.border} ${
+            canEdit ? '' : 'opacity-60'
+          }`}
           onClick={(e) => e.stopPropagation()}
         >
           <StatusIcon className={`w-3.5 h-3.5 ${style.text}`} />
           <select
             value={confidence}
             onChange={(event) => onConfidenceChange(item.rel.id, event.target.value as RelationshipConfidence)}
-            className={`bg-transparent border-none text-[9px] font-black uppercase tracking-widest ${style.text} outline-none cursor-pointer`}
+            className={`bg-transparent border-none text-[9px] font-black uppercase tracking-widest ${style.text} outline-none ${
+              canEdit ? 'cursor-pointer' : 'cursor-not-allowed'
+            }`}
+            disabled={!canEdit}
           >
             {CONFIDENCE_LEVELS.map((level) => (
               <option key={level} value={level}>
@@ -113,29 +120,96 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   onNavigateToPerson,
   familyLayout,
   onPersistFamilyLayout,
+  canEdit,
 }) => {
+  const createEmptyLayout = () => ({
+    assignments: {},
+    manualOrders: {},
+    removedSpouseIds: [],
+    removedChildIds: [],
+    removedParentIds: [],
+  });
+
+  const initialParentSet = useMemo(
+    () => new Set<string>(((familyLayout?.removedParentIds ?? []) as string[]) || []),
+    [familyLayout]
+  );
+  const [removedParentIds, setRemovedParentIds] = useState<Set<string>>(initialParentSet);
+  const latestLayoutRef = useRef<FamilyLayoutState>(familyLayout ?? createEmptyLayout());
+
+  useEffect(() => {
+    setRemovedParentIds(new Set(((familyLayout?.removedParentIds ?? []) as string[]) || []));
+    latestLayoutRef.current = familyLayout ?? createEmptyLayout();
+  }, [familyLayout]);
+
+  const sendLayoutWithParents = useCallback(
+    (layout: FamilyLayoutState, parentSet?: Set<string>) => {
+      if (!canEdit || !onPersistFamilyLayout) return;
+      const parentArray = Array.from<string>(parentSet ?? removedParentIds);
+      const extended: FamilyLayoutState = {
+        ...layout,
+        removedParentIds: parentArray,
+      };
+      latestLayoutRef.current = extended;
+      onPersistFamilyLayout(person.id, extended);
+    },
+    [canEdit, removedParentIds, onPersistFamilyLayout, person.id]
+  );
+
+  const handlePersistLayout = useCallback(
+    (_personId: string, layout: FamilyLayoutState) => {
+      if (!canEdit) return;
+      sendLayoutWithParents(layout);
+    },
+    [canEdit, sendLayoutWithParents]
+  );
+
+  const handleUnlinkParent = (relId: string) => {
+    if (!canEdit) return;
+    setRemovedParentIds((prev) => {
+      if (prev.has(relId)) return prev;
+      const next = new Set(prev);
+      next.add(relId);
+      const baseLayout = latestLayoutRef.current ?? createEmptyLayout();
+      sendLayoutWithParents(baseLayout, next);
+      return next;
+    });
+  };
+
+  const visibleParents = parents.filter((item) => !removedParentIds.has(item.rel.id));
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">Kinship Map & Confidence</p>
       <div className="space-y-8">
         <div className="space-y-4">
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Parental Connections</p>
-          {parents.map((item) => {
+          {visibleParents.map((item) => {
             const meta = item.rel.notes || formatYear(item.rel.date) ? `Linked ${formatYear(item.rel.date) || ''}`.trim() : null;
             const confidence = relConfidences[item.rel.id] || 'Unknown';
             return (
-              <RelationCard
-                key={item.rel.id}
-                item={item}
-                label="Ancestral Link"
-                metadata={meta}
+              <div key={item.rel.id} className="flex items-center justify-between gap-3">
+                <RelationCard
+                  item={item}
+                  label="Ancestral Link"
+                  metadata={meta}
                 confidence={confidence}
                 onConfidenceChange={onUpdateConfidence}
                 onNavigate={onNavigateToPerson}
+                canEdit={canEdit}
               />
+                {canEdit && (
+                  <button
+                    className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
+                    onClick={() => handleUnlinkParent(item.rel.id)}
+                    aria-label="Unlink parent"
+                  >
+                    <UnlinkIcon className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             );
           })}
-          {parents.length === 0 && <p className="text-xs text-slate-400 italic p-4">No parental records found.</p>}
+          {visibleParents.length === 0 && <p className="text-xs text-slate-400 italic p-4">No parental records found.</p>}
         </div>
         <FamilyGroups
           personId={person.id}
@@ -144,9 +218,10 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
           relationships={relationships}
           initialLayout={familyLayout}
           onNavigate={onNavigateToPerson}
-          onPersist={onPersistFamilyLayout}
+          onPersist={handlePersistLayout}
           relConfidences={relConfidences}
           onUpdateConfidence={onUpdateConfidence}
+          canEdit={canEdit}
         />
       </div>
     </div>
@@ -165,6 +240,7 @@ interface FamilyGroupProps {
   onPersist?: (personId: string, layout: FamilyLayoutState) => void;
   relConfidences: Record<string, RelationshipConfidence>;
   onUpdateConfidence: (relId: string, confidence: RelationshipConfidence) => void;
+  canEdit: boolean;
 }
 
 const FamilyGroups: React.FC<FamilyGroupProps> = ({
@@ -177,6 +253,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   onPersist,
   relConfidences,
   onUpdateConfidence,
+  canEdit,
 }) => {
   const layoutSeed = useMemo(() => {
     const baseAssignments: Record<string, string | null> = {};
@@ -230,6 +307,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
       manualOrders: layoutSeed.manualOrders,
       removedSpouseIds: Array.from(layoutSeed.removedSpouses),
       removedChildIds: Array.from(layoutSeed.removedChildren),
+      removedParentIds: [],
     })
   );
 
@@ -244,6 +322,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
       manualOrders: layoutSeed.manualOrders,
       removedSpouseIds: Array.from(layoutSeed.removedSpouses),
       removedChildIds: Array.from(layoutSeed.removedChildren),
+      removedParentIds: [],
     });
     const timer = setTimeout(() => {
       hydratingRef.current = false;
@@ -313,31 +392,34 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   };
 
   const persistLayout = useCallback(() => {
-    if (hydratingRef.current || !onPersist) return;
+    if (hydratingRef.current || !onPersist || !canEdit) return;
     const payload: FamilyLayoutState = {
       assignments,
       manualOrders,
       removedSpouseIds: Array.from(removedSpouseIds),
       removedChildIds: Array.from(removedChildIds),
+      removedParentIds: [],
     };
     const snapshot = JSON.stringify(payload);
     if (snapshot === lastPersistedRef.current) return;
     lastPersistedRef.current = snapshot;
     onPersist(personId, payload);
-  }, [assignments, manualOrders, removedSpouseIds, removedChildIds, onPersist, personId]);
+  }, [assignments, manualOrders, removedSpouseIds, removedChildIds, onPersist, personId, canEdit]);
 
   const beginDrag = (event: React.DragEvent, childId: string, groupId: string | null) => {
+    if (!canEdit) return;
     event.stopPropagation();
     event.dataTransfer.effectAllowed = 'move';
     setDragContext({ childId, groupKey: keyForGroup(groupId) });
   };
 
   const endDrag = () => {
+    if (!canEdit) return;
     setDragContext(null);
   };
 
   const handleDragOver = (event: React.DragEvent, groupId: string | null) => {
-    if (!dragContext) return;
+    if (!canEdit || !dragContext) return;
     const canonical = keyForGroup(groupId);
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -358,7 +440,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   };
 
   const reorderWithinGroup = (targetChildId: string | null, groupId: string | null) => {
-    if (!dragContext) return false;
+    if (!canEdit || !dragContext) return false;
     const canonical = keyForGroup(groupId);
     if (dragContext.groupKey !== canonical) return false;
     const normalized = normalizeGroupKey(canonical);
@@ -369,7 +451,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   };
 
   const moveChildToGroup = (targetChildId: string | null, groupId: string | null) => {
-    if (!dragContext) return;
+    if (!canEdit || !dragContext) return;
     const targetKey = keyForGroup(groupId);
     const sourceKey = dragContext.groupKey;
     if (sourceKey === targetKey) {
@@ -390,6 +472,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   };
 
   const handleDropOnChild = (event: React.DragEvent, childId: string, groupId: string | null) => {
+    if (!canEdit) return;
     event.preventDefault();
     moveChildToGroup(childId, groupId);
     setHoverGroup(null);
@@ -397,6 +480,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   };
 
   const handleDropOnGroup = (event: React.DragEvent, groupId: string | null) => {
+    if (!canEdit) return;
     event.preventDefault();
     moveChildToGroup(null, groupId);
     setHoverGroup(null);
@@ -404,6 +488,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   };
 
   const handleDragLeave = (event: React.DragEvent, groupId: string | null) => {
+    if (!canEdit) return;
     const canonical = keyForGroup(groupId);
     const currentTarget = event.currentTarget as HTMLElement;
     if (event.relatedTarget && currentTarget.contains(event.relatedTarget as Node)) {
@@ -415,11 +500,13 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   };
 
   const handleChildDragOver = (event: React.DragEvent, childId: string, groupId: string | null) => {
+    if (!canEdit) return;
     handleDragOver(event, groupId);
     setHoverChild(childId);
   };
 
   const handleChildDragLeave = (event: React.DragEvent, childId: string, groupId: string | null) => {
+    if (!canEdit) return;
     const currentTarget = event.currentTarget as HTMLElement;
     if (event.relatedTarget && currentTarget.contains(event.relatedTarget as Node)) {
       return;
@@ -429,14 +516,15 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   };
 
   useEffect(() => {
-    if (hydratingRef.current) return;
+    if (hydratingRef.current || !canEdit) return;
     const debounce = setTimeout(() => {
       persistLayout();
     }, 500);
     return () => clearTimeout(debounce);
-  }, [assignments, manualOrders, removedSpouseIds, removedChildIds, persistLayout]);
+  }, [assignments, manualOrders, removedSpouseIds, removedChildIds, persistLayout, canEdit]);
 
   const handleUnlinkChild = (childRelId: string) => {
+    if (!canEdit) return;
     setRemovedChildIds((prev) => new Set(prev).add(childRelId));
     setAssignments((prev) => {
       const next = { ...prev };
@@ -447,6 +535,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   };
 
   const handleUnlinkSpouse = (spouseId: string) => {
+    if (!canEdit) return;
     setRemovedSpouseIds((prev) => {
       const next = new Set(prev);
       next.add(spouseId);
@@ -468,14 +557,18 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
     });
   };
 
-  const availableSpouseOptions = activeSpouses.map((sp) => ({
-    id: sp.rel.id,
-    name: `${sp.person.firstName} ${sp.person.lastName}`,
-  }));
+  const getChildLifeLabel = (child: Person) => {
+    if (child.birthDate) return `Born ${formatYear(child.birthDate)}`;
+    const christening = child.events?.find((ev) => /christen|baptis/i.test(ev.type));
+    if (christening?.date) return `Christened ${formatYear(christening.date)}`;
+    return null;
+  };
 
   const renderChildRow = (child: { person: Person; rel: Relationship }) => {
     const assignment = assignments[child.rel.id] ?? null;
     const confidence = relConfidences[child.rel.id] || 'Unknown';
+    const style = getConfidenceStyle(confidence);
+    const lifeLabel = getChildLifeLabel(child.person);
     return (
       <div
         key={child.rel.id}
@@ -486,7 +579,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
         onDragLeave={(event) => handleChildDragLeave(event, child.rel.id, assignment)}
         onDrop={(event) => handleDropOnChild(event, child.rel.id, assignment)}
       >
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -498,41 +591,39 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
             >
               <GripVertical className="w-4 h-4" />
             </button>
-            <div className="flex flex-col">
-              <button
-                type="button"
-                onClick={() => onNavigate?.(child.person)}
-                className="text-sm font-semibold text-slate-900 hover:text-blue-600 text-left"
-              >
-                {child.person.firstName} {child.person.lastName}
-              </button>
-              {child.person.birthDate && <p className="text-[10px] text-slate-400">Born {formatYear(child.person.birthDate)}</p>}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1 rounded-2xl border bg-slate-50 text-slate-500">
-            <span className="text-[10px] font-black uppercase tracking-widest">
-              {assignment ? availableSpouseOptions.find((option) => option.id === assignment)?.name || 'Assigned' : 'Unassigned'}
-            </span>
-            <select
-              value={confidence}
-              onChange={(event) => onUpdateConfidence(child.rel.id, event.target.value as RelationshipConfidence)}
-              className="bg-transparent border-none text-[9px] font-black uppercase tracking-widest outline-none cursor-pointer text-slate-500"
+            <button
+              type="button"
+              onClick={() => onNavigate?.(child.person)}
+              className="text-sm font-semibold text-slate-900 hover:text-blue-600 text-left"
             >
-              {CONFIDENCE_LEVELS.map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
+              {child.person.firstName} {child.person.lastName}
+            </button>
+            {lifeLabel && <p className="text-[11px] text-slate-400 uppercase tracking-widest">{lifeLabel}</p>}
           </div>
-          <button
-            type="button"
-            onClick={() => handleUnlinkChild(child.rel.id)}
-            className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
-            aria-label="Unlink child from family"
-          >
-            <UnlinkIcon className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <div className={`flex items-center gap-1 px-2 py-1 rounded-full border ${style.bg} ${style.border}`}>
+              <style.icon className={`w-3 h-3 ${style.text}`} />
+              <select
+                value={confidence}
+                onChange={(event) => onUpdateConfidence(child.rel.id, event.target.value as RelationshipConfidence)}
+                className={`bg-transparent border-none text-[9px] font-black uppercase tracking-widest outline-none cursor-pointer ${style.text}`}
+              >
+                {CONFIDENCE_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleUnlinkChild(child.rel.id)}
+              className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
+              aria-label="Unlink child from family"
+            >
+              <UnlinkIcon className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -564,28 +655,31 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
                 confidence={confidence}
                 onConfidenceChange={onUpdateConfidence}
                 onNavigate={onNavigate}
+                canEdit={canEdit}
               />
-              <button
-                className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
-                onClick={() => handleUnlinkSpouse(spouse.rel.id)}
-                aria-label="Unlink spouse"
-              >
-                <UnlinkIcon className="w-4 h-4" />
-              </button>
+              {canEdit && (
+                <button
+                  className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
+                  onClick={() => handleUnlinkSpouse(spouse.rel.id)}
+                  aria-label="Unlink spouse"
+                >
+                  <UnlinkIcon className="w-4 h-4" />
+                </button>
+              )}
             </div>
             <div
               className={`ml-4 pl-4 space-y-3 transition border-l ${
                 hoverGroup === spouse.rel.id ? 'border-blue-300 bg-blue-50/30 rounded-2xl' : 'border-slate-200'
               }`}
-              onDragOver={(event) => handleDragOver(event, spouse.rel.id)}
-              onDragLeave={(event) => handleDragLeave(event, spouse.rel.id)}
-              onDrop={(event) => handleDropOnGroup(event, spouse.rel.id)}
+              onDragOver={canEdit ? (event) => handleDragOver(event, spouse.rel.id) : undefined}
+              onDragLeave={canEdit ? (event) => handleDragLeave(event, spouse.rel.id) : undefined}
+              onDrop={canEdit ? (event) => handleDropOnGroup(event, spouse.rel.id) : undefined}
             >
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Children of this union</p>
               {childrenForSpouse.length > 0 ? (
                 <>
                   {childrenForSpouse.map((child) => renderChildRow(child))}
-                  {dragContext && (
+                  {canEdit && dragContext && (
                     <div className="border border-dashed border-slate-200 rounded-xl text-[10px] text-slate-400 uppercase tracking-widest text-center py-2">
                       Drag here to place last
                     </div>
@@ -604,13 +698,13 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
           className={`space-y-3 transition border rounded-2xl ${
             hoverGroup === 'unassigned' ? 'border-blue-300 bg-blue-50/30' : 'border-transparent'
           }`}
-          onDragOver={(event) => handleDragOver(event, null)}
-          onDragLeave={(event) => handleDragLeave(event, null)}
-          onDrop={(event) => handleDropOnGroup(event, null)}
+          onDragOver={canEdit ? (event) => handleDragOver(event, null) : undefined}
+          onDragLeave={canEdit ? (event) => handleDragLeave(event, null) : undefined}
+          onDrop={canEdit ? (event) => handleDropOnGroup(event, null) : undefined}
         >
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Unassigned Descendants</p>
           {unassignedChildren.map((child) => renderChildRow(child))}
-          {dragContext && (
+          {canEdit && dragContext && (
             <div className="border border-dashed border-slate-200 rounded-xl text-[10px] text-slate-400 uppercase tracking-widest text-center py-2 mx-3 mb-3">
               Drag here to place last
             </div>

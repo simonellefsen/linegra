@@ -200,6 +200,7 @@ export interface FamilyLayoutState {
   manualOrders: Record<string, string[]>;
   removedSpouseIds: string[];
   removedChildIds: string[];
+  removedParentIds: string[];
 }
 
 export interface FamilyLayoutAudit {
