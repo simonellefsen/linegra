@@ -4,6 +4,7 @@ import { isSupabaseConfigured } from './lib/supabase';
 import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
 import FamilyTree from './components/FamilyTree';
+import PedigreeTree from './components/InteractiveTree/PedigreeTree';
 import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
 import ImportExport from './components/ImportExport';
@@ -629,12 +630,24 @@ const App: React.FC = () => {
                   <div className="flex items-center justify-between mb-2">
                     <h2 className="text-3xl font-serif font-bold text-slate-900">Kinship Map</h2>
                   </div>
-                  <FamilyTree
-                    people={filteredPeople}
-                    relationships={filteredRelationships}
-                    onPersonSelect={handlePersonSelect}
-                    layout={layoutType}
-                  />
+                  {layoutType === 'pedigree' ? (
+                    <PedigreeTree
+                      people={filteredPeople}
+                      relationships={filteredRelationships}
+                      focusId={selectedPerson?.id}
+                      selectedPersonId={selectedPerson?.id}
+                      onPersonSelect={handlePersonSelect}
+                      maxAncestors={4}
+                      maxDescendants={3}
+                    />
+                  ) : (
+                    <FamilyTree
+                      people={filteredPeople}
+                      relationships={filteredRelationships}
+                      onPersonSelect={handlePersonSelect}
+                      layout={layoutType}
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="bg-white border border-slate-200 rounded-[32px] p-12 text-center space-y-4 shadow-sm">

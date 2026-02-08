@@ -42,6 +42,14 @@ Linegra is a modern, high-performance web application designed to replace legacy
 ### 3.5. Advanced Interoperability (ImportExport.tsx)
 - **Enhanced GEDCOM Support**: Robust ingestion of standard `.ged` files (v5.5.1) including INDI, FAM, MARR, and CHIL tags to automatically reconstruct complex family structures and vital records.
 
+### 3.6. Pedigree Tree (Interactive Tree v2)
+- **Pedigree-first layout**: Replace the force-directed kinship map with a person-centric, horizontal pedigree similar to Ancestry’s mobile app. Generations render as columns (ancestors to the left, descendants to the right) with consistent spacing and curved connectors.
+- **Scalability**: Only render ±4 generations from the focused person at a time; behind the scenes the data loader fetches additional ancestors/descendants lazily as the user pans or re-centers. Target support for 10k+ individuals without freezing the UI.
+- **Tiles**: Each node is a card containing avatar silhouette (gender-aware), name, life span, confidence badge, and quick actions (view profile, link/unlink, share). Unknown parents show “Add Father/Mother” placeholders with dashed outlines.
+- **Navigation**: Supports drag/pan, scroll wheel zoom (desktop), pinch zoom (touch), and keyboard shortcuts (arrow keys to jump generations). Re-centering buttons allow jumping back to the focused person or root tree.
+- **Permissions**: Editing affordances (add parent, unlink, drag reorder) only appear for authenticated administrators, matching the Family tab’s rules.
+- **Fallback**: Legacy kinship map stays accessible behind a feature toggle until the pedigree tree reaches parity.
+
 ### 3.6. Access Control & Editing Permissions
 - **Read-first policy**: Anonymous and logged-out visitors may browse archives, but all destructive actions (unlinking or reordering family relationships, editing confidence, creating/deleting trees, GEDCOM import/export, Supabase “nuke”) require an authenticated user with the appropriate administrator role.
 - **UI gating**: When `currentUser.isAdmin` is false, editing affordances must visually degrade (buttons hidden/disabled, drag handles inert) so accidental changes cannot occur. The Family tab, for example, only enables drag-and-drop or unlink buttons when the viewer is authorized.

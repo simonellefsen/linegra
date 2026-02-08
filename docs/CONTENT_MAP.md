@@ -22,7 +22,7 @@ This catalog highlights the most relevant files for the current Linegra architec
 
 | Feature | Key Files | Notes |
 | --- | --- | --- |
-| Interactive graph & search | `components/FamilyTree.tsx`, `components/ImportExport.tsx`, `services/graph.ts`, `services/search.ts` | Renders kinship map, handles GEDCOM import/export. |
+| Interactive tree & search | `components/InteractiveTree/*` (new pedigree view), `components/FamilyTree.tsx` (legacy), `components/ImportExport.tsx`, `services/graph.ts`, `services/search.ts` | Pedigree view renders tiled ancestors/descendants with virtualization; legacy kinship map retained behind feature flag. |
 | Person profile modal | `components/PersonProfile.tsx` (wrapper), child tabs under `components/person-profile/` | Each tab now has its own component (`VitalTab`, `FamilyTab`, `StoryTab`, `SourcesTab`, `MediaTab`, `DNATab`, `NotesTab`, plus shared `DetailEdit` + `constants`). |
 | Family layout persistence | `components/person-profile/FamilyTab.tsx`, `services/layout.ts`, `supabase/migrations/*` | Drag-and-drop grouping, Supabase persistence of layout metadata. |
 | Badge counts (notes/sources/media) | `components/person-profile/VitalTab.tsx`, `components/person-profile/SourcesTab.tsx`, `components/person-profile/MediaTab.tsx` | Shared badge logic triggered via props and callbacks from `PersonProfile`. |
