@@ -890,7 +890,6 @@ useEffect(() => {
                 onClose={() => handlePersonSelect(null)} 
                 onNavigateToPerson={(next) => handlePersonSelect(next)}
                 onPersistFamilyLayout={handlePersistFamilyLayout}
-                onRequestDetails={handleEnsurePersonDetails}
               />
             </>
           )}
