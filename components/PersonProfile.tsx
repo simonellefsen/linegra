@@ -252,6 +252,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   const canAccessDNA = !!currentUser?.isAdmin;
   const canEditFamily = !!currentUser?.isAdmin;
   const canEditPerson = !!currentUser?.isAdmin;
+  const canViewPrivateRelations = !!currentUser?.isAdmin;
 
   const parents = useMemo(() => {
     return relationshipData
@@ -260,8 +261,11 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         rel: r,
         person: relationPeople[r.personId]
       }))
-      .filter((item): item is { rel: Relationship; person: Person } => !!item.person);
-  }, [person.id, relationshipData, relationPeople]);
+      .filter(
+        (item): item is { rel: Relationship; person: Person } =>
+          !!item.person && (canViewPrivateRelations || !item.person.isPrivate)
+      );
+  }, [person.id, relationshipData, relationPeople, canViewPrivateRelations]);
 
   const spouses = useMemo(() => {
     return relationshipData
@@ -273,8 +277,11 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
           person: relationPeople[otherId]
         };
       })
-      .filter((item): item is { rel: Relationship; person: Person } => !!item.person);
-  }, [person.id, relationshipData, relationPeople]);
+      .filter(
+        (item): item is { rel: Relationship; person: Person } =>
+          !!item.person && (canViewPrivateRelations || !item.person.isPrivate)
+      );
+  }, [person.id, relationshipData, relationPeople, canViewPrivateRelations]);
 
   const children = useMemo(() => {
     const asParent = relationshipData
@@ -289,8 +296,11 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         rel: r,
         person: relationPeople[r.relatedId]
       }));
-    return [...asParent, ...asChildRel].filter((item): item is { rel: Relationship; person: Person } => !!item.person);
-  }, [person.id, relationshipData, relationPeople]);
+    return [...asParent, ...asChildRel].filter(
+      (item): item is { rel: Relationship; person: Person } =>
+        !!item.person && (canViewPrivateRelations || !item.person.isPrivate)
+    );
+  }, [person.id, relationshipData, relationPeople, canViewPrivateRelations]);
 
   const tabs: { id: ProfileSection; label: string; icon: any; secure?: boolean }[] = [
     { id: 'vital', label: 'Vital', icon: Heart },
