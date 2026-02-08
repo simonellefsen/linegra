@@ -8,6 +8,8 @@ This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/drive/1pWfS3iW2IEOX4MJO3XMvFjAs7UmzdLXV
 
+> Agentic dev flow: start with [`AGENT.md`](AGENT.md) for expectations, then use [docs/CONTENT_MAP.md](docs/CONTENT_MAP.md) to locate feature-specific files quickly.
+
 ## Run Locally
 
 **Prerequisites:**  Node.js
