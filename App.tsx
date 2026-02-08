@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits } from './services/archive';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
 import FamilyTree from './components/FamilyTree';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
@@ -65,7 +65,7 @@ const App: React.FC = () => {
   const activeTreeId = activeTree?.id ?? null;
 
   const loadTreeArchive = useCallback(
-    async (tree: FamilyTreeType | null, opts: { silent?: boolean; search?: string } = {}) => {
+    async (tree: FamilyTreeType | null, opts: { silent?: boolean } = {}) => {
       if (!supabaseActive) return;
       if (!tree) {
         setAllPeople([]);
@@ -77,7 +77,7 @@ const App: React.FC = () => {
       }
       setArchiveError(null);
       try {
-        const archive = await loadArchiveData(tree.id, opts.search);
+        const archive = await loadArchiveData(tree.id);
         setAllPeople(archive.people);
         setAllRelationships(archive.relationships);
       } catch (err) {
@@ -329,6 +329,26 @@ useEffect(() => {
       setPendingPersonId(null);
     }
   }, [pendingPersonId, treePeople]);
+
+  const handleEnsurePersonDetails = useCallback(
+    async (personId: string) => {
+      if (!supabaseActive) return null;
+      try {
+        const detailed = await fetchPersonDetails(personId);
+        setAllPeople((prev) =>
+          prev.some((p) => p.id === personId)
+            ? prev.map((p) => (p.id === personId ? detailed : p))
+            : [...prev, detailed]
+        );
+        setSelectedPerson((prev) => (prev?.id === personId ? detailed : prev));
+        return detailed;
+      } catch (err) {
+        console.error('Failed to fetch person details', err);
+        return null;
+      }
+    },
+    [supabaseActive]
+  );
 
   const handleAdminCreateTree = useCallback(
     async (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => {
@@ -858,6 +878,7 @@ useEffect(() => {
                 onClose={() => handlePersonSelect(null)} 
                 onNavigateToPerson={(next) => handlePersonSelect(next)}
                 onPersistFamilyLayout={handlePersistFamilyLayout}
+                onRequestDetails={handleEnsurePersonDetails}
               />
             </>
           )}

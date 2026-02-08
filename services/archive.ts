@@ -22,7 +22,6 @@ const normalizePlace = (place?: string | { fullText?: string }) => {
 };
 
 const PAGE_SIZE = 1000;
-const ID_CHUNK_SIZE = 500;
 
 const fetchPagedRows = async <T>(fetchPage: (from: number, to: number) => Promise<T[]>, pageSize = PAGE_SIZE): Promise<T[]> => {
   const rows: T[] = [];
@@ -36,19 +35,6 @@ const fetchPagedRows = async <T>(fetchPage: (from: number, to: number) => Promis
     from += pageSize;
   }
   return rows;
-};
-
-const fetchChunks = async <T>(items: string[], chunkSize: number, fetcher: (chunk: string[]) => Promise<T[]>): Promise<T[]> => {
-  if (!items.length) return [];
-  const results: T[] = [];
-  for (let i = 0; i < items.length; i += chunkSize) {
-    const chunkIds = items.slice(i, i + chunkSize);
-    const chunk = await fetcher(chunkIds);
-    if (chunk.length) {
-      results.push(...chunk);
-    }
-  }
-  return results;
 };
 
 const chunkedInsert = async <T>(table: string, rows: T[], chunkSize = 500) => {
@@ -228,110 +214,22 @@ export const nukeSupabaseDatabase = async (confirmText = 'NUKE') => {
   if (error) throw new Error(error.message);
 };
 
-export const loadArchiveData = async (treeId: string, search?: string) => {
+export const loadArchiveData = async (treeId: string) => {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');
   }
   const personRows = await fetchPagedRows(async (from, to) => {
-    let query = supabase.from('persons').select('*').eq('tree_id', treeId).order('last_name', { ascending: true });
-    if (search) {
-      query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,maiden_name.ilike.%${search}%`);
-    }
-    const { data, error } = await query.range(from, to);
+    const { data, error } = await supabase
+      .from('persons')
+      .select(
+        'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, updated_at, metadata'
+      )
+      .eq('tree_id', treeId)
+      .order('last_name', { ascending: true })
+      .range(from, to);
     if (error) throw new Error(error.message);
     return data ?? [];
   });
-  const personIds = personRows.map((row) => row.id);
-  const notesByPerson: Record<string, Note[]> = {};
-  const sourcesByPerson: Record<string, Source[]> = {};
-  const eventsByPerson: Record<string, PersonEvent[]> = {};
-  const citationsByPerson: Record<string, Citation[]> = {};
-
-  if (personIds.length > 0) {
-    const noteRows = await fetchChunks(personIds, ID_CHUNK_SIZE, async (chunk) => {
-      const { data, error } = await supabase.from('notes').select('*').in('person_id', chunk);
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    });
-    noteRows.forEach((note) => {
-      const list = notesByPerson[note.person_id] || (notesByPerson[note.person_id] = []);
-      list.push({
-        id: note.id,
-        text: note.body,
-        type: note.type,
-        event: note.event_label || undefined,
-        date: note.note_date_text || undefined
-      });
-    });
-
-    const eventRows = await fetchChunks(personIds, ID_CHUNK_SIZE, async (chunk) => {
-      const { data, error } = await supabase.from('person_events').select('*').in('person_id', chunk);
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    });
-    eventRows.forEach((event) => {
-      const list = eventsByPerson[event.person_id] || (eventsByPerson[event.person_id] = []);
-      list.push({
-        id: event.id,
-        type: event.event_type,
-        date: event.date_text || undefined,
-        place: event.place_text || undefined,
-        description: event.description || undefined,
-        employer: event.employer || undefined
-      });
-    });
-
-    const sourceRows = await fetchPagedRows(async (from, to) => {
-      const { data, error } = await supabase.from('sources').select('*').eq('tree_id', treeId).range(from, to);
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    });
-    const sourceMap = new Map<string, any>();
-    sourceRows.forEach((row) => sourceMap.set(row.id, row));
-
-    const citationRows = await fetchChunks(personIds, ID_CHUNK_SIZE, async (chunk) => {
-      const { data, error } = await supabase.from('citations').select('*').in('person_id', chunk);
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    });
-    citationRows.forEach((citation: any) => {
-      const src = sourceMap.get(citation.source_id);
-      if (!src) return;
-      const extra = (citation as any)?.extra || {};
-      const inlineNotes = extra.inline_notes as string | undefined;
-      const citationEntry: Citation = {
-        id: citation.id,
-        sourceId: citation.source_id,
-        eventLabel: citation.event_label || undefined,
-        label: citation.label || undefined,
-        page: citation.page_text || src.page || undefined,
-        dataDate: citation.data_date || extra.data_date || undefined,
-        dataText: citation.data_text || extra.data_text || undefined,
-        quality: citation.quality || extra.quality || undefined,
-        extra
-      };
-      const citationList = citationsByPerson[citation.person_id] || (citationsByPerson[citation.person_id] = []);
-      citationList.push(citationEntry);
-      const combinedNotes = [inlineNotes, src.notes, citationEntry.dataText].filter(Boolean).join('\n\n') || undefined;
-      const list = sourcesByPerson[citation.person_id] || (sourcesByPerson[citation.person_id] = []);
-      list.push({
-        id: `${src.id}:${citation.id}`,
-        externalId: src.id,
-        title: src.title,
-        type: src.type,
-        repository: src.repository || undefined,
-        url: src.url || undefined,
-        citationDate: src.citation_date_text || undefined,
-        page: citation.page_text || src.page || undefined,
-        reliability: src.reliability || undefined,
-        actualText: src.actual_text || undefined,
-        abbreviation: src.abbreviation || undefined,
-        callNumber: src.call_number || undefined,
-        notes: combinedNotes,
-        event: citation.event_label || 'General'
-      });
-    });
-  }
 
   const relationshipRows = await fetchPagedRows(async (from, to) => {
     const { data, error } = await supabase
@@ -344,7 +242,15 @@ export const loadArchiveData = async (treeId: string, search?: string) => {
     return data ?? [];
   });
 
-  const people = personRows.map((row) => mapDbPerson(row, notesByPerson, sourcesByPerson, eventsByPerson, citationsByPerson));
+  const emptyNotes: Record<string, Note[]> = {};
+  const emptySources: Record<string, Source[]> = {};
+  const emptyEvents: Record<string, PersonEvent[]> = {};
+  const emptyCitations: Record<string, Citation[]> = {};
+
+  const people = personRows.map((row) => ({
+    ...mapDbPerson(row, emptyNotes, emptySources, emptyEvents, emptyCitations),
+    detailsLoaded: false
+  }));
   const relationships = (relationshipRows || []).map((row) => ({
     id: row.id,
     treeId: row.tree_id,
@@ -394,6 +300,104 @@ export const persistFamilyLayout = async (
   ]);
 
   return (data?.metadata as Record<string, unknown>) || metadata;
+};
+
+export const fetchPersonDetails = async (personId: string): Promise<Person> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data: personRow, error } = await supabase.from('persons').select('*').eq('id', personId).single();
+  if (error || !personRow) {
+    throw new Error(error?.message || 'Person not found');
+  }
+
+  const [noteRows, eventRows, citationRows] = await Promise.all([
+    supabase.from('notes').select('*').eq('person_id', personId),
+    supabase.from('person_events').select('*').eq('person_id', personId),
+    supabase.from('citations').select('*').eq('person_id', personId)
+  ]);
+
+  if (noteRows.error) throw new Error(noteRows.error.message);
+  if (eventRows.error) throw new Error(eventRows.error.message);
+  if (citationRows.error) throw new Error(citationRows.error.message);
+
+  const noteMap: Record<string, Note[]> = {};
+  const eventMap: Record<string, PersonEvent[]> = {};
+  const citationMap: Record<string, Citation[]> = {};
+  const sourceMap: Record<string, Source[]> = {};
+
+  if (noteRows.data) {
+    noteMap[personId] = noteRows.data.map((note) => ({
+      id: note.id,
+      text: note.body,
+      type: note.type,
+      event: note.event_label || undefined,
+      date: note.note_date_text || undefined,
+      isPrivate: note.is_private || false
+    }));
+  }
+
+  if (eventRows.data) {
+    eventMap[personId] = eventRows.data.map((event) => ({
+      id: event.id,
+      type: event.event_type,
+      date: event.date_text || undefined,
+      place: event.place_text || undefined,
+      description: event.description || undefined,
+      employer: event.employer || undefined
+    }));
+  }
+
+  const citationList = citationRows.data ?? [];
+  if (citationList.length) {
+    const sourceIds = Array.from(new Set(citationList.map((c) => c.source_id).filter(Boolean)));
+    const sourceRows = sourceIds.length
+      ? await supabase.from('sources').select('*').in('id', sourceIds)
+      : { data: [], error: null };
+    if (sourceRows.error) throw new Error(sourceRows.error.message);
+    const sourceLookup = new Map<string, any>();
+    (sourceRows.data || []).forEach((row) => sourceLookup.set(row.id, row));
+
+    citationMap[personId] = [];
+    sourceMap[personId] = [];
+    citationList.forEach((citation: any) => {
+      const src = sourceLookup.get(citation.source_id);
+      if (!src) return;
+      const extra = (citation as any)?.extra || {};
+      const inlineNotes = extra.inline_notes as string | undefined;
+      const entry: Citation = {
+        id: citation.id,
+        sourceId: citation.source_id,
+        eventLabel: citation.event_label || undefined,
+        label: citation.label || undefined,
+        page: citation.page_text || src.page || undefined,
+        dataDate: citation.data_date || extra.data_date || undefined,
+        dataText: citation.data_text || extra.data_text || undefined,
+        quality: citation.quality || extra.quality || undefined,
+        extra
+      };
+      citationMap[personId]!.push(entry);
+      sourceMap[personId]!.push({
+        id: `${src.id}:${citation.id}`,
+        externalId: src.id,
+        title: src.title,
+        type: src.type,
+        repository: src.repository || undefined,
+        url: src.url || undefined,
+        citationDate: src.citation_date_text || undefined,
+        page: citation.page_text || src.page || undefined,
+        reliability: src.reliability || undefined,
+        actualText: src.actual_text || undefined,
+        abbreviation: src.abbreviation || undefined,
+        callNumber: src.call_number || undefined,
+        notes: inlineNotes || undefined,
+        event: citation.event_label || 'General'
+      });
+    });
+  }
+
+  const person = mapDbPerson(personRow, noteMap, sourceMap, eventMap, citationMap);
+  return { ...person, detailsLoaded: true };
 };
 
 export const fetchFamilyLayoutAudits = async (treeId: string, limit = 10, offset = 0): Promise<{ audits: FamilyLayoutAudit[]; total: number }> => {

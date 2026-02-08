@@ -193,6 +193,7 @@ export interface Person {
   dnaMatchInfo?: DNAMatchInfo;
   citations?: Citation[];
   metadata?: Record<string, unknown>;
+  detailsLoaded?: boolean;
 }
 
 export interface FamilyLayoutState {
