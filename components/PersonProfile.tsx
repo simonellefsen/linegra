@@ -29,7 +29,7 @@ import {
   Skull, Heart, Trash2, Calendar,
   CheckCircle, HelpCircle, Edit3, Link, Music, Video, File,
   Upload as UploadIcon, Globe, Fingerprint, Sparkles, Home, GraduationCap, Sword, PlaneLanding, PlaneTakeoff,
-  History, ArrowUp, ArrowDown, Unlink as UnlinkIcon
+  History, Unlink as UnlinkIcon
 } from 'lucide-react';
 
 interface PersonProfileProps {
@@ -1155,7 +1155,7 @@ interface FamilyGroupProps {
   renderRelationCard: (item: { person: Person; rel: Relationship }, label: string, metadata?: string | null) => React.ReactNode;
 }
 
-const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children, relationships, onNavigate, initialLayout, onPersist, renderRelationCard }) => {
+const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children, relationships, initialLayout, onPersist, renderRelationCard }) => {
   const layoutSeed = useMemo(() => {
     const baseAssignments: Record<string, string | null> = {};
     const spouseIds = new Set(spouses.map((sp) => sp.rel.id));
@@ -1267,18 +1267,6 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
     [getBaseChildren, manualOrders]
   );
 
-  const handleMoveChild = (groupId: string | null, childRelId: string, direction: 'up' | 'down') => {
-    const list = getDisplayChildren(groupId).map((child) => child.rel.id);
-    const idx = list.indexOf(childRelId);
-    if (idx === -1) return;
-    if (direction === 'up' && idx === 0) return;
-    if (direction === 'down' && idx === list.length - 1) return;
-    const newOrder = [...list];
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
-    setManualOrders((prev) => ({ ...prev, [keyForGroup(groupId)]: newOrder }));
-  };
-
   const scrubChildFromManualOrders = (childRelId: string) => {
     setManualOrders((prev) => {
       const next = { ...prev };
@@ -1359,7 +1347,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
     name: `${sp.person.firstName} ${sp.person.lastName}`
   }));
 
-  const renderChildRow = (child: { person: Person; rel: Relationship }, groupKey: string | null, position: number, total: number) => {
+  const renderChildRow = (child: { person: Person; rel: Relationship }) => {
     const assignment = assignments[child.rel.id] ?? null;
     const selectedValue = assignment ?? 'unassigned';
     return (
@@ -1371,24 +1359,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
               <p className="text-[10px] text-slate-400">Born {formatYear(child.person.birthDate)}</p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              aria-label="Move child earlier"
-              onClick={() => handleMoveChild(assignment, child.rel.id, 'up')}
-              disabled={total <= 1 || position === 0}
-              className={`p-2 rounded-full border text-slate-500 hover:text-slate-900 hover:border-slate-300 transition ${total <= 1 || position === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
-            >
-              <ArrowUp className="w-4 h-4" />
-            </button>
-            <button
-              aria-label="Move child later"
-              onClick={() => handleMoveChild(assignment, child.rel.id, 'down')}
-              disabled={total <= 1 || position === total - 1}
-              className={`p-2 rounded-full border text-slate-500 hover:text-slate-900 hover:border-slate-300 transition ${total <= 1 || position === total - 1 ? 'opacity-30 cursor-not-allowed' : ''}`}
-            >
-              <ArrowDown className="w-4 h-4" />
-            </button>
-          </div>
+          <div className="flex items-center gap-2" />
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <select
@@ -1404,17 +1375,11 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
           <div className="flex-1" />
           <button
             type="button"
-            onClick={() => onNavigate?.(child.person)}
-            className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 hover:underline"
-          >
-            View Profile
-          </button>
-          <button
-            type="button"
             onClick={() => handleUnlinkChild(child.rel.id)}
-            className="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-600 text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+            className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
+            aria-label="Unlink child from family"
           >
-            <UnlinkIcon className="w-3.5 h-3.5" /> Unlink
+            <UnlinkIcon className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -1450,7 +1415,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
             {childrenForSpouse.length > 0 ? (
               <div className="ml-4 border-l border-slate-200 pl-4 space-y-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Children of this union</p>
-                {childrenForSpouse.map((child, idx) => renderChildRow(child, spouse.rel.id, idx, childrenForSpouse.length))}
+                {childrenForSpouse.map((child) => renderChildRow(child))}
               </div>
             ) : (
               <p className="text-xs text-slate-400 italic ml-6">No children linked to this spouse.</p>
@@ -1462,7 +1427,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
       {unassignedChildren.length > 0 && (
         <div className="space-y-3">
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Unassigned Descendants</p>
-          {unassignedChildren.map((child, idx) => renderChildRow(child, null, idx, unassignedChildren.length))}
+          {unassignedChildren.map((child) => renderChildRow(child))}
         </div>
       )}
     </div>
