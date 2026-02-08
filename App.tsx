@@ -93,6 +93,27 @@ const App: React.FC = () => {
     [supabaseActive]
   );
 
+  const handleEnsurePersonDetails = useCallback(
+    async (personId: string) => {
+      if (!supabaseActive) return null;
+      try {
+        const detailed = await fetchPersonDetails(personId);
+        setAllPeople((prev) =>
+          prev.some((p) => p.id === personId)
+            ? prev.map((p) => (p.id === personId ? detailed : p))
+            : [...prev, detailed]
+        );
+        setSelectedPerson((prev) => (prev?.id === personId ? detailed : prev));
+        setPendingPersonId((prev) => (prev === personId ? null : prev));
+        return detailed;
+      } catch (err) {
+        console.error('Failed to fetch person details', err);
+        return null;
+      }
+    },
+    [supabaseActive]
+  );
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = window.localStorage.getItem('LINEGRA_SUPERADMIN');
@@ -278,19 +299,25 @@ useEffect(() => {
 
   const adminTreeData = adminTrees.length ? adminTrees : localTreeSummaries;
 
-  const handlePersonSelect = (person: Person | null) => {
-    setSelectedPerson(person);
-    setPendingPersonId(null);
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      if (person) {
-        url.searchParams.set('person', person.id);
-      } else {
-        url.searchParams.delete('person');
+  const handlePersonSelect = useCallback(
+    (person: Person | null) => {
+      setSelectedPerson(person);
+      setPendingPersonId(person ? person.id : null);
+      if (person && !person.detailsLoaded) {
+        handleEnsurePersonDetails(person.id);
       }
-      window.history.replaceState({}, '', url);
-    }
-  };
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        if (person) {
+          url.searchParams.set('person', person.id);
+        } else {
+          url.searchParams.delete('person');
+        }
+        window.history.replaceState({}, '', url);
+      }
+    },
+    [handleEnsurePersonDetails]
+  );
 
   const handleAdminLogin = (username: string) => {
     const adminUser: User = {
@@ -326,29 +353,14 @@ useEffect(() => {
     const match = treePeople.find((p) => p.id === pendingPersonId);
     if (match) {
       setSelectedPerson(match);
-      setPendingPersonId(null);
-    }
-  }, [pendingPersonId, treePeople]);
-
-  const handleEnsurePersonDetails = useCallback(
-    async (personId: string) => {
-      if (!supabaseActive) return null;
-      try {
-        const detailed = await fetchPersonDetails(personId);
-        setAllPeople((prev) =>
-          prev.some((p) => p.id === personId)
-            ? prev.map((p) => (p.id === personId ? detailed : p))
-            : [...prev, detailed]
-        );
-        setSelectedPerson((prev) => (prev?.id === personId ? detailed : prev));
-        return detailed;
-      } catch (err) {
-        console.error('Failed to fetch person details', err);
-        return null;
+      if (!match.detailsLoaded) {
+        handleEnsurePersonDetails(match.id);
+      } else {
+        setPendingPersonId(null);
       }
-    },
-    [supabaseActive]
-  );
+    }
+  }, [pendingPersonId, treePeople, handleEnsurePersonDetails]);
+
 
   const handleAdminCreateTree = useCallback(
     async (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => {

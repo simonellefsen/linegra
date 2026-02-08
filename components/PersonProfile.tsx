@@ -34,12 +34,11 @@ interface PersonProfileProps {
   allPeople: Person[];
   onNavigateToPerson?: (person: Person) => void;
   onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
-  onRequestDetails?: (personId: string) => Promise<Person | null>;
 }
 
 type ProfileSection = 'vital' | 'story' | 'family' | 'sources' | 'media' | 'dna' | 'notes';
 
-const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, currentUser, onClose, allPeople, onNavigateToPerson, onPersistFamilyLayout, onRequestDetails }) => {
+const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, currentUser, onClose, allPeople, onNavigateToPerson, onPersistFamilyLayout }) => {
   const [activeSection, setActiveSection] = useState<ProfileSection>('vital');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -102,23 +101,6 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
   useEffect(() => {
     setRelConfidences(relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {}));
   }, [relationships]);
-
-  useEffect(() => {
-    if (!onRequestDetails || person.detailsLoaded) return;
-    let cancelled = false;
-    onRequestDetails(person.id).then((updated) => {
-      if (!updated || cancelled) return;
-      setSources(updated.sources || []);
-      setNotes(updated.notes || []);
-      setEvents(updated.events || []);
-      setDnaTests(updated.dnaTests || []);
-      setAltNames(updated.alternateNames || []);
-      setMediaItems(extractMediaItems(updated));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [person.id, person.detailsLoaded, onRequestDetails]);
 
   const getSourceCountForEvent = (eventLabel: string) => {
     return sources.filter((source) => (source.event || 'General') === eventLabel).length;
