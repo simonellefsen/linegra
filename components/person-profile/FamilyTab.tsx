@@ -28,6 +28,7 @@ interface FamilyTabProps {
   canEdit: boolean;
   loading?: boolean;
   error?: string | null;
+  onUnlinkRelationship?: (relId: string) => void;
 }
 
 const formatYear = (input?: string) => {
@@ -124,6 +125,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   canEdit,
   loading,
   error,
+  onUnlinkRelationship,
 }) => {
   const createEmptyLayout = () => ({
     assignments: {},
@@ -177,6 +179,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
       sendLayoutWithParents(baseLayout, next);
       return next;
     });
+    onUnlinkRelationship?.(relId);
   };
 
   const visibleParents = parents.filter((item) => !removedParentIds.has(item.rel.id));
@@ -231,6 +234,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
           relConfidences={relConfidences}
           onUpdateConfidence={onUpdateConfidence}
           canEdit={canEdit}
+          onUnlinkRelationship={onUnlinkRelationship}
         />
       </div>
     </div>
@@ -250,6 +254,7 @@ interface FamilyGroupProps {
   relConfidences: Record<string, RelationshipConfidence>;
   onUpdateConfidence: (relId: string, confidence: RelationshipConfidence) => void;
   canEdit: boolean;
+  onUnlinkRelationship?: (relId: string) => void;
 }
 
 const FamilyGroups: React.FC<FamilyGroupProps> = ({
@@ -263,6 +268,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   relConfidences,
   onUpdateConfidence,
   canEdit,
+  onUnlinkRelationship,
 }) => {
   const layoutSeed = useMemo(() => {
     const baseAssignments: Record<string, string | null> = {};
@@ -541,6 +547,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
       return next;
     });
     scrubChildFromManualOrders(childRelId);
+    onUnlinkRelationship?.(childRelId);
   };
 
   const handleUnlinkSpouse = (spouseId: string) => {
@@ -564,6 +571,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
       delete next[keyForGroup(spouseId)];
       return next;
     });
+    onUnlinkRelationship?.(spouseId);
   };
 
   const getChildLifeMeta = (child: Person) => {

@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace } from '../types';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -430,6 +430,38 @@ export const updatePersonProfile = async (
   });
   if (error) throw new Error(error.message);
   return data;
+};
+
+export const updateRelationshipConfidence = async (
+  relationshipId: string,
+  confidence: RelationshipConfidence,
+  actor?: { id?: string | null; name?: string | null }
+) => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { error } = await supabase.rpc('admin_set_relationship_confidence', {
+    target_relationship_id: relationshipId,
+    payload_confidence: confidence,
+    payload_actor_id: actor?.id ?? null,
+    payload_actor_name: actor?.name ?? null
+  });
+  if (error) throw new Error(error.message);
+};
+
+export const unlinkRelationship = async (
+  relationshipId: string,
+  actor?: { id?: string | null; name?: string | null }
+) => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { error } = await supabase.rpc('admin_unlink_relationship', {
+    target_relationship_id: relationshipId,
+    payload_actor_id: actor?.id ?? null,
+    payload_actor_name: actor?.name ?? null
+  });
+  if (error) throw new Error(error.message);
 };
 
 export const searchPersonsInTree = async (

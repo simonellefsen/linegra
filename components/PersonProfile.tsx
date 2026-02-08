@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Person,
   User as UserType,
@@ -25,7 +25,7 @@ import MediaTab from './person-profile/MediaTab';
 import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
-import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails } from '../services/archive';
+import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, unlinkRelationship } from '../services/archive';
 
 const serializePlaceValue = (value: string | StructuredPlace) =>
   typeof value === 'string' ? value : JSON.stringify(value ?? '');
@@ -131,43 +131,59 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
     setMediaItems(extractMediaItemsFromPerson(person));
   }, [person]);
 
-  useEffect(() => {
-    setRelationPeople((prev) => ({ ...prev, [person.id]: person }));
-    let cancelled = false;
-    const run = async () => {
-      setConnectionsLoading(true);
+  const applyConnectionData = useCallback(
+    (relationshipsResult: Relationship[], peopleResult: Person[]) => {
+      setRelationshipData(relationshipsResult);
+      const map: Record<string, Person> = {};
+      [...peopleResult, person].forEach((entry) => {
+        map[entry.id] = entry;
+      });
+      setRelationPeople(map);
+      const nextConf: Record<string, RelationshipConfidence> = {};
+      relationshipsResult.forEach((rel) => {
+        nextConf[rel.id] = rel.confidence || 'Unknown';
+      });
+      setRelConfidences(nextConf);
+    },
+    [person]
+  );
+
+  const refreshConnections = useCallback(
+    async (opts: { silent?: boolean; isCancelled?: () => boolean } = {}) => {
+      if (!opts.silent) setConnectionsLoading(true);
       setConnectionsError(null);
       try {
         const { relationships, people } = await fetchPersonConnections(person.treeId, person.id);
-        if (cancelled) return;
-        setRelationshipData(relationships);
-        const map: Record<string, Person> = {};
-        [...people, person].forEach((entry) => {
-          map[entry.id] = entry;
-        });
-        setRelationPeople(map);
-        setRelConfidences(
-          relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {})
-        );
+        if (opts.isCancelled?.()) return;
+        applyConnectionData(relationships, people);
       } catch (err) {
+        if (opts.isCancelled?.()) return;
         console.error('Failed to load relationships', err);
-        if (cancelled) return;
         const message = err instanceof Error ? err.message : 'Unable to load family connections.';
         setConnectionsError(message);
         setRelationshipData([]);
         setRelConfidences({});
-        setRelationPeople((prev) => ({ ...prev, [person.id]: person }));
+        setRelationPeople({ [person.id]: person });
       } finally {
-        if (!cancelled) {
+        if (!opts.silent && !opts.isCancelled?.()) {
           setConnectionsLoading(false);
         }
       }
-    };
-    run();
+    },
+    [person, applyConnectionData]
+  );
+
+  useEffect(() => {
+    setRelationPeople((prev) => ({ ...prev, [person.id]: person }));
+  }, [person]);
+
+  useEffect(() => {
+    let cancelled = false;
+    refreshConnections({ isCancelled: () => cancelled });
     return () => {
       cancelled = true;
     };
-  }, [person]);
+  }, [refreshConnections]);
 
   const getSourceCountForEvent = (eventLabel: string) => {
     return sources.filter((source) => (source.event || 'General') === eventLabel).length;
@@ -257,7 +273,15 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   // --- Handlers ---
 
   const handleUpdateConfidence = (relId: string, confidence: RelationshipConfidence) => {
-    setRelConfidences(prev => ({ ...prev, [relId]: confidence }));
+    const prevValue = relConfidences[relId] || 'Unknown';
+    setRelConfidences((prev) => ({ ...prev, [relId]: confidence }));
+    if (!canEditFamily) return;
+    updateRelationshipConfidence(relId, confidence, { id: currentUser?.id ?? null, name: currentUser?.name ?? null })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : 'Failed to update relationship.';
+        setConnectionsError(message);
+        setRelConfidences((prev) => ({ ...prev, [relId]: prevValue }));
+      });
   };
 
   const handleUpdateEvent = (id: string, field: keyof PersonEvent, value: any) => {
@@ -452,6 +476,17 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   const handleNavigateRequest = (target: Person) => {
     if (!confirmDiscard('Discard changes before navigating to another profile?')) return;
     onNavigateToPerson?.(target);
+  };
+
+  const handleUnlinkRelationship = async (relId: string) => {
+    if (!canEditFamily) return;
+    try {
+      await unlinkRelationship(relId, { id: currentUser?.id ?? null, name: currentUser?.name ?? null });
+      await refreshConnections({ silent: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to unlink relationship.';
+      setConnectionsError(message);
+    }
   };
 
   const draftSnapshot = useMemo(
@@ -781,6 +816,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
             canEdit={canEditFamily}
             loading={connectionsLoading}
             error={connectionsError}
+            onUnlinkRelationship={handleUnlinkRelationship}
           />
         )}
 
