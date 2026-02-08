@@ -51,6 +51,15 @@ const fetchChunks = async <T>(items: string[], chunkSize: number, fetcher: (chun
   return results;
 };
 
+const chunkedInsert = async <T>(table: string, rows: T[], chunkSize = 500) => {
+  if (!rows.length) return;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const slice = rows.slice(i, i + chunkSize);
+    const { error } = await supabase.from(table).insert(slice as any);
+    if (error) throw new Error(error.message);
+  }
+};
+
 const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
   const metadata: Record<string, any> = person.metadata ? { ...person.metadata } : {};
   if (person.alternateNames?.length) {
@@ -473,8 +482,7 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
   const auditEntries: Array<{ tree_id: string; actor_id: string | null; actor_name: string; action: string; entity_type: string; entity_id: string; details?: Record<string, unknown> }> = [];
 
   if (personRows.length) {
-    const { error } = await supabase.from('persons').insert(personRows);
-    if (error) throw new Error(error.message);
+    await chunkedInsert('persons', personRows);
     personRows.forEach((row) => {
       auditEntries.push({
         tree_id: treeId,
@@ -489,8 +497,7 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
   }
 
   if (relationshipRows.length) {
-    const { error } = await supabase.from('relationships').insert(relationshipRows as any[]);
-    if (error) throw new Error(error.message);
+    await chunkedInsert('relationships', relationshipRows as any[]);
     (relationshipRows as any[]).forEach((row: any) => {
       auditEntries.push({
         tree_id: treeId,
@@ -597,20 +604,16 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
   });
 
   if (events.length) {
-    const { error } = await supabase.from('person_events').insert(events);
-    if (error) throw new Error(error.message);
+    await chunkedInsert('person_events', events);
   }
   if (notes.length) {
-    const { error } = await supabase.from('notes').insert(notes);
-    if (error) throw new Error(error.message);
+    await chunkedInsert('notes', notes);
   }
   if (sources.length) {
-    const { error } = await supabase.from('sources').insert(sources);
-    if (error) throw new Error(error.message);
+    await chunkedInsert('sources', sources);
   }
   if (citations.length) {
-    const { error } = await supabase.from('citations').insert(citations);
-    if (error) throw new Error(error.message);
+    await chunkedInsert('citations', citations);
   }
 
   await recordAuditLogs(auditEntries);
