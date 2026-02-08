@@ -405,6 +405,33 @@ export const fetchPersonConnections = async (
   };
 };
 
+export interface UpdatePersonProfilePayload {
+  actorId?: string | null;
+  actorName?: string | null;
+  profile: Record<string, any>;
+  events?: any[];
+  notes?: any[];
+}
+
+export const updatePersonProfile = async (
+  personId: string,
+  payload: UpdatePersonProfilePayload
+) => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data, error } = await supabase.rpc('admin_update_person_profile', {
+    target_person_id: personId,
+    payload_actor_id: payload.actorId ?? null,
+    payload_actor_name: payload.actorName ?? null,
+    payload_profile: payload.profile,
+    payload_events: payload.events ?? [],
+    payload_notes: payload.notes ?? []
+  });
+  if (error) throw new Error(error.message);
+  return data;
+};
+
 export const searchPersonsInTree = async (
   treeId: string,
   term: string,

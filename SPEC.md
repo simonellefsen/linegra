@@ -55,6 +55,11 @@ Linegra is a modern, high-performance web application designed to replace legacy
 - **UI gating**: When `currentUser.isAdmin` is false, editing affordances must visually degrade (buttons hidden/disabled, drag handles inert) so accidental changes cannot occur. The Family tab, for example, only enables drag-and-drop or unlink buttons when the viewer is authorized.
 - **Spec requirement**: Any new feature that mutates archival data must check permissions server-side (via RLS/RPC) and client-side before presenting controls.
 
+### 3.7. Performance & Responsiveness
+- **Snappy-first UX**: The UI must remain responsive even on trees with 10k+ individuals. Avoid bulk hydration; every surface (landing widgets, search, PersonProfile, pedigree tree) should fetch the smallest slice of data required for the current view.
+- **Lazy Queries**: Use paged Supabase requests or RPCs that summarize results server-side. Expensive operations (relationships graph, GEDCOM imports, admin audits) should run on demand and display explicit progress indicators so the reader never stares at a frozen screen.
+- **Optimistic Interactions**: Edits should surface immediately in the UI while background saves checkpoint through transactional RPCs. When network churn occurs, fall back gracefully with inline status badges (e.g., “Saving…”, “Retry”) so the researcher can keep browsing without reloads.
+
 ## 4. Visual Identity
 - **Color Palette**: Deep Slate (#0f172a), crisp whites, and accent Blue-500 for genetic and identity data. 
 - **Confidence Coding**: 

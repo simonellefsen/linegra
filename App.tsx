@@ -511,6 +511,13 @@ useEffect(() => {
     [handleEnsurePersonDetails]
   );
 
+  const handlePersonPatched = useCallback((updated: Person) => {
+    setSelectedPerson(updated);
+    setAllPeople((prev) =>
+      prev.length ? prev.map((p) => (p.id === updated.id ? updated : p)) : prev
+    );
+  }, []);
+
   const handleAdminLogin = (username: string) => {
     const adminUser: User = {
       id: `admin-${username}`,
@@ -1176,6 +1183,7 @@ useEffect(() => {
               onClose={() => handlePersonSelect(null)} 
               onNavigateToPerson={(next) => handlePersonSelect(next)}
               onPersistFamilyLayout={handlePersistFamilyLayout}
+              onPersonUpdated={handlePersonPatched}
             />
           )}
         </div>

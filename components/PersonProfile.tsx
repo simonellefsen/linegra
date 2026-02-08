@@ -25,7 +25,7 @@ import MediaTab from './person-profile/MediaTab';
 import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
-import { fetchPersonConnections } from '../services/archive';
+import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails } from '../services/archive';
 
 const serializePlaceValue = (value: string | StructuredPlace) =>
   typeof value === 'string' ? value : JSON.stringify(value ?? '');
@@ -66,11 +66,12 @@ interface PersonProfileProps {
   onClose: () => void;
   onNavigateToPerson?: (person: Person) => void;
   onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
+  onPersonUpdated?: (person: Person) => void;
 }
 
 type ProfileSection = 'vital' | 'story' | 'family' | 'sources' | 'media' | 'dna' | 'notes';
 
-const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onClose, onNavigateToPerson, onPersistFamilyLayout }) => {
+const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onClose, onNavigateToPerson, onPersistFamilyLayout, onPersonUpdated }) => {
   const [activeSection, setActiveSection] = useState<ProfileSection>('vital');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -105,6 +106,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   const [baselineSnapshot, setBaselineSnapshot] = useState<string>('');
   const [isDirty, setIsDirty] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [shareFeedback, setShareFeedback] = useState<string>('');
 
   useEffect(() => {
@@ -343,13 +346,102 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
     return window.confirm(message);
   };
 
-  const handleSaveDraft = () => {
-    // TODO: replace with real persistence call
-    console.info('[Linegra] Save draft placeholder');
-    setBaselineSnapshot(draftSnapshot);
-    setIsDirty(false);
-    setSaveFeedback('Saved');
-    setTimeout(() => setSaveFeedback(''), 2000);
+  const resolvePlaceText = (value: string | StructuredPlace) => {
+    if (!value) return null;
+    if (typeof value === 'string') return value;
+    return value.fullText || null;
+  };
+
+  const buildProfilePayload = () => {
+    const metadataPatch: Record<string, unknown> = {};
+    if (birthPlace && typeof birthPlace !== 'string') {
+      metadataPatch.structured_birth_place = birthPlace;
+    }
+    if (deathPlace && typeof deathPlace !== 'string') {
+      metadataPatch.structured_death_place = deathPlace;
+    }
+    if (residenceAtDeath && typeof residenceAtDeath !== 'string') {
+      metadataPatch.structured_residence_at_death = residenceAtDeath;
+    }
+    if (burialPlace && typeof burialPlace !== 'string') {
+      metadataPatch.structured_burial_place = burialPlace;
+    }
+    return {
+      first_name: firstName || person.firstName,
+      last_name: lastName || person.lastName,
+      maiden_name: maidenName || null,
+      birth_date_text: birthDate || null,
+      birth_place_text: resolvePlaceText(birthPlace),
+      death_date_text: deathDate || null,
+      death_place_text: resolvePlaceText(deathPlace),
+      residence_at_death_text: resolvePlaceText(residenceAtDeath),
+      burial_date_text: burialDate || null,
+      burial_place_text: resolvePlaceText(burialPlace),
+      death_cause: deathCause || null,
+      death_cause_category: deathCategory || null,
+      alternate_names: altNames,
+      metadata: metadataPatch
+    };
+  };
+
+  const eventsPayload = () =>
+    events.map((event) => {
+      const placeText =
+        typeof event.place === 'string'
+          ? event.place
+          : (event.place as StructuredPlace | undefined)?.fullText ?? null;
+      const structured =
+        typeof event.place === 'object' && event.place
+          ? (event.place as StructuredPlace)
+          : null;
+      const baseMetadata = event.metadata && typeof event.metadata === 'object' ? event.metadata : {};
+      return {
+        id: event.id,
+        type: event.type,
+        date: event.date || null,
+        place: placeText,
+        description: event.description || null,
+        employer: event.employer || null,
+        metadata: structured ? { ...baseMetadata, structured_place: structured } : baseMetadata
+      };
+    });
+
+  const notesPayload = () =>
+    notes.map((note) => ({
+      id: note.id,
+      body: note.text || '',
+      type: note.type || 'Generic',
+      event_label: note.event || null,
+      note_date_text: note.date || null,
+      is_private: note.isPrivate ?? false
+    }));
+
+  const handleSave = async () => {
+    if (!canEditPerson || saving || !isDirty) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updatePersonProfile(person.id, {
+        actorId: currentUser?.id ?? null,
+        actorName: currentUser?.name ?? undefined,
+        profile: buildProfilePayload(),
+        events: eventsPayload(),
+        notes: notesPayload()
+      });
+      const refreshed = await fetchPersonDetails(person.id);
+      onPersonUpdated?.(refreshed);
+      setBaselineSnapshot(buildSnapshotFromPerson(refreshed));
+      setIsDirty(false);
+      setSaveFeedback('Saved');
+      setTimeout(() => setSaveFeedback(''), 2000);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save changes.';
+      setSaveError(message);
+      setSaveFeedback('Save failed');
+      setTimeout(() => setSaveFeedback(''), 3000);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAttemptClose = () => {
@@ -529,15 +621,15 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
           >
             {canEditPerson && (
               <button
-                onClick={handleSaveDraft}
-                disabled={!isDirty}
+                onClick={handleSave}
+                disabled={!isDirty || saving}
                 className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-[0.2em] ${
-                  isDirty
+                  isDirty && !saving
                     ? 'bg-emerald-400 text-emerald-900 hover:bg-emerald-300 transition'
                     : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 }`}
               >
-                Save
+                {saving ? 'Saving…' : 'Save'}
               </button>
             )}
             {saveFeedback && (
@@ -627,6 +719,11 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         className="flex-1 overflow-y-auto p-8 bg-slate-50/30 no-scrollbar pb-32"
         style={{ paddingBottom: 'calc(8rem + env(safe-area-inset-bottom, 0px))' }}
       >
+        {saveError && (
+          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-sm text-rose-700">
+            {saveError}
+          </div>
+        )}
         {activeSection === 'vital' && (
           <VitalTab
             firstName={firstName}
