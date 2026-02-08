@@ -32,10 +32,10 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
   }).slice(0, 3);
 
   return (
-    <div className="space-y-10 pb-20">
+    <div className="space-y-8 pb-24">
       {/* Hero Header */}
-      <div className="relative overflow-hidden rounded-[40px] bg-slate-900 text-white p-12 shadow-2xl">
-        <div className="absolute top-0 right-0 w-1/2 h-full opacity-10 pointer-events-none">
+      <div className="relative overflow-hidden rounded-[32px] md:rounded-[40px] bg-slate-900 text-white p-8 sm:p-10 lg:p-12 shadow-2xl">
+        <div className="absolute top-0 right-0 w-1/2 h-full opacity-10 pointer-events-none hidden sm:block">
           <svg viewBox="0 0 400 400" className="w-full h-full">
             <path d="M50 350 C 100 200, 300 200, 350 50" stroke="white" strokeWidth="2" fill="none" />
             <circle cx="50" cy="350" r="10" fill="white" />
@@ -48,14 +48,14 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
             <span className="px-3 py-1 bg-white/20 backdrop-blur rounded-full text-[10px] font-bold uppercase tracking-widest">Active Tree</span>
             {isAdmin && <button className="px-3 py-1 bg-amber-400 text-amber-900 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-amber-300 transition-colors">Admin Settings</button>}
           </div>
-          <h1 className="text-5xl font-serif font-bold mb-4">{tree.name}</h1>
-          <p className="text-slate-300 text-lg leading-relaxed">{tree.description}</p>
-          <div className="mt-8 flex gap-4">
-            <button className="bg-white text-slate-900 px-8 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-100 transition-all shadow-lg active:scale-95">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-serif font-bold mb-3">{tree.name}</h1>
+          <p className="text-slate-300 text-base sm:text-lg leading-relaxed max-w-2xl">{tree.description}</p>
+          <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
+            <button className="bg-white text-slate-900 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-100 transition-all shadow-lg active:scale-95">
               Explore Tree
               <ChevronRight className="w-4 h-4" />
             </button>
-            <button className="bg-slate-800 border border-slate-700 text-white px-8 py-3 rounded-2xl font-bold hover:bg-slate-700 transition-all">
+            <button className="bg-slate-800 border border-slate-700 text-white px-6 py-3 rounded-2xl font-bold hover:bg-slate-700 transition-all">
               Statistics
             </button>
           </div>
@@ -63,10 +63,10 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
       </div>
 
       {/* Widgets Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         
         {/* What's New */}
-        <section className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col h-full">
+        <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-slate-200 shadow-sm flex flex-col h-full">
           <div className="flex items-center justify-between mb-6">
             <h3 className="flex items-center gap-2 font-serif font-bold text-xl text-slate-900">
               <Clock className="w-5 h-5 text-blue-500" /> What's New
@@ -94,7 +94,7 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
         </section>
 
         {/* Calendar / Anniversaries */}
-        <section className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col h-full">
+        <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-slate-200 shadow-sm flex flex-col h-full">
           <div className="flex items-center justify-between mb-6">
             <h3 className="flex items-center gap-2 font-serif font-bold text-xl text-slate-900">
               <Calendar className="w-5 h-5 text-rose-500" /> This Month
@@ -121,7 +121,7 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
         </section>
 
         {/* Most Wanted (Missing Data) */}
-        <section className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col h-full">
+        <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-slate-200 shadow-sm flex flex-col h-full">
           <div className="flex items-center justify-between mb-6">
             <h3 className="flex items-center gap-2 font-serif font-bold text-xl text-slate-900">
               <HelpCircle className="w-5 h-5 text-amber-500" /> Most Wanted
@@ -151,7 +151,7 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
         </section>
 
         {/* Media Highlights / Random Photos */}
-        <section className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col h-full">
+        <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-slate-200 shadow-sm flex flex-col h-full">
           <div className="flex items-center justify-between mb-6">
             <h3 className="flex items-center gap-2 font-serif font-bold text-xl text-slate-900">
               <ImageIcon className="w-5 h-5 text-emerald-500" /> Random Media

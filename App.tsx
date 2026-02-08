@@ -18,7 +18,9 @@ import {
   Database,
   User as UserIcon,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Menu,
+  X
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -37,6 +39,7 @@ const App: React.FC = () => {
   const [allRelationships, setAllRelationships] = useState<Relationship[]>([]);
 
   const [showTreeSelector, setShowTreeSelector] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
 
@@ -82,6 +85,10 @@ const App: React.FC = () => {
       window.localStorage.removeItem('LINEGRA_SUPERADMIN');
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [activeTab]);
 
   useEffect(() => {
     if (!supabaseActive) {
@@ -364,6 +371,7 @@ const App: React.FC = () => {
   const selectTree = (tree: FamilyTreeType) => {
     setActiveTree(tree);
     setShowTreeSelector(false);
+    setMobileNavOpen(false);
     setActiveTab('home');
     if (!supabaseActive) return;
       loadArchiveData(tree.id, searchQuery).then((archive) => {
@@ -463,16 +471,33 @@ const App: React.FC = () => {
   ];
 
   return (
-    <div className="flex h-screen w-full bg-slate-50 text-slate-900 overflow-hidden font-sans">
-      <nav className="w-20 lg:w-72 bg-white border-r border-slate-200 flex flex-col h-full shrink-0 transition-all duration-500 shadow-[20px_0_60px_rgba(0,0,0,0.02)]">
-        <div className="p-8">
-          <div className="flex items-center gap-4 mb-10">
-            <div className="w-12 h-12 bg-slate-900 rounded-[20px] flex items-center justify-center text-white shadow-2xl shrink-0 group hover:rotate-12 transition-transform">
-              <GitBranch className="w-7 h-7" />
+    <div className="flex flex-col lg:flex-row h-screen w-full bg-slate-50 text-slate-900 overflow-hidden font-sans">
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+      <nav
+        className={`fixed inset-y-0 left-0 z-50 w-64 sm:w-72 bg-white border-r border-slate-200 flex flex-col h-full shrink-0 shadow-[20px_0_60px_rgba(0,0,0,0.05)] transition-transform duration-300 lg:static lg:translate-x-0 ${
+          mobileNavOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="p-6 lg:p-8">
+          <div className="flex items-center justify-between lg:justify-start gap-4 mb-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-slate-900 rounded-[20px] flex items-center justify-center text-white shadow-2xl shrink-0">
+                <GitBranch className="w-7 h-7" />
+              </div>
+              <h1 className="hidden lg:block text-3xl font-serif font-bold tracking-tight">Linegra</h1>
             </div>
-            <h1 className="hidden lg:block text-3xl font-serif font-bold tracking-tight">Linegra</h1>
+            <button
+              className="p-2 rounded-2xl bg-slate-100 text-slate-500 lg:hidden"
+              onClick={() => setMobileNavOpen(false)}
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-
           <div className="relative mb-8">
             <button 
               onClick={() => setShowTreeSelector(!showTreeSelector)}
@@ -482,6 +507,9 @@ const App: React.FC = () => {
                 <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
                 <span className="hidden lg:block font-black text-[10px] uppercase tracking-widest truncate text-slate-700">
                   {activeTree?.name ?? 'No Tree Selected'}
+                </span>
+                <span className="lg:hidden font-black text-xs truncate text-slate-700">
+                  {activeTree?.name ?? 'Select Tree'}
                 </span>
               </div>
               <ChevronDown className={`hidden lg:block w-4 h-4 text-slate-400 transition-transform duration-300 ${showTreeSelector ? 'rotate-180' : ''}`} />
@@ -517,7 +545,7 @@ const App: React.FC = () => {
                 }`}
               >
                 <item.icon className="w-6 h-6 shrink-0" />
-                <span className="hidden lg:block font-bold text-[13px] tracking-wide">{item.label}</span>
+                <span className="font-bold text-[13px] tracking-wide">{item.label}</span>
               </button>
             ))}
         </div>
@@ -526,21 +554,27 @@ const App: React.FC = () => {
            {currentUser && (
              <button onClick={() => setActiveTab('profile')} className="w-full flex items-center gap-5 px-6 py-4 rounded-[22px] text-slate-500 hover:bg-slate-100 transition-all">
                <UserIcon className="w-6 h-6 shrink-0" />
-               <span className="hidden lg:block font-bold text-[13px] tracking-wide">Researcher Profile</span>
+               <span className="font-bold text-[13px] tracking-wide">Researcher Profile</span>
              </button>
            )}
         </div>
       </nav>
 
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-hidden relative">
-        <header className="h-24 border-b border-slate-200/60 bg-white/70 backdrop-blur-xl flex items-center justify-between px-10 sticky top-0 z-40">
-          <div className="flex items-center gap-6 flex-1 max-w-2xl">
+        <header className="border-b border-slate-200/60 bg-white/80 backdrop-blur-xl flex flex-wrap items-center gap-4 px-4 sm:px-6 lg:px-10 py-4 sticky top-0 z-40">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <button
+              className="p-3 rounded-2xl bg-slate-100 text-slate-600 lg:hidden"
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             <div className="relative w-full group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-slate-900 transition-colors" />
               <input 
                 type="text" 
                 placeholder={`Query the ${activeTree?.name ?? 'Linegra Archive'}...`} 
-                className="w-full pl-12 pr-6 py-3.5 bg-slate-100/50 border-transparent rounded-[20px] outline-none text-[13px] font-medium transition-all focus:bg-white focus:ring-4 focus:ring-slate-900/5"
+                className="w-full pl-12 pr-6 py-3.5 bg-slate-100/70 border-transparent rounded-[20px] outline-none text-[13px] font-medium transition-all focus:bg-white focus:ring-4 focus:ring-slate-900/5"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -549,7 +583,7 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-6 relative">
+          <div className="flex items-center gap-4 relative ml-auto">
             {currentUser ? (
               <div className="flex items-center gap-4 relative">
                 <button
@@ -585,7 +619,7 @@ const App: React.FC = () => {
         </header>
 
         <div className="flex-1 flex overflow-hidden relative">
-          <div className="flex-1 p-10 overflow-y-auto no-scrollbar scroll-smooth">
+          <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto no-scrollbar scroll-smooth">
             {configError && (
               <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 px-6 py-4 rounded-2xl flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 mt-0.5" />
