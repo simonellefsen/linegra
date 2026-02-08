@@ -144,6 +144,14 @@ const mapDbTree = (row: any): FamilyTreeType => {
   };
 };
 
+const mapBasicPeople = (rows: any[] = []) => {
+  const noteMap: Record<string, Note[]> = {};
+  const sourceMap: Record<string, Source[]> = {};
+  const eventMap: Record<string, PersonEvent[]> = {};
+  const citationMap: Record<string, Citation[]> = {};
+  return rows.map((row) => mapDbPerson(row, noteMap, sourceMap, eventMap, citationMap));
+};
+
 export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
@@ -265,6 +273,148 @@ export const loadArchiveData = async (treeId: string) => {
   }));
 
   return { people, relationships };
+};
+
+export const fetchWhatsNewPeople = async (treeId: string, limit = 4): Promise<Person[]> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data, error } = await supabase
+    .from('persons')
+    .select(
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata'
+    )
+    .eq('tree_id', treeId)
+    .order('updated_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return mapBasicPeople(data || []);
+};
+
+export const fetchThisMonthHighlights = async (treeId: string, limit = 3): Promise<Person[]> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const currentMonth = new Date().getMonth();
+  const { data, error } = await supabase
+    .from('persons')
+    .select(
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata'
+    )
+    .eq('tree_id', treeId)
+    .not('birth_date_text', 'is', null)
+    .limit(200);
+  if (error) throw new Error(error.message);
+  const filtered = (data || []).filter((row) => {
+    if (!row.birth_date_text) return false;
+    const parsed = new Date(row.birth_date_text);
+    if (Number.isNaN(parsed.getTime())) return false;
+    return parsed.getMonth() === currentMonth;
+  });
+  return mapBasicPeople(filtered.slice(0, limit));
+};
+
+export const fetchMostWantedPeople = async (treeId: string, limit = 4): Promise<Person[]> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data, error } = await supabase
+    .from('persons')
+    .select(
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata'
+    )
+    .eq('tree_id', treeId)
+    .or('birth_date_text.is.null,photo_url.is.null,bio.is.null')
+    .order('updated_at', { ascending: false })
+    .limit(limit * 3);
+  if (error) throw new Error(error.message);
+  const prioritized = (data || []).slice(0, limit);
+  return mapBasicPeople(prioritized);
+};
+
+export const fetchRandomMediaPeople = async (treeId: string, limit = 4): Promise<Person[]> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data, error } = await supabase
+    .from('persons')
+    .select(
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata'
+    )
+    .eq('tree_id', treeId)
+    .not('photo_url', 'is', null)
+    .limit(20);
+  if (error) throw new Error(error.message);
+  const shuffled = (data || []).sort(() => Math.random() - 0.5);
+  return mapBasicPeople(shuffled.slice(0, limit));
+};
+
+export const searchPersonsInTree = async (
+  treeId: string,
+  term: string,
+  options: {
+    limit?: number;
+    offset?: number;
+    filters?: { livingOnly?: boolean; missingData?: boolean };
+  } = {}
+) => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const limit = options.limit ?? 40;
+  const offset = options.offset ?? 0;
+  const sanitizedTerms = term
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => token.replace(/[%_]/g, '\\$&'));
+
+  let query = supabase
+    .from('persons')
+    .select(
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, burial_date_text, burial_place_text, residence_at_death_text, metadata, bio, occupations, updated_at, created_by, is_dna_match, dna_match_info',
+      { count: 'exact' }
+    )
+    .eq('tree_id', treeId)
+    .order('last_name', { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  sanitizedTerms.forEach((token) => {
+    const pattern = `%${token}%`;
+    query = query.or(
+      [
+        `first_name.ilike.${pattern}`,
+        `last_name.ilike.${pattern}`,
+        `maiden_name.ilike.${pattern}`,
+        `birth_date_text.ilike.${pattern}`,
+        `death_date_text.ilike.${pattern}`,
+        `birth_place_text.ilike.${pattern}`,
+        `death_place_text.ilike.${pattern}`,
+        `bio.ilike.${pattern}`
+      ].join(',')
+    );
+  });
+
+  if (options.filters?.livingOnly) {
+    query = query.is('death_date_text', null);
+  }
+
+  if (options.filters?.missingData) {
+    query = query.or('birth_date_text.is.null,death_date_text.is.null,birth_place_text.is.null,death_place_text.is.null');
+  }
+
+  const { data, count, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const emptyNotes: Record<string, Note[]> = {};
+  const emptySources: Record<string, Source[]> = {};
+  const emptyEvents: Record<string, PersonEvent[]> = {};
+  const emptyCitations: Record<string, Citation[]> = {};
+
+  return {
+    total: count ?? 0,
+    results: (data ?? []).map((row) => mapDbPerson(row, emptyNotes, emptySources, emptyEvents, emptyCitations))
+  };
 };
 
 export const persistFamilyLayout = async (

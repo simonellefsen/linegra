@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails } from './services/archive';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
 import FamilyTree from './components/FamilyTree';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
@@ -39,6 +39,7 @@ const App: React.FC = () => {
   const [activeTree, setActiveTree] = useState<FamilyTreeType | null>(null);
   const [allPeople, setAllPeople] = useState<Person[]>([]);
   const [allRelationships, setAllRelationships] = useState<Relationship[]>([]);
+  const [graphTreeId, setGraphTreeId] = useState<string | null>(null);
 
   const [showTreeSelector, setShowTreeSelector] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -78,6 +79,24 @@ const App: React.FC = () => {
     livingOnly: false,
     missingData: false
   });
+  const SEARCH_PAGE_SIZE = 40;
+  const [searchPage, setSearchPage] = useState(0);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [landingCards, setLandingCards] = useState<{
+    whatsNew: Person[];
+    anniversaries: Person[];
+    mostWanted: Person[];
+    randomMedia: Person[];
+  }>({
+    whatsNew: [],
+    anniversaries: [],
+    mostWanted: [],
+    randomMedia: []
+  });
+  const [landingLoading, setLandingLoading] = useState(false);
+  const [landingError, setLandingError] = useState<string | null>(null);
   const applySearchFilters = useCallback(
     (results: Person[], filters: { livingOnly: boolean; missingData: boolean }) => {
       return results.filter((person) => {
@@ -100,11 +119,15 @@ const App: React.FC = () => {
   const activeTreeId = activeTree?.id ?? null;
 
   const loadTreeArchive = useCallback(
-    async (tree: FamilyTreeType | null, opts: { silent?: boolean } = {}) => {
+    async (tree: FamilyTreeType | null, opts: { silent?: boolean; force?: boolean } = {}) => {
       if (!supabaseActive) return;
       if (!tree) {
         setAllPeople([]);
         setAllRelationships([]);
+        setGraphTreeId(null);
+        return;
+      }
+      if (graphTreeId === tree.id && !opts.force) {
         return;
       }
       if (!opts.silent) {
@@ -115,6 +138,7 @@ const App: React.FC = () => {
         const archive = await loadArchiveData(tree.id);
         setAllPeople(archive.people);
         setAllRelationships(archive.relationships);
+        setGraphTreeId(tree.id);
       } catch (err) {
         console.error('Failed to load tree data', err);
         const message = err instanceof Error ? err.message : 'Failed to load tree data.';
@@ -125,7 +149,7 @@ const App: React.FC = () => {
         }
       }
     },
-    [supabaseActive]
+    [supabaseActive, graphTreeId]
   );
 
   const handleEnsurePersonDetails = useCallback(
@@ -180,11 +204,71 @@ useEffect(() => {
     setTreeViewReady(false);
     setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
     setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
+    setAllPeople([]);
+    setAllRelationships([]);
+    setGraphTreeId(null);
   }, [activeTreeId]);
+
+  useEffect(() => {
+    if (!activeTreeId) {
+      setLandingCards({
+        whatsNew: [],
+        anniversaries: [],
+        mostWanted: [],
+        randomMedia: []
+      });
+      return;
+    }
+    let cancelled = false;
+    setLandingLoading(true);
+    setLandingError(null);
+    Promise.all([
+      fetchWhatsNewPeople(activeTreeId, 4),
+      fetchThisMonthHighlights(activeTreeId, 3),
+      fetchMostWantedPeople(activeTreeId, 4),
+      fetchRandomMediaPeople(activeTreeId, 4)
+    ])
+      .then(([whatsNew, anniversaries, mostWanted, media]) => {
+        if (cancelled) return;
+        setLandingCards({
+          whatsNew,
+          anniversaries,
+          mostWanted,
+          randomMedia: media
+        });
+      })
+      .catch((err) => {
+        console.error('Failed to load landing data', err);
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : 'Unable to load dashboard highlights.';
+        setLandingError(message);
+        setLandingCards({
+          whatsNew: [],
+          anniversaries: [],
+          mostWanted: [],
+          randomMedia: []
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setLandingLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTreeId]);
+
+  useEffect(() => {
+    if (!treeViewReady || !activeTree) return;
+    if (graphTreeId === activeTree.id) return;
+    loadTreeArchive(activeTree, { silent: false });
+  }, [treeViewReady, activeTree, graphTreeId, loadTreeArchive]);
 
   useEffect(() => {
     if (searchModalBaseResults.length) {
       setSearchModalResults(applySearchFilters(searchModalBaseResults, searchFilters));
+    } else {
+      setSearchModalResults([]);
     }
   }, [searchModalBaseResults, searchFilters, applySearchFilters]);
 
@@ -194,6 +278,7 @@ useEffect(() => {
       setActiveTree(null);
       setAllPeople([]);
       setAllRelationships([]);
+      setGraphTreeId(null);
       setConfigError('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY (formerly SUPABASE_ANON_KEY) in your .env.local before running Linegra.');
       setLoading(false);
       return;
@@ -202,26 +287,24 @@ useEffect(() => {
     (async () => {
       try {
         const dbTrees = await ensureTrees();
-        setTrees(dbTrees);
-        if (dbTrees.length) {
-          const selected = dbTrees[0];
+        const ordered = [...dbTrees].sort((a, b) => a.name.localeCompare(b.name));
+        setTrees(ordered);
+        if (ordered.length) {
+          const selected = ordered[0];
           setActiveTree(selected);
-          await loadTreeArchive(selected, { silent: false });
         } else {
           setActiveTree(null);
-          setAllPeople([]);
-          setAllRelationships([]);
         }
         setConfigError(null);
       } catch (err) {
-        console.error('Failed to load archive data', err);
+        console.error('Failed to load tree list', err);
         const message = err instanceof Error ? err.message : 'Failed to load data from Supabase.';
         setConfigError(message);
       } finally {
         setLoading(false);
       }
     })();
-  }, [supabaseActive, loadTreeArchive]);
+  }, [supabaseActive]);
 
   const fetchAdminTreeStats = useCallback(async () => {
     if (!supabaseActive || !currentUser?.isAdmin) {
@@ -350,37 +433,63 @@ useEffect(() => {
 
   const adminTreeData = adminTrees.length ? adminTrees : localTreeSummaries;
 
+  const fetchSearchPage = useCallback(
+    async (page = 0, append = false) => {
+      if (!activeTreeId) return;
+      const trimmed = searchQuery.trim();
+      if (!trimmed) return;
+      setSearchLoading(true);
+      setSearchError(null);
+      try {
+        const { results, total } = await searchPersonsInTree(activeTreeId, trimmed, {
+          limit: SEARCH_PAGE_SIZE,
+          offset: page * SEARCH_PAGE_SIZE
+        });
+        setSearchTotal(total);
+        setSearchPage(page);
+        setSearchModalBaseResults((prev) => (append ? [...prev, ...results] : results));
+      } catch (err) {
+        console.error('Search failed', err);
+        const message = err instanceof Error ? err.message : 'Search failed.';
+        setSearchError(message);
+        if (!append) {
+          setSearchModalBaseResults([]);
+          setSearchModalResults([]);
+        }
+      } finally {
+        setSearchLoading(false);
+      }
+    },
+    [activeTreeId, searchQuery]
+  );
+
   const executeSearch = useCallback(() => {
-    const trimmed = searchQuery.trim().toLowerCase();
+    const trimmed = searchQuery.trim();
     if (!trimmed) {
       setSearchModalBaseResults([]);
       setSearchModalResults([]);
       setSearchModalOpen(false);
+      setSearchTotal(0);
+      setSearchError(null);
       return;
     }
-    const terms = trimmed.split(/\s+/).filter(Boolean);
-    const results = treePeople.filter((person) => {
-      const haystack = [
-        person.firstName,
-        person.lastName,
-        person.maidenName,
-        person.birthDate,
-        person.deathDate,
-        typeof person.birthPlace === 'string' ? person.birthPlace : (person.birthPlace as any)?.fullText,
-        typeof person.deathPlace === 'string' ? person.deathPlace : (person.deathPlace as any)?.fullText,
-        person.bio,
-        ...(person.alternateNames?.map((alt) => `${alt.firstName ?? ''} ${alt.lastName ?? ''}`) ?? [])
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return terms.every((term) => haystack.includes(term));
-    });
-    setSearchModalBaseResults(results);
+    if (!activeTreeId) {
+      setSearchError('Select a tree before searching.');
+      return;
+    }
     setSearchFilters({ livingOnly: false, missingData: false });
-    setSearchModalResults(applySearchFilters(results, { livingOnly: false, missingData: false }));
+    setSearchModalBaseResults([]);
+    setSearchModalResults([]);
+    setSearchTotal(0);
+    setSearchPage(0);
     setSearchModalOpen(true);
-  }, [searchQuery, treePeople, applySearchFilters]);
+    fetchSearchPage(0, false);
+  }, [searchQuery, activeTreeId, fetchSearchPage]);
+
+  const handleLoadMoreResults = useCallback(() => {
+    if (searchLoading) return;
+    fetchSearchPage(searchPage + 1, true);
+  }, [fetchSearchPage, searchLoading, searchPage]);
 
   const handlePersonSelect = useCallback(
     (person: Person | null) => {
@@ -441,7 +550,17 @@ useEffect(() => {
       } else {
         setPendingPersonId(null);
       }
+      return;
     }
+    (async () => {
+      try {
+        const person = await fetchPersonDetails(pendingPersonId);
+        setSelectedPerson(person);
+        setPendingPersonId(null);
+      } catch (err) {
+        console.error('Failed to load person from URL', err);
+      }
+    })();
   }, [pendingPersonId, treePeople, handleEnsurePersonDetails]);
 
 
@@ -452,10 +571,13 @@ useEffect(() => {
       try {
         const created = await createFamilyTree(payload, currentUser);
         const updatedTrees = await ensureTrees();
-        setTrees(updatedTrees);
-        const nextActive = updatedTrees.find((t) => t.id === created.id) || created;
+        const ordered = [...updatedTrees].sort((a, b) => a.name.localeCompare(b.name));
+        setTrees(ordered);
+        const nextActive = ordered.find((t) => t.id === created.id) || ordered[0] || created;
         setActiveTree(nextActive);
-        await loadTreeArchive(nextActive);
+        setAllPeople([]);
+        setAllRelationships([]);
+        setGraphTreeId(null);
         await fetchAdminTreeStats();
       } catch (err) {
         console.error('Failed to create tree', err);
@@ -464,7 +586,7 @@ useEffect(() => {
         setCreatingTree(false);
       }
     },
-    [supabaseActive, currentUser, fetchAdminTreeStats, loadTreeArchive]
+    [supabaseActive, currentUser, fetchAdminTreeStats]
   );
 
   const handleAdminDeleteTree = useCallback(
@@ -479,16 +601,20 @@ useEffect(() => {
           setActiveTree(null);
           setAllPeople([]);
           setAllRelationships([]);
+          setGraphTreeId(null);
           await fetchAdminTreeStats();
           return;
         }
-        setTrees(updatedTrees);
-        let nextActive = activeTree ? updatedTrees.find((t) => t.id === activeTree.id) : updatedTrees[0];
+        const ordered = [...updatedTrees].sort((a, b) => a.name.localeCompare(b.name));
+        setTrees(ordered);
+        let nextActive = activeTree ? ordered.find((t) => t.id === activeTree.id) : ordered[0];
         if (!nextActive) {
-          nextActive = updatedTrees[0];
+          nextActive = ordered[0];
         }
         setActiveTree(nextActive);
-        await loadTreeArchive(nextActive);
+        setAllPeople([]);
+        setAllRelationships([]);
+        setGraphTreeId(null);
         await fetchAdminTreeStats();
       } catch (err) {
         console.error('Failed to delete tree', err);
@@ -497,7 +623,7 @@ useEffect(() => {
         setDeletingTreeId(null);
       }
     },
-    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats, loadTreeArchive]
+    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats]
   );
 
   const handleNukeConfirm = useCallback(async () => {
@@ -545,7 +671,10 @@ useEffect(() => {
     setShowTreeSelector(false);
     setMobileNavOpen(false);
     setActiveTab('home');
-    loadTreeArchive(tree, { silent: false });
+    setAllPeople([]);
+    setAllRelationships([]);
+    setGraphTreeId(null);
+    setTreeViewReady(false);
   };
 
   const handleImport = async (data: { people: Person[]; relationships: Relationship[] }) => {
@@ -555,7 +684,9 @@ useEffect(() => {
     }
     try {
       await importGedcomToSupabase(activeTreeId, data, currentUser);
-      await loadTreeArchive(activeTree, { silent: false });
+      if (activeTree && graphTreeId === activeTree.id) {
+        await loadTreeArchive(activeTree, { silent: false, force: true });
+      }
       await fetchAdminTreeStats();
       setActiveTab('tree');
     } catch (err) {
@@ -787,9 +918,14 @@ useEffect(() => {
               activeTree ? (
                 <TreeLandingPage
                   tree={activeTree}
-                  people={treePeople}
+                  whatsNew={landingCards.whatsNew}
+                  anniversaries={landingCards.anniversaries}
+                  mostWanted={landingCards.mostWanted}
+                  mediaHighlights={landingCards.randomMedia}
                   onPersonSelect={handlePersonSelect}
                   isAdmin={currentUser?.isAdmin || false}
+                  loading={landingLoading}
+                  error={landingError}
                 />
               ) : (
                 <div className="bg-white border border-slate-200 rounded-[32px] p-12 text-center space-y-4 shadow-sm">
@@ -884,8 +1020,12 @@ useEffect(() => {
                           Load the interactive pedigree when you’re ready. We’ll start with {focusPerson ? `${focusPerson.firstName} ${focusPerson.lastName}` : 'your focus person'} and show parents plus grandparents, then you can unfold more generations on demand.
                         </p>
                         <button
-                          onClick={() => setTreeViewReady(true)}
-                          disabled={!treePeople.length}
+                          onClick={async () => {
+                            if (!activeTree) return;
+                            setTreeViewReady(true);
+                            await loadTreeArchive(activeTree, { silent: false });
+                          }}
+                          disabled={!activeTree}
                           className="px-6 py-3 rounded-2xl bg-slate-900 text-white font-black uppercase tracking-[0.3em] disabled:opacity-40"
                         >
                           Launch Pedigree View
@@ -1054,7 +1194,9 @@ useEffect(() => {
             <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Search Results</p>
-                <h3 className="text-2xl font-serif font-bold text-slate-900">{searchModalResults.length} matches</h3>
+                <h3 className="text-2xl font-serif font-bold text-slate-900">
+                  {searchModalResults.length} shown{searchTotal ? ` of ${searchTotal}` : ''}
+                </h3>
                 <p className="text-xs text-slate-500">Query: “{searchQuery.trim()}”</p>
               </div>
               <button
@@ -1079,37 +1221,61 @@ useEffect(() => {
                 Needs Research
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-8 py-6">
-              {searchModalResults.length ? (
-                <div className="space-y-4">
-                  {searchModalResults.map((person) => (
-                    <button
-                      key={person.id}
-                      onClick={() => {
-                        handlePersonSelect(person);
-                        setSearchModalOpen(false);
-                      }}
-                      className="w-full text-left p-4 rounded-2xl border border-slate-200 hover:border-slate-400 transition-all flex items-center gap-4"
-                    >
-                      <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-100 shrink-0">
-                        <img src={getAvatarForPerson(person)} className="w-full h-full object-cover" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-slate-900 truncate">
-                          {person.firstName} {person.lastName}
-                        </p>
-                        <p className="text-[11px] text-slate-500 uppercase tracking-[0.3em] truncate">
-                          {person.birthDate || 'Unknown'} • {person.deathDate || 'Living'}
-                        </p>
-                      </div>
-                      <div className="text-right text-[10px] uppercase tracking-[0.3em] text-slate-400">
-                        {person.birthPlace && typeof person.birthPlace === 'string' ? person.birthPlace : ''}
-                      </div>
-                    </button>
-                  ))}
+            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
+              {searchError && (
+                <div className="text-center text-rose-600 text-sm font-semibold">{searchError}</div>
+              )}
+              {searchLoading && !searchModalBaseResults.length && (
+                <div className="flex flex-col items-center justify-center text-slate-400 text-sm py-10 gap-3">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <span>Searching archive…</span>
                 </div>
+              )}
+              {searchModalResults.length ? (
+                <>
+                  <div className="space-y-4">
+                    {searchModalResults.map((person) => (
+                      <button
+                        key={person.id}
+                        onClick={() => {
+                          handlePersonSelect(person);
+                          setSearchModalOpen(false);
+                        }}
+                        className="w-full text-left p-4 rounded-2xl border border-slate-200 hover:border-slate-400 transition-all flex items-center gap-4"
+                      >
+                        <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-100 shrink-0">
+                          <img src={getAvatarForPerson(person)} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-900 truncate">
+                            {person.firstName} {person.lastName}
+                          </p>
+                          <p className="text-[11px] text-slate-500 uppercase tracking-[0.3em] truncate">
+                            {person.birthDate || 'Unknown'} • {person.deathDate || 'Living'}
+                          </p>
+                        </div>
+                        <div className="text-right text-[10px] uppercase tracking-[0.3em] text-slate-400">
+                          {person.birthPlace && typeof person.birthPlace === 'string' ? person.birthPlace : ''}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {searchModalBaseResults.length < searchTotal && (
+                    <div className="flex items-center justify-center pt-4">
+                      <button
+                        onClick={handleLoadMoreResults}
+                        disabled={searchLoading}
+                        className="px-6 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.3em] hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {searchLoading ? 'Loading…' : 'Load More Matches'}
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="text-center text-slate-400 text-sm py-20">No matches yet. Type a query and press Enter.</div>
+                !searchLoading && (
+                  <div className="text-center text-slate-400 text-sm py-20">No matches yet. Type a query and press Enter.</div>
+                )
               )}
             </div>
           </div>

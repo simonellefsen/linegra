@@ -13,23 +13,27 @@ import { getAvatarForPerson } from '../lib/avatar';
 
 interface TreeLandingPageProps {
   tree: FamilyTree;
-  people: Person[];
+  whatsNew: Person[];
+  anniversaries: Person[];
+  mostWanted: Person[];
+  mediaHighlights: Person[];
   onPersonSelect: (person: Person) => void;
   isAdmin: boolean;
+  loading?: boolean;
+  error?: string | null;
 }
 
-const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPersonSelect, isAdmin }) => {
-  // Logic for widgets
-  const whatsNew = [...people].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 4);
-  
-  const mostWanted = people.filter(p => !p.birthDate || !p.photoUrl || !p.bio).slice(0, 4);
-
-  const anniversaries = people.filter(p => {
-    if (!p.birthDate) return false;
-    const bMonth = new Date(p.birthDate).getMonth();
-    // For demo: showing anything in the same month
-    return bMonth === new Date().getMonth();
-  }).slice(0, 3);
+const TreeLandingPage: React.FC<TreeLandingPageProps> = ({
+  tree,
+  whatsNew,
+  anniversaries,
+  mostWanted,
+  mediaHighlights,
+  onPersonSelect,
+  isAdmin,
+  loading,
+  error
+}) => {
 
   return (
     <div className="space-y-8 pb-24">
@@ -63,6 +67,11 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
       </div>
 
       {/* Widgets Grid */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-600 px-6 py-4 rounded-[24px] text-sm">
+          {error}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         
         {/* What's New */}
@@ -74,21 +83,27 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
             <TrendingUp className="w-4 h-4 text-slate-300" />
           </div>
           <div className="space-y-4 flex-1">
-            {whatsNew.map(p => (
-              <div 
-                key={p.id} 
-                onClick={() => onPersonSelect(p)}
-                className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer group"
-              >
-                <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 shrink-0">
-                  <img src={getAvatarForPerson(p)} className="w-full h-full object-cover" />
+            {loading && !whatsNew.length ? (
+              <p className="text-slate-400 text-sm italic">Fetching latest additions…</p>
+            ) : whatsNew.length ? (
+              whatsNew.map(p => (
+                <div 
+                  key={p.id} 
+                  onClick={() => onPersonSelect(p)}
+                  className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer group"
+                >
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 shrink-0">
+                    <img src={getAvatarForPerson(p)} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">{p.firstName} {p.lastName}</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">Added {new Date(p.updatedAt).toLocaleDateString()}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">{p.firstName} {p.lastName}</p>
-                  <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">Added {new Date(p.updatedAt).toLocaleDateString()}</p>
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-slate-400 text-sm italic">No recent additions yet.</p>
+            )}
           </div>
           <button className="mt-6 text-sm font-bold text-slate-400 hover:text-slate-900 transition-colors text-center w-full">View History</button>
         </section>
@@ -101,7 +116,9 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
             </h3>
           </div>
           <div className="space-y-4 flex-1">
-            {anniversaries.length > 0 ? anniversaries.map(p => (
+            {loading && !anniversaries.length ? (
+              <p className="text-slate-400 text-sm italic py-4">Loading calendar…</p>
+            ) : anniversaries.length > 0 ? anniversaries.map(p => (
               <button
                 key={p.id}
                 onClick={() => onPersonSelect(p)}
@@ -128,24 +145,30 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
             </h3>
           </div>
           <div className="space-y-4 flex-1">
-            {mostWanted.map(p => (
-              <div 
-                key={p.id} 
-                onClick={() => onPersonSelect(p)}
-                className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer group"
-              >
-                <div className="w-10 h-10 rounded-xl overflow-hidden bg-amber-50 flex items-center justify-center shrink-0">
-                  <HelpCircle className="w-5 h-5 text-amber-500" />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-900">{p.firstName} {p.lastName}</p>
-                  <div className="flex gap-1">
-                    {!p.birthDate && <span className="text-[8px] bg-slate-100 px-1 rounded uppercase font-bold text-slate-400">Date</span>}
-                    {!p.photoUrl && <span className="text-[8px] bg-slate-100 px-1 rounded uppercase font-bold text-slate-400">Media</span>}
+            {loading && !mostWanted.length ? (
+              <p className="text-slate-400 text-sm italic">Scanning for research targets…</p>
+            ) : mostWanted.length ? (
+              mostWanted.map(p => (
+                <div 
+                  key={p.id} 
+                  onClick={() => onPersonSelect(p)}
+                  className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer group"
+                >
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-amber-50 flex items-center justify-center shrink-0">
+                    <HelpCircle className="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900">{p.firstName} {p.lastName}</p>
+                    <div className="flex gap-1">
+                      {!p.birthDate && <span className="text-[8px] bg-slate-100 px-1 rounded uppercase font-bold text-slate-400">Date</span>}
+                      {!p.photoUrl && <span className="text-[8px] bg-slate-100 px-1 rounded uppercase font-bold text-slate-400">Media</span>}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-slate-400 text-sm italic">No open research tasks.</p>
+            )}
           </div>
           <button className="mt-6 text-sm font-bold text-slate-400 hover:text-slate-900 transition-colors text-center w-full">View Research Tasks</button>
         </section>
@@ -158,15 +181,21 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({ tree, people, onPerso
             </h3>
           </div>
           <div className="grid grid-cols-2 gap-3 flex-1">
-            {people.filter(p => p.photoUrl).slice(0, 4).map(p => (
-              <div 
-                key={p.id} 
-                className="aspect-square rounded-2xl overflow-hidden bg-slate-100 cursor-pointer hover:scale-105 transition-transform shadow-sm"
-                onClick={() => onPersonSelect(p)}
-              >
-                <img src={p.photoUrl} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500" />
-              </div>
-            ))}
+            {loading && !mediaHighlights.length ? (
+              <div className="col-span-2 text-center text-slate-400 text-sm italic">Collecting media…</div>
+            ) : mediaHighlights.length ? (
+              mediaHighlights.map(p => (
+                <div 
+                  key={p.id} 
+                  className="aspect-square rounded-2xl overflow-hidden bg-slate-100 cursor-pointer hover:scale-105 transition-transform shadow-sm"
+                  onClick={() => onPersonSelect(p)}
+                >
+                  <img src={p.photoUrl} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500" />
+                </div>
+              ))
+            ) : (
+              <div className="col-span-2 text-center text-slate-400 text-sm italic">Add photos to surface highlights here.</div>
+            )}
           </div>
           <button className="mt-6 text-sm font-bold text-slate-400 hover:text-slate-900 transition-colors text-center w-full">Browse Gallery</button>
         </section>
