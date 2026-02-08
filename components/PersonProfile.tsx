@@ -1198,6 +1198,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
   const hydratingRef = useRef(false);
   const [dragContext, setDragContext] = useState<{ childId: string; groupKey: string } | null>(null);
   const [hoverGroup, setHoverGroup] = useState<string | null>(null);
+  const [hoverChild, setHoverChild] = useState<string | null>(null);
   const lastPersistedRef = useRef<string>(JSON.stringify({
     assignments: layoutSeed.assignments,
     manualOrders: layoutSeed.manualOrders,
@@ -1311,7 +1312,6 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
   const handleDragOver = (event: React.DragEvent, groupId: string | null) => {
     if (!dragContext) return;
     const canonical = keyForGroup(groupId);
-    if (dragContext.groupKey !== canonical) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
     setHoverGroup(canonical);
@@ -1366,19 +1366,39 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
     event.preventDefault();
     moveChildToGroup(childId, groupId);
     setHoverGroup(null);
+    setHoverChild(null);
   };
 
   const handleDropOnGroup = (event: React.DragEvent, groupId: string | null) => {
     event.preventDefault();
     moveChildToGroup(null, groupId);
     setHoverGroup(null);
+    setHoverChild(null);
   };
 
   const handleDragLeave = (event: React.DragEvent, groupId: string | null) => {
     const canonical = keyForGroup(groupId);
+    const currentTarget = event.currentTarget as HTMLElement;
+    if (event.relatedTarget && currentTarget.contains(event.relatedTarget as Node)) {
+      return;
+    }
     if (hoverGroup === canonical) {
       setHoverGroup(null);
     }
+  };
+
+  const handleChildDragOver = (event: React.DragEvent, childId: string, groupId: string | null) => {
+    handleDragOver(event, groupId);
+    setHoverChild(childId);
+  };
+
+  const handleChildDragLeave = (event: React.DragEvent, childId: string, groupId: string | null) => {
+    const currentTarget = event.currentTarget as HTMLElement;
+    if (event.relatedTarget && currentTarget.contains(event.relatedTarget as Node)) {
+      return;
+    }
+    if (hoverChild === childId) setHoverChild(null);
+    handleDragLeave(event, groupId);
   };
 
   useEffect(() => {
@@ -1388,12 +1408,6 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
     }, 500);
     return () => clearTimeout(debounce);
   }, [assignments, manualOrders, removedSpouseIds, removedChildIds, persistLayout]);
-
-  const handleReassignChild = (childRelId: string, targetValue: string) => {
-    const targetId = targetValue === 'unassigned' ? null : targetValue;
-    setAssignments((prev) => ({ ...prev, [childRelId]: targetId }));
-    scrubChildFromManualOrders(childRelId);
-  };
 
   const handleUnlinkChild = (childRelId: string) => {
     setRemovedChildIds((prev) => new Set(prev).add(childRelId));
@@ -1434,15 +1448,14 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
 
   const renderChildRow = (child: { person: Person; rel: Relationship }) => {
     const assignment = assignments[child.rel.id] ?? null;
-    const selectedValue = assignment ?? 'unassigned';
     return (
       <div
         key={child.rel.id}
         className={`p-4 bg-white rounded-2xl border flex flex-col gap-3 shadow-sm transition ${
-          hoverGroup === keyForGroup(assignment) ? 'border-blue-400 bg-blue-50/40' : 'border-slate-100'
+          hoverGroup === keyForGroup(assignment) || hoverChild === child.rel.id ? 'border-blue-400 bg-blue-50/40' : 'border-slate-100'
         }`}
-        onDragOver={(event) => handleDragOver(event, assignment)}
-        onDragLeave={(event) => handleDragLeave(event, assignment)}
+        onDragOver={(event) => handleChildDragOver(event, child.rel.id, assignment)}
+        onDragLeave={(event) => handleChildDragLeave(event, child.rel.id, assignment)}
         onDrop={(event) => handleDropOnChild(event, child.rel.id, assignment)}
       >
         <div className="flex items-center justify-between gap-3">
@@ -1465,16 +1478,9 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
           <div className="flex items-center gap-2" />
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={selectedValue}
-            onChange={(e) => handleReassignChild(child.rel.id, e.target.value)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest"
-          >
-            <option value="unassigned">Unassigned</option>
-            {availableSpouseOptions.map((option) => (
-              <option key={option.id} value={option.id}>{option.name}</option>
-            ))}
-          </select>
+          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
+            {assignment ? availableSpouseOptions.find((option) => option.id === assignment)?.name || 'Assigned' : 'Unassigned'}
+          </span>
           <div className="flex-1" />
           <button
             type="button"
@@ -1509,14 +1515,15 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
             <div className="flex items-center justify-between">
               {renderRelationCard(spouse, 'Spousal Link', metaBits.join(' • ') || undefined)}
               <button
-                className="text-[9px] font-black uppercase tracking-[0.3em] text-rose-500 hover:text-rose-600"
+                className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
                 onClick={() => handleUnlinkSpouse(spouse.rel.id)}
+                aria-label="Unlink spouse"
               >
-                Unlink Spouse
+                <UnlinkIcon className="w-4 h-4" />
               </button>
             </div>
             <div
-              className={`ml-4 border-l pl-4 space-y-3 transition ${
+              className={`ml-4 pl-4 space-y-3 transition border-l ${
                 hoverGroup === spouse.rel.id ? 'border-blue-300 bg-blue-50/30 rounded-2xl' : 'border-slate-200'
               }`}
               onDragOver={(event) => handleDragOver(event, spouse.rel.id)}
@@ -1527,22 +1534,24 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
               {childrenForSpouse.length > 0 ? (
                 <>
                   {childrenForSpouse.map((child) => renderChildRow(child))}
-                  <div className="border border-dashed border-slate-200 rounded-xl text-[10px] text-slate-400 uppercase tracking-widest text-center py-2">
-                    Drag here to place last
-                  </div>
+                  {dragContext && (
+                    <div className="border border-dashed border-slate-200 rounded-xl text-[10px] text-slate-400 uppercase tracking-widest text-center py-2">
+                      Drag here to place last
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="text-xs text-slate-400 italic">No children linked to this spouse.</p>
               )}
             </div>
-         </div>
+          </div>
        );
      })}
 
       {unassignedChildren.length > 0 && (
         <div
-          className={`space-y-3 transition ${
-            hoverGroup === 'unassigned' ? 'border border-dashed border-blue-300 rounded-2xl bg-blue-50/30 p-3' : ''
+          className={`space-y-3 transition border rounded-2xl ${
+            hoverGroup === 'unassigned' ? 'border-blue-300 bg-blue-50/30' : 'border-transparent'
           }`}
           onDragOver={(event) => handleDragOver(event, null)}
           onDragLeave={(event) => handleDragLeave(event, null)}
@@ -1550,9 +1559,11 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
         >
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Unassigned Descendants</p>
           {unassignedChildren.map((child) => renderChildRow(child))}
-          <div className="border border-dashed border-slate-200 rounded-xl text-[10px] text-slate-400 uppercase tracking-widest text-center py-2">
-            Drag here to place last
-          </div>
+          {dragContext && (
+            <div className="border border-dashed border-slate-200 rounded-xl text-[10px] text-slate-400 uppercase tracking-widest text-center py-2 mx-3 mb-3">
+              Drag here to place last
+            </div>
+          )}
         </div>
       )}
     </div>
