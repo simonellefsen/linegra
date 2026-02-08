@@ -42,6 +42,8 @@ const App: React.FC = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -63,6 +65,35 @@ const App: React.FC = () => {
   const [auditTotal, setAuditTotal] = useState(0);
   const activeTreeId = activeTree?.id ?? null;
 
+  const loadTreeArchive = useCallback(
+    async (tree: FamilyTreeType | null, opts: { silent?: boolean; search?: string } = {}) => {
+      if (!supabaseActive) return;
+      if (!tree) {
+        setAllPeople([]);
+        setAllRelationships([]);
+        return;
+      }
+      if (!opts.silent) {
+        setArchiveLoading(true);
+      }
+      setArchiveError(null);
+      try {
+        const archive = await loadArchiveData(tree.id, opts.search ?? (opts.silent ? searchQuery : undefined));
+        setAllPeople(archive.people);
+        setAllRelationships(archive.relationships);
+      } catch (err) {
+        console.error('Failed to load tree data', err);
+        const message = err instanceof Error ? err.message : 'Failed to load tree data.';
+        setArchiveError(message);
+      } finally {
+        if (!opts.silent) {
+          setArchiveLoading(false);
+        }
+      }
+    },
+    [searchQuery, supabaseActive]
+  );
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = window.localStorage.getItem('LINEGRA_SUPERADMIN');
@@ -77,18 +108,18 @@ const App: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (currentUser) {
-      window.localStorage.setItem('LINEGRA_SUPERADMIN', JSON.stringify(currentUser));
-    } else {
-      window.localStorage.removeItem('LINEGRA_SUPERADMIN');
-    }
-  }, [currentUser]);
+useEffect(() => {
+  if (typeof window === 'undefined') return;
+  if (currentUser) {
+    window.localStorage.setItem('LINEGRA_SUPERADMIN', JSON.stringify(currentUser));
+  } else {
+    window.localStorage.removeItem('LINEGRA_SUPERADMIN');
+  }
+}, [currentUser]);
 
-  useEffect(() => {
-    setMobileNavOpen(false);
-  }, [activeTab]);
+useEffect(() => {
+  setMobileNavOpen(false);
+}, [activeTab]);
 
   useEffect(() => {
     if (!supabaseActive) {
@@ -108,9 +139,7 @@ const App: React.FC = () => {
         if (dbTrees.length) {
           const selected = dbTrees[0];
           setActiveTree(selected);
-          const archive = await loadArchiveData(selected.id);
-          setAllPeople(archive.people);
-          setAllRelationships(archive.relationships);
+          await loadTreeArchive(selected, { silent: false });
         } else {
           setActiveTree(null);
           setAllPeople([]);
@@ -125,7 +154,7 @@ const App: React.FC = () => {
         setLoading(false);
       }
     })();
-  }, [supabaseActive]);
+  }, [supabaseActive, loadTreeArchive]);
 
   const fetchAdminTreeStats = useCallback(async () => {
     if (!supabaseActive || !currentUser?.isAdmin) {
@@ -277,9 +306,7 @@ const App: React.FC = () => {
         setTrees(updatedTrees);
         const nextActive = updatedTrees.find((t) => t.id === created.id) || created;
         setActiveTree(nextActive);
-        const archive = await loadArchiveData(nextActive.id);
-        setAllPeople(archive.people);
-        setAllRelationships(archive.relationships);
+        await loadTreeArchive(nextActive);
         await fetchAdminTreeStats();
       } catch (err) {
         console.error('Failed to create tree', err);
@@ -288,7 +315,7 @@ const App: React.FC = () => {
         setCreatingTree(false);
       }
     },
-    [supabaseActive, currentUser, fetchAdminTreeStats]
+    [supabaseActive, currentUser, fetchAdminTreeStats, loadTreeArchive]
   );
 
   const handleAdminDeleteTree = useCallback(
@@ -310,13 +337,9 @@ const App: React.FC = () => {
         let nextActive = activeTree ? updatedTrees.find((t) => t.id === activeTree.id) : updatedTrees[0];
         if (!nextActive) {
           nextActive = updatedTrees[0];
-          setActiveTree(nextActive);
-          const archive = await loadArchiveData(nextActive.id);
-          setAllPeople(archive.people);
-          setAllRelationships(archive.relationships);
-        } else {
-          setActiveTree(nextActive);
         }
+        setActiveTree(nextActive);
+        await loadTreeArchive(nextActive);
         await fetchAdminTreeStats();
       } catch (err) {
         console.error('Failed to delete tree', err);
@@ -325,7 +348,7 @@ const App: React.FC = () => {
         setDeletingTreeId(null);
       }
     },
-    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats]
+    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats, loadTreeArchive]
   );
 
   const handleNukeConfirm = useCallback(async () => {
@@ -373,13 +396,7 @@ const App: React.FC = () => {
     setShowTreeSelector(false);
     setMobileNavOpen(false);
     setActiveTab('home');
-    if (!supabaseActive) return;
-      loadArchiveData(tree.id, searchQuery).then((archive) => {
-        setAllPeople(archive.people);
-        setAllRelationships(archive.relationships);
-      }).catch((err) => {
-        console.error('Failed to load tree data', err);
-      });
+    loadTreeArchive(tree, { silent: false });
   };
 
   const isRealTreeId = Boolean(supabaseActive && activeTreeId);
@@ -393,12 +410,8 @@ const App: React.FC = () => {
       setIsSearching(true);
     }
     const timer = setTimeout(() => {
-      loadArchiveData(activeTreeId, searchQuery)
-        .then((archive) => {
-          if (cancelled) return;
-          setAllPeople(archive.people);
-          setAllRelationships(archive.relationships);
-        })
+      if (!activeTree) return;
+      loadTreeArchive(activeTree, { silent: true, search: searchQuery })
         .catch((err) => {
           if (!cancelled) {
             console.error('Search failed', err);
@@ -414,7 +427,7 @@ const App: React.FC = () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isRealTreeId, activeTreeId, searchQuery]);
+  }, [isRealTreeId, activeTreeId, searchQuery, activeTree, loadTreeArchive]);
 
   const handleImport = async (data: { people: Person[]; relationships: Relationship[] }) => {
     if (!supabaseActive || !activeTreeId) {
@@ -423,9 +436,7 @@ const App: React.FC = () => {
     }
     try {
       await importGedcomToSupabase(activeTreeId, data, currentUser);
-      const archive = await loadArchiveData(activeTreeId);
-      setAllPeople(archive.people);
-      setAllRelationships(archive.relationships);
+      await loadTreeArchive(activeTree, { silent: false });
       await fetchAdminTreeStats();
       setActiveTab('tree');
     } catch (err) {
@@ -561,6 +572,12 @@ const App: React.FC = () => {
       </nav>
 
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-hidden relative">
+        {archiveLoading && (
+          <div className="absolute inset-0 bg-white/85 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4 text-slate-500">
+            <Loader2 className="w-10 h-10 animate-spin" />
+            <p className="text-[11px] font-black uppercase tracking-[0.3em]">Syncing Archive</p>
+          </div>
+        )}
         <header className="border-b border-slate-200/60 bg-white/80 backdrop-blur-xl flex flex-wrap items-center gap-4 px-4 sm:px-6 lg:px-10 py-4 sticky top-0 z-40">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <button
@@ -627,6 +644,21 @@ const App: React.FC = () => {
                   <p className="text-sm font-semibold">{configError}</p>
                   <p className="text-xs mt-1 text-amber-700">Review docs/SUPABASE_SETUP.md to verify environment variables and migrations.</p>
                 </div>
+              </div>
+            )}
+            {archiveError && (
+              <div className="mb-6 bg-rose-50 border border-rose-200 text-rose-700 px-6 py-4 rounded-2xl flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 mt-0.5" />
+                <div className="text-left">
+                  <p className="text-sm font-semibold">{archiveError}</p>
+                  <p className="text-xs mt-1 text-rose-500">Tap to retry or pick another tree.</p>
+                </div>
+                <button
+                  className="ml-auto text-xs font-bold uppercase tracking-[0.2em] text-rose-500 hover:text-rose-700"
+                  onClick={() => loadTreeArchive(activeTree, { silent: false, search: searchQuery })}
+                >
+                  Retry
+                </button>
               </div>
             )}
             {activeTab === 'home' && (
