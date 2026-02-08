@@ -343,13 +343,19 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
   };
 
   return (
-    <div className="bg-white h-full overflow-hidden border-l border-slate-200 w-full lg:w-[500px] flex flex-col shadow-2xl animate-in slide-in-from-right duration-300">
+    <div className="fixed inset-0 z-50 flex flex-col bg-white h-full w-full overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 lg:relative lg:inset-auto lg:z-auto lg:border-l lg:border-slate-200 lg:w-[500px] lg:slide-in-from-right">
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,audio/*,video/*" onChange={handleFileUpload} />
       
       {/* Header with Photo & Name */}
       <div className="z-30 shrink-0">
-        <div className="relative bg-slate-900 pt-12 pb-6 px-8 text-white shadow-lg">
-          <div className="absolute top-4 right-6 flex items-center gap-3 z-20">
+        <div
+          className="relative bg-slate-900 pt-12 pb-6 px-8 text-white shadow-lg"
+          style={{ paddingTop: 'calc(3rem + env(safe-area-inset-top, 0px))' }}
+        >
+          <div
+            className="absolute right-6 flex items-center gap-3 z-20"
+            style={{ top: 'calc(1rem + env(safe-area-inset-top, 0px))' }}
+          >
             <div className="relative">
               <button
                 onClick={async () => {
@@ -430,7 +436,10 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
       </div>
 
       {/* Main Content Area - Each section is a separate "page" */}
-      <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30 no-scrollbar pb-32">
+      <div
+        className="flex-1 overflow-y-auto p-8 bg-slate-50/30 no-scrollbar pb-32"
+        style={{ paddingBottom: 'calc(8rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         {activeSection === 'vital' && (
           <VitalTab
             firstName={firstName}
