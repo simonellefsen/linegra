@@ -716,7 +716,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
 
     const finalRelationships: Relationship[] = [];
 
-    Object.values(parsedFamilies).forEach((f, idx) => {
+    Object.entries(parsedFamilies).forEach(([familyId, f], idx) => {
       if (f.husb && f.wife) {
         const noteParts: string[] = [];
         if (f.type) noteParts.push(f.type);
@@ -735,7 +735,8 @@ const ImportExport: React.FC<ImportExportProps> = ({
           date: f.date,
           place: f.place,
           notes: noteParts.length ? noteParts.join('\n') : undefined,
-          confidence: 'Confirmed'
+          confidence: 'Confirmed',
+          metadata: { familyId }
         });
       }
       f.children.forEach((childId, cIdx) => {
@@ -746,7 +747,8 @@ const ImportExport: React.FC<ImportExportProps> = ({
             type: 'bio_father',
             personId: f.husb,
             relatedId: childId,
-            confidence: 'Confirmed'
+            confidence: 'Confirmed',
+            metadata: { familyId }
           });
         }
         if (f.wife) {
@@ -756,10 +758,28 @@ const ImportExport: React.FC<ImportExportProps> = ({
             type: 'bio_mother',
             personId: f.wife,
             relatedId: childId,
-            confidence: 'Confirmed'
+            confidence: 'Confirmed',
+            metadata: { familyId }
           });
         }
       });
+    });
+
+    const parentLocks = new Map<string, string>();
+    finalRelationships.forEach((rel) => {
+      if (rel.type === 'bio_father' || rel.type === 'bio_mother') {
+        const key = `${rel.type}:${rel.relatedId}`;
+        if (!parentLocks.has(key)) {
+          parentLocks.set(key, rel.personId);
+        } else if (parentLocks.get(key) !== rel.personId) {
+          const conflictLabel = rel.type === 'bio_mother' ? 'mother' : 'father';
+          warnings.push(
+            `Child ${rel.relatedId} already has a ${conflictLabel} link. Converted relationship from ${rel.personId} to guardian.`
+          );
+          rel.metadata = { ...(rel.metadata || {}), downgradedFrom: rel.type };
+          rel.type = 'guardian';
+        }
+      }
     });
 
     const seenRelationshipKeys = new Set<string>();
