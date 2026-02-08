@@ -78,6 +78,25 @@ const App: React.FC = () => {
     livingOnly: false,
     missingData: false
   });
+  const applySearchFilters = useCallback(
+    (results: Person[], filters: { livingOnly: boolean; missingData: boolean }) => {
+      return results.filter((person) => {
+        if (filters.livingOnly && person.deathDate) {
+          return false;
+        }
+        if (
+          filters.missingData &&
+          person.birthDate &&
+          person.deathDate &&
+          (person.birthPlace || person.deathPlace)
+        ) {
+          return false;
+        }
+        return true;
+      });
+    },
+    []
+  );
   const activeTreeId = activeTree?.id ?? null;
 
   const loadTreeArchive = useCallback(
