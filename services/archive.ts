@@ -411,6 +411,7 @@ export interface UpdatePersonProfilePayload {
   profile: Record<string, any>;
   events?: any[];
   notes?: any[];
+  sources?: any[];
 }
 
 export const updatePersonProfile = async (
@@ -426,7 +427,8 @@ export const updatePersonProfile = async (
     payload_actor_name: payload.actorName ?? null,
     payload_profile: payload.profile,
     payload_events: payload.events ?? [],
-    payload_notes: payload.notes ?? []
+    payload_notes: payload.notes ?? [],
+    payload_sources: payload.sources ?? []
   });
   if (error) throw new Error(error.message);
   return data;

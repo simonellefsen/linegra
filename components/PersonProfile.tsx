@@ -15,7 +15,7 @@ import {
   Citation,
   FamilyLayoutState,
 } from '../types';
-import { X, Library, Image as ImageIcon, FileText, ShieldCheck, Microscope, Share2, Heart, Edit3 } from 'lucide-react';
+import { X, Library, Image as ImageIcon, FileText, ShieldCheck, Microscope, Share2, Share, Heart, Edit3 } from 'lucide-react';
 import { PARENT_LINK_TYPES } from './person-profile/constants';
 import FamilyTab from './person-profile/FamilyTab';
 import VitalTab from './person-profile/VitalTab';
@@ -36,6 +36,18 @@ const extractMediaItemsFromPerson = (target: Person): MediaItem[] => {
     return metadataMedia;
   }
   return [];
+};
+
+const generateUuid = () => {
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  const template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+  return template.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 };
 
 const buildSnapshotFromPerson = (target: Person) =>
@@ -67,11 +79,12 @@ interface PersonProfileProps {
   onNavigateToPerson?: (person: Person) => void;
   onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
   onPersonUpdated?: (person: Person) => void;
+  onOpenTreeFromProfile?: (person: Person) => void;
 }
 
 type ProfileSection = 'vital' | 'story' | 'family' | 'sources' | 'media' | 'dna' | 'notes';
 
-const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onClose, onNavigateToPerson, onPersistFamilyLayout, onPersonUpdated }) => {
+const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onClose, onNavigateToPerson, onPersistFamilyLayout, onPersonUpdated, onOpenTreeFromProfile }) => {
   const [activeSection, setActiveSection] = useState<ProfileSection>('vital');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -307,7 +320,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
 
   const handleAddSource = (linkedEvent?: string) => {
     const newSource: Source = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateUuid(),
       title: 'New Source Record',
       type: 'Unknown',
       citationDate: new Date().getFullYear().toString(),
@@ -323,7 +336,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
 
   const handleAddNote = (linkedEvent?: string) => {
     const newNote: Note = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateUuid(),
       text: '',
       type: 'Generic',
       event: linkedEvent || 'General',
@@ -440,6 +453,25 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
       is_private: note.isPrivate ?? false
     }));
 
+  const sourcesPayload = () =>
+    sources.map((source) => ({
+      id: source.id,
+      title: source.title || 'Untitled Record',
+      type: source.type || 'Unknown',
+      repository: source.repository || null,
+      url: source.url || null,
+      citation_date_text: source.citationDate || null,
+      page: source.page || null,
+      abbreviation: source.abbreviation || null,
+      call_number: source.callNumber || null,
+      reliability: source.reliability ?? null,
+      actual_text: source.actualText || null,
+      notes: source.notes || null,
+      label: source.title || null,
+      event_label: source.event || null,
+      quality: source.reliability ? source.reliability.toString() : null
+    }));
+
   const handleSave = async () => {
     if (!canEditPerson || saving || !isDirty) return;
     setSaving(true);
@@ -450,7 +482,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         actorName: currentUser?.name ?? undefined,
         profile: buildProfilePayload(),
         events: eventsPayload(),
-        notes: notesPayload()
+        notes: notesPayload(),
+        sources: sourcesPayload()
       });
       const refreshed = await fetchPersonDetails(person.id);
       onPersonUpdated?.(refreshed);
@@ -670,6 +703,16 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
             {saveFeedback && (
               <span className="text-[10px] font-bold text-emerald-300">{saveFeedback}</span>
             )}
+            {onOpenTreeFromProfile && (
+              <button
+                onClick={() => onOpenTreeFromProfile(person)}
+                className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white"
+                aria-label="Open in interactive tree"
+                title="Open in tree"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
+            )}
             <div className="relative">
               <button
                 onClick={async () => {
@@ -705,7 +748,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
                 className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white"
                 aria-label="Share profile"
               >
-                <Share2 className="w-5 h-5" />
+                <Share className="w-5 h-5" />
               </button>
               {shareFeedback && (
                 <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-[10px] font-bold text-white bg-slate-900/60 px-2 py-0.5 rounded-full">

@@ -72,6 +72,7 @@ const App: React.FC = () => {
   const [treeViewReady, setTreeViewReady] = useState(false);
   const [ancestorDepth, setAncestorDepth] = useState(DEFAULT_ANCESTOR_DEPTH);
   const [descendantDepth, setDescendantDepth] = useState(DEFAULT_DESCENDANT_DEPTH);
+  const [pedigreeFocusId, setPedigreeFocusId] = useState<string | null>(null);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchModalBaseResults, setSearchModalBaseResults] = useState<Person[]>([]);
   const [searchModalResults, setSearchModalResults] = useState<Person[]>([]);
@@ -207,6 +208,7 @@ useEffect(() => {
     setAllPeople([]);
     setAllRelationships([]);
     setGraphTreeId(null);
+    setPedigreeFocusId(null);
   }, [activeTreeId]);
 
   useEffect(() => {
@@ -416,7 +418,7 @@ useEffect(() => {
     return treeRelationships.filter(rel => visibleIds.has(rel.personId) && visibleIds.has(rel.relatedId));
   }, [treeRelationships, filteredPeople]);
 
-  const focusPersonId = selectedPerson?.id ?? treePeople[0]?.id;
+  const focusPersonId = pedigreeFocusId ?? selectedPerson?.id ?? treePeople[0]?.id;
   const focusPerson = focusPersonId ? treePeople.find((p) => p.id === focusPersonId) ?? null : null;
 
   const localTreeSummaries = useMemo<FamilyTreeSummary[]>(() => {
@@ -495,6 +497,9 @@ useEffect(() => {
     (person: Person | null) => {
       setSelectedPerson(person);
       setPendingPersonId(person ? person.id : null);
+      if (person) {
+        setPedigreeFocusId(person.id);
+      }
       if (person && !person.detailsLoaded) {
         handleEnsurePersonDetails(person.id);
       }
@@ -509,6 +514,19 @@ useEffect(() => {
       }
     },
     [handleEnsurePersonDetails]
+  );
+
+  const handleOpenTreeFromProfile = useCallback(
+    (person: Person) => {
+      setPedigreeFocusId(person.id);
+      setActiveTab('tree');
+      setTreeViewReady(true);
+      if (activeTree) {
+        loadTreeArchive(activeTree, { silent: false });
+      }
+      handlePersonSelect(null);
+    },
+    [activeTree, loadTreeArchive, handlePersonSelect]
   );
 
   const handlePersonPatched = useCallback((updated: Person) => {
@@ -1184,6 +1202,7 @@ useEffect(() => {
               onNavigateToPerson={(next) => handlePersonSelect(next)}
               onPersistFamilyLayout={handlePersistFamilyLayout}
               onPersonUpdated={handlePersonPatched}
+              onOpenTreeFromProfile={handleOpenTreeFromProfile}
             />
           )}
         </div>
