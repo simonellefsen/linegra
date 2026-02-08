@@ -7,7 +7,7 @@ import {
   Loader2, 
   Wifi
 } from 'lucide-react';
-import { Person, Relationship, PersonEvent, Source, Citation } from '../types';
+import { Person, Relationship, PersonEvent, Source, Citation, StructuredPlace, AlternateName } from '../types';
 
 interface ImportExportProps {
   people: Person[];
@@ -22,6 +22,7 @@ type ParsedPerson = Partial<Person> & {
   sourceIds?: string[];
   inlineSources?: Source[];
   citations?: Citation[];
+  metadata?: Record<string, any>;
 };
 
 const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
@@ -136,8 +137,40 @@ const ImportExport: React.FC<ImportExportProps> = ({
     let currentType: 'INDI' | 'FAM' | 'SOUR' | null = null;
     let currentTag = '';
     let currentEvent: PersonEvent | null = null;
-    const supportedIndividualTags = new Set(['NAME', 'SEX', 'BIRT', 'DEAT', 'SOUR', '_LIVING', '_PRIVATE', 'TITL', ...Object.keys(GEDCOM_EVENT_MAP), 'CHAN', 'BURI', 'FAMC', 'FAMS']);
-    const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR', 'DIV', 'CHAN', 'NOTE', 'DATE', 'PLAC', 'TYPE']);
+    const supportedIndividualTags = new Set([
+      'NAME',
+      'SEX',
+      'GIVN',
+      'SURN',
+      'BIRT',
+      'DEAT',
+      'SOUR',
+      '_LIVING',
+      '_PRIVATE',
+      '_AKA',
+      '_MARNM',
+      'TITL',
+      'RFN',
+      'EMAIL',
+      'SUBM',
+      'ADDR',
+      'ADR1',
+      'ADR2',
+      'CITY',
+      'STAE',
+      'STATE',
+      'CTRY',
+      'POST',
+      'POSTAL',
+      'POSTCODE',
+      'ZIP',
+      ...Object.keys(GEDCOM_EVENT_MAP),
+      'CHAN',
+      'BURI',
+      'FAMC',
+      'FAMS'
+    ]);
+    const supportedFamilyTags = new Set(['HUSB', 'WIFE', 'CHIL', 'MARR', 'DIV', 'CHAN', 'NOTE', 'DATE', 'PLAC', 'TYPE', 'ADDR', 'CITY', 'CTRY', 'STAE', 'STATE']);
     const lineRegex = /^(\d+)\s+(?:(@[^@]+@)\s+)?([A-Z0-9_]+)(?:\s+(.*))?$/i;
     let currentEventLabel = '';
     let currentEventSource: Source | null = null;
@@ -146,6 +179,128 @@ const ImportExport: React.FC<ImportExportProps> = ({
     let currentCitationLevel = 0;
     let currentCitationDataLevel = 0;
     let lastCitationTextTarget: Citation | null = null;
+    let currentPlaceRef: StructuredPlace | null = null;
+    let currentPlaceLevel = -1;
+    let currentNameLevel = -1;
+    let primaryNameCaptured = false;
+    let currentNameContext: { target: 'primary' | 'alternate'; index?: number } | null = null;
+
+    const ensureMetadata = (person: ParsedPerson) => {
+      if (!person.metadata) person.metadata = {};
+      return person.metadata;
+    };
+
+    const parseNameValue = (raw: string) => {
+      if (!raw) return { firstName: '', lastName: '' };
+      if (raw.includes('/')) {
+        const parts = raw.split('/');
+        return { firstName: (parts[0] || '').trim(), lastName: (parts[1] || '').trim() };
+      }
+      const tokens = raw.trim().split(/\s+/);
+      if (tokens.length === 1) return { firstName: tokens[0], lastName: '' };
+      const lastName = tokens.pop() || '';
+      return { firstName: tokens.join(' '), lastName };
+    };
+
+    const ensureAlternateNames = (person: ParsedPerson) => person.alternateNames || (person.alternateNames = []);
+
+    const ensureStructuredPlace = (value?: string | StructuredPlace, seed?: string): StructuredPlace => {
+      if (!value) {
+        return { fullText: seed || '' };
+      }
+      if (typeof value === 'string') {
+        return { fullText: seed || value };
+      }
+      if (seed && !value.fullText) {
+        value.fullText = seed;
+      }
+      return value;
+    };
+
+    const assignPlaceToContext = (
+      person: ParsedPerson,
+      level: number,
+      value: string,
+      options: { treatAsAddress?: boolean; allowPersonAddress?: boolean } = {}
+    ) => {
+      let targetPlace: StructuredPlace | null = null;
+      if (currentEvent) {
+        const placeObj = ensureStructuredPlace(currentEvent.place as StructuredPlace | string | undefined, value);
+        if (value) {
+          if (options.treatAsAddress) placeObj.placeName = value;
+          else placeObj.fullText = value;
+        }
+        currentEvent.place = placeObj;
+        targetPlace = placeObj;
+      } else if (currentTag === 'BIRT') {
+        const placeObj = ensureStructuredPlace(person.birthPlace as StructuredPlace | string | undefined, value);
+        if (value) {
+          if (options.treatAsAddress) placeObj.placeName = value;
+          else placeObj.fullText = value;
+        }
+        person.birthPlace = placeObj;
+        targetPlace = placeObj;
+      } else if (currentTag === 'DEAT') {
+        const placeObj = ensureStructuredPlace(person.deathPlace as StructuredPlace | string | undefined, value);
+        if (value) {
+          if (options.treatAsAddress) placeObj.placeName = value;
+          else placeObj.fullText = value;
+        }
+        person.deathPlace = placeObj;
+        targetPlace = placeObj;
+      } else if (currentTag === 'BURI') {
+        const placeObj = ensureStructuredPlace(person.burialPlace as StructuredPlace | string | undefined, value);
+        if (value) {
+          if (options.treatAsAddress) placeObj.placeName = value;
+          else placeObj.fullText = value;
+        }
+        person.burialPlace = placeObj;
+        targetPlace = placeObj;
+      } else if (options.allowPersonAddress) {
+        const metadata = ensureMetadata(person);
+        const list: StructuredPlace[] = metadata.contactAddresses || (metadata.contactAddresses = []);
+        const placeObj: StructuredPlace = { fullText: value || '', placeName: value || undefined };
+        list.push(placeObj);
+        targetPlace = placeObj;
+      }
+      if (targetPlace) {
+        currentPlaceRef = targetPlace;
+        currentPlaceLevel = level;
+      }
+    };
+
+    const assignPlaceDetail = (tag: string, value: string) => {
+      if (!currentPlaceRef || !value) return;
+      switch (tag) {
+        case 'ADR1':
+          currentPlaceRef.street = value;
+          break;
+        case 'ADR2':
+        case 'ADR3':
+          currentPlaceRef.notes = currentPlaceRef.notes ? `${currentPlaceRef.notes}\n${value}` : value;
+          break;
+        case 'CITY':
+          currentPlaceRef.city = value;
+          break;
+        case 'STAE':
+        case 'STATE':
+          currentPlaceRef.state = value;
+          break;
+        case 'CTRY':
+          currentPlaceRef.country = value;
+          break;
+        case 'POST':
+        case 'POSTAL':
+        case 'POSTCODE':
+        case 'ZIP':
+          currentPlaceRef.zip = value;
+          break;
+        default:
+          break;
+      }
+    };
+
+    const addressTags = new Set(['ADDR', 'ADR1', 'ADR2', 'ADR3', 'CITY', 'STAE', 'STATE', 'CTRY', 'POST', 'POSTAL', 'POSTCODE', 'ZIP']);
 
     lines.forEach((line) => {
       const match = line.match(lineRegex);
@@ -156,6 +311,14 @@ const ImportExport: React.FC<ImportExportProps> = ({
       const tag = tagRaw.toUpperCase();
       const value = (rest ?? '').trim();
 
+      if (currentPlaceRef && level <= currentPlaceLevel && !addressTags.has(tag)) {
+        currentPlaceRef = null;
+        currentPlaceLevel = -1;
+      }
+      if (currentNameContext && level <= currentNameLevel && tag !== 'GIVN' && tag !== 'SURN' && tag !== '_MARNM' && tag !== '_AKA') {
+        currentNameContext = null;
+        currentNameLevel = -1;
+      }
       if (currentEventSource && level <= currentEventSourceLevel) {
         currentEventSource = null;
         currentEventSourceLevel = 0;
@@ -173,6 +336,11 @@ const ImportExport: React.FC<ImportExportProps> = ({
           currentId = pointerId;
           currentType = 'INDI';
           parsedPeople[currentId] = { id: currentId, firstName: '', lastName: '', updatedAt: new Date().toISOString(), events: [], sourceIds: [], inlineSources: [] };
+          primaryNameCaptured = false;
+          currentNameContext = null;
+          currentNameLevel = -1;
+          currentPlaceRef = null;
+          currentPlaceLevel = -1;
         } else if (pointerToken && tag === 'FAM') {
           currentId = pointerId;
           currentType = 'FAM';
@@ -206,14 +374,80 @@ const ImportExport: React.FC<ImportExportProps> = ({
           currentTag = '';
           currentEventLabel = GEDCOM_EVENT_LABELS[tag] || '';
         }
-        if (tag === 'NAME') {
-          const nameParts = value.split('/');
-          p.firstName = nameParts[0]?.trim() || '';
-          p.lastName = nameParts[1]?.trim() || '';
+        if (tag === 'NAME' && level === 1) {
+          const { firstName, lastName } = parseNameValue(value);
+          if (!primaryNameCaptured) {
+            if (firstName) p.firstName = firstName;
+            if (lastName) p.lastName = lastName;
+            primaryNameCaptured = true;
+            currentNameContext = { target: 'primary' };
+          } else {
+            const names = ensureAlternateNames(p);
+            const existingIndex = names.findIndex(
+              (alt) => alt.firstName === firstName && alt.lastName === lastName
+            );
+            if (existingIndex >= 0) {
+              currentNameContext = { target: 'alternate', index: existingIndex };
+            } else {
+              const alt: AlternateName = {
+                type: 'Also Known As',
+                firstName: firstName || p.firstName || '',
+                lastName: lastName || p.lastName || ''
+              };
+              names.push(alt);
+              currentNameContext = { target: 'alternate', index: names.length - 1 };
+            }
+          }
+          currentNameLevel = level;
+        } else if ((tag === 'GIVN' || tag === 'SURN') && currentNameContext && level > currentNameLevel) {
+          if (currentNameContext.target === 'primary') {
+            if (tag === 'GIVN') p.firstName = value;
+            else p.lastName = value;
+          } else if (currentNameContext.index !== undefined) {
+            const names = ensureAlternateNames(p);
+            const alt = names[currentNameContext.index];
+            if (alt) {
+              if (tag === 'GIVN') alt.firstName = value;
+              else alt.lastName = value;
+            }
+          }
+        } else if (tag === '_AKA' && value) {
+          const { firstName, lastName } = parseNameValue(value);
+          const names = ensureAlternateNames(p);
+          names.push({
+            type: 'Alias',
+            firstName: firstName || p.firstName || '',
+            lastName: lastName || p.lastName || ''
+          });
+        } else if (tag === '_MARNM' && value) {
+          const names = ensureAlternateNames(p);
+          const baseFirst =
+            currentNameContext?.target === 'alternate' && currentNameContext.index !== undefined
+              ? names[currentNameContext.index!]?.firstName || p.firstName || ''
+              : p.firstName || '';
+          names.push({
+            type: 'Married Name',
+            firstName: baseFirst,
+            lastName: value
+          });
         } else if (tag === 'TITL') {
           p.title = value;
         } else if (tag === 'SEX') {
           p.gender = value === 'F' ? 'F' : (value === 'M' ? 'M' : 'O');
+        } else if (tag === 'EMAIL') {
+          const metadata = ensureMetadata(p);
+          const emails: string[] = metadata.emails || (metadata.emails = []);
+          if (value && !emails.includes(value)) emails.push(value);
+        } else if (tag === 'RFN') {
+          const metadata = ensureMetadata(p);
+          const rfns: string[] = metadata.recordFileNumbers || (metadata.recordFileNumbers = []);
+          if (value && !rfns.includes(value)) rfns.push(value);
+        } else if (tag === 'SUBM') {
+          const metadata = ensureMetadata(p);
+          const submitters: string[] = metadata.submitterIds || (metadata.submitterIds = []);
+          if (value && !submitters.includes(value.replace(/@/g, ''))) {
+            submitters.push(value.replace(/@/g, ''));
+          }
         } else if (tag === 'BIRT') {
           currentTag = 'BIRT';
           currentEvent = null;
@@ -281,10 +515,11 @@ const ImportExport: React.FC<ImportExportProps> = ({
             p.updatedAt = Number.isNaN(parsed) ? value : new Date(parsed).toISOString();
           }
         } else if (tag === 'PLAC' && level === 2) {
-          if (currentTag === 'BIRT') p.birthPlace = value;
-          if (currentTag === 'DEAT') p.deathPlace = value;
-          if (currentTag === 'BURI') p.burialPlace = value;
-          if (currentEvent) currentEvent.place = value;
+          assignPlaceToContext(p, level, value);
+        } else if (tag === 'ADDR') {
+          assignPlaceToContext(p, level, value, { treatAsAddress: true, allowPersonAddress: level === 1 });
+        } else if (addressTags.has(tag) && tag !== 'ADDR') {
+          assignPlaceDetail(tag, value);
         } else if (tag === 'NOTE' && ['BIRT', 'DEAT', 'BURI'].includes(currentTag)) {
           appendNote(value, GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General');
         } else if (tag === 'NOTE' && currentEvent && level === 2) {
@@ -317,7 +552,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
           lastCitationTextTarget.extra = { ...(lastCitationTextTarget.extra || {}), data_text: combined };
         } else if (tag === 'NOTE' && currentEventSource && level > currentEventSourceLevel) {
           currentEventSource.notes = `${currentEventSource.notes || ''}\n${value}`.trim();
-        } else if (tag === 'SOUR' && level >= 2 && currentEventLabel) {
+        } else if (tag === 'SOUR' && level >= 1) {
           const personSources = p.sources || (p.sources = []);
           const eventLabel = GEDCOM_EVENT_LABELS[currentTag] || currentEventLabel || 'General';
           const pointerId = value.startsWith('@') ? value.replace(/@/g, '') : '';
@@ -378,23 +613,6 @@ const ImportExport: React.FC<ImportExportProps> = ({
             : `Type: ${typeText}`;
         } else if (tag === 'NOTE' && level === 1) {
           appendNote(value, currentEventLabel || 'General');
-        } else if (tag === 'SOUR' && level < 2) {
-          const srcId = value.replace(/@/g, '');
-          if (srcId) {
-            (p.sourceIds || (p.sourceIds = [])).push(srcId);
-          } else if (value) {
-            const inlineId = `inline-${currentId}-${(p.inlineSources?.length || 0) + 1}`;
-            const inlineSource: Source = {
-              id: inlineId,
-              externalId: inlineId,
-              title: value,
-              type: 'Unknown',
-              reliability: 1,
-              actualText: value,
-              event: 'General'
-            };
-            p.inlineSources?.push(inlineSource);
-          }
         } else if (level === 1 && !supportedIndividualTags.has(tag)) {
           warnings.push(`Ignored individual tag "${tag}" on record ${currentId}`);
         }
@@ -462,6 +680,14 @@ const ImportExport: React.FC<ImportExportProps> = ({
       }
     });
 
+    Object.entries(parsedFamilies).forEach(([famId, fam]) => {
+      if (!fam.husb && !fam.wife && fam.children.length) {
+        warnings.push(
+          `Family ${famId} lists ${fam.children.length} child(ren) but no parents. The GEDCOM export omitted HUSB/WIFE or matching FAMS tags.`
+        );
+      }
+    });
+
     const finalPeople: Person[] = Object.values(parsedPeople).map((p) => {
       const mergedSources: Source[] = [];
       (p.sourceIds || []).forEach((id) => {
@@ -483,7 +709,8 @@ const ImportExport: React.FC<ImportExportProps> = ({
         ...p,
         events: (p.events || []).filter((evt) => !['Birth', 'Death', 'Burial'].includes(evt.type || '')),
         sources: mergedSources,
-        citations: p.citations || []
+        citations: p.citations || [],
+        metadata: p.metadata || {}
       } as Person;
     });
 

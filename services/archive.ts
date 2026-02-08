@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit } from '../types';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -22,6 +22,18 @@ const normalizePlace = (place?: string | { fullText?: string }) => {
 };
 
 const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
+  const metadata: Record<string, any> = person.metadata ? { ...person.metadata } : {};
+  if (person.alternateNames?.length) {
+    metadata.alternateNames = person.alternateNames;
+  }
+  const encodePlace = (key: string, value?: string | StructuredPlace) => {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      return value;
+    }
+    metadata[`structured_${key}`] = value;
+    return value.fullText || null;
+  };
   return {
     id: randomId(),
     tree_id: treeId,
@@ -32,11 +44,11 @@ const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
     maiden_name: person.maidenName || null,
     gender: person.gender || 'O',
     birth_date_text: person.birthDate || null,
-    birth_place_text: normalizePlace(person.birthPlace) || null,
+    birth_place_text: encodePlace('birth_place', person.birthPlace) || null,
     death_date_text: person.deathDate || null,
-    death_place_text: normalizePlace(person.deathPlace) || null,
+    death_place_text: encodePlace('death_place', person.deathPlace) || null,
     burial_date_text: person.burialDate || null,
-    burial_place_text: normalizePlace(person.burialPlace) || null,
+    burial_place_text: encodePlace('burial_place', person.burialPlace) || null,
     residence_at_death_text: normalizePlace(person.residenceAtDeath) || null,
     photo_url: person.photoUrl || null,
     bio: person.bio || null,
@@ -45,7 +57,7 @@ const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
     dna_match_info: person.dnaMatchInfo || null,
     tags: [],
     user_role: person.userRole || null,
-    metadata: person.metadata ? person.metadata : {}
+    metadata
   };
 };
 
@@ -56,6 +68,10 @@ const mapDbPerson = (
   eventsByPerson: Record<string, PersonEvent[]>,
   citationsByPerson: Record<string, Citation[]>
 ) : Person => {
+  const metadata = row.metadata || {};
+  const structuredBirth = metadata.structured_birth_place;
+  const structuredDeath = metadata.structured_death_place;
+  const structuredBurial = metadata.structured_burial_place;
   return {
     id: row.id,
     treeId: row.tree_id,
@@ -64,11 +80,11 @@ const mapDbPerson = (
     maidenName: row.maiden_name || undefined,
     gender: row.gender || 'O',
     birthDate: row.birth_date_text || undefined,
-    birthPlace: row.birth_place_text || undefined,
+    birthPlace: structuredBirth || row.birth_place_text || undefined,
     deathDate: row.death_date_text || undefined,
-    deathPlace: row.death_place_text || undefined,
+    deathPlace: structuredDeath || row.death_place_text || undefined,
     burialDate: row.burial_date_text || undefined,
-    burialPlace: row.burial_place_text || undefined,
+    burialPlace: structuredBurial || row.burial_place_text || undefined,
     residenceAtDeath: row.residence_at_death_text || undefined,
     photoUrl: row.photo_url || undefined,
     bio: row.bio || undefined,
@@ -83,7 +99,8 @@ const mapDbPerson = (
     citations: citationsByPerson[row.id] || [],
     events: eventsByPerson[row.id] || [],
     mediaIds: [],
-    metadata: row.metadata || undefined
+    alternateNames: metadata.alternateNames || [],
+    metadata
   } as Person;
 };
 
