@@ -62,6 +62,13 @@ const App: React.FC = () => {
   const [layoutAudits, setLayoutAudits] = useState<FamilyLayoutAudit[]>([]);
   const [auditOffset, setAuditOffset] = useState(0);
   const [auditTotal, setAuditTotal] = useState(0);
+  const DEFAULT_ANCESTOR_DEPTH = 2;
+  const DEFAULT_DESCENDANT_DEPTH = 1;
+  const MAX_ANCESTOR_DEPTH = 8;
+  const MAX_DESCENDANT_DEPTH = 4;
+  const [treeViewReady, setTreeViewReady] = useState(false);
+  const [ancestorDepth, setAncestorDepth] = useState(DEFAULT_ANCESTOR_DEPTH);
+  const [descendantDepth, setDescendantDepth] = useState(DEFAULT_DESCENDANT_DEPTH);
   const activeTreeId = activeTree?.id ?? null;
 
   const loadTreeArchive = useCallback(
@@ -140,6 +147,12 @@ useEffect(() => {
 useEffect(() => {
   setMobileNavOpen(false);
 }, [activeTab]);
+
+  useEffect(() => {
+    setTreeViewReady(false);
+    setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
+    setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
+  }, [activeTreeId]);
 
   useEffect(() => {
     if (!supabaseActive) {
@@ -285,6 +298,9 @@ useEffect(() => {
     const visibleIds = new Set(filteredPeople.map(p => p.id));
     return treeRelationships.filter(rel => visibleIds.has(rel.personId) && visibleIds.has(rel.relatedId));
   }, [treeRelationships, filteredPeople]);
+
+  const focusPersonId = selectedPerson?.id ?? treePeople[0]?.id;
+  const focusPerson = focusPersonId ? treePeople.find((p) => p.id === focusPersonId) ?? null : null;
 
   const localTreeSummaries = useMemo<FamilyTreeSummary[]>(() => {
     return trees.map((tree) => {
@@ -731,15 +747,79 @@ useEffect(() => {
                     <h2 className="text-3xl font-serif font-bold text-slate-900">Kinship Map</h2>
                   </div>
                   {layoutType === 'pedigree' ? (
-                    <PedigreeTree
-                      people={filteredPeople}
-                      relationships={filteredRelationships}
-                      focusId={selectedPerson?.id}
-                      selectedPersonId={selectedPerson?.id}
-                      onPersonSelect={handlePersonSelect}
-                      maxAncestors={4}
-                      maxDescendants={3}
-                    />
+                    treeViewReady ? (
+                      <>
+                        <div className="bg-white border border-slate-200 rounded-[28px] shadow-sm p-5 flex flex-wrap items-center gap-4 text-sm text-slate-600">
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Focus</p>
+                            <p className="font-serif font-bold text-slate-900">
+                              {focusPerson ? `${focusPerson.firstName} ${focusPerson.lastName}` : 'Select a person'}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 ml-auto">
+                            <button
+                              onClick={() => setAncestorDepth((d) => Math.max(1, d - 1))}
+                              disabled={ancestorDepth <= 1}
+                              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.2em] disabled:opacity-40"
+                            >
+                              − Ancestors
+                            </button>
+                            <button
+                              onClick={() => setAncestorDepth((d) => Math.min(MAX_ANCESTOR_DEPTH, d + 1))}
+                              className="px-3 py-2 rounded-2xl bg-slate-900 text-white text-xs font-bold uppercase tracking-[0.2em] disabled:opacity-40"
+                              disabled={ancestorDepth >= MAX_ANCESTOR_DEPTH}
+                            >
+                              + Ancestors
+                            </button>
+                            <button
+                              onClick={() => setDescendantDepth((d) => Math.max(0, d - 1))}
+                              disabled={descendantDepth <= 0}
+                              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.2em] disabled:opacity-40"
+                            >
+                              − Desc
+                            </button>
+                            <button
+                              onClick={() => setDescendantDepth((d) => Math.min(MAX_DESCENDANT_DEPTH, d + 1))}
+                              disabled={descendantDepth >= MAX_DESCENDANT_DEPTH}
+                              className="px-3 py-2 rounded-2xl bg-slate-900 text-white text-xs font-bold uppercase tracking-[0.2em] disabled:opacity-40"
+                            >
+                              + Desc
+                            </button>
+                            <button
+                              onClick={() => {
+                                setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
+                                setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
+                              }}
+                              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.2em]"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                        <PedigreeTree
+                          people={filteredPeople}
+                          relationships={filteredRelationships}
+                          focusId={focusPersonId}
+                          selectedPersonId={selectedPerson?.id}
+                          onPersonSelect={handlePersonSelect}
+                          maxAncestors={ancestorDepth}
+                          maxDescendants={descendantDepth}
+                        />
+                      </>
+                    ) : (
+                      <div className="bg-white border border-dashed border-slate-300 rounded-[32px] p-10 text-center space-y-5 shadow-sm">
+                        <p className="text-sm text-slate-500 max-w-2xl mx-auto">
+                          Load the interactive pedigree when you’re ready. We’ll start with {focusPerson ? `${focusPerson.firstName} ${focusPerson.lastName}` : 'your focus person'} and show parents plus grandparents, then you can unfold more generations on demand.
+                        </p>
+                        <button
+                          onClick={() => setTreeViewReady(true)}
+                          disabled={!treePeople.length}
+                          className="px-6 py-3 rounded-2xl bg-slate-900 text-white font-black uppercase tracking-[0.3em] disabled:opacity-40"
+                        >
+                          Launch Pedigree View
+                        </button>
+                      </div>
+                    )
                   ) : (
                     <FamilyTree
                       people={filteredPeople}
