@@ -349,6 +349,62 @@ export const fetchRandomMediaPeople = async (treeId: string, limit = 4): Promise
   return mapBasicPeople(shuffled.slice(0, limit));
 };
 
+export const fetchPersonConnections = async (
+  treeId: string,
+  personId: string
+): Promise<{ relationships: Relationship[]; people: Person[] }> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data: relationshipRows, error } = await supabase
+    .from('relationships')
+    .select('*')
+    .eq('tree_id', treeId)
+    .or(`person_id.eq.${personId},related_id.eq.${personId}`);
+
+  if (error) throw new Error(error.message);
+
+  const relationships = (relationshipRows || []).map((row) => ({
+    id: row.id,
+    treeId: row.tree_id,
+    personId: row.person_id,
+    relatedId: row.related_id,
+    type: row.type,
+    status: row.status || undefined,
+    confidence: row.confidence || undefined,
+    order: row.sort_order || undefined,
+    notes: row.notes || undefined,
+    metadata: row.metadata || undefined
+  }));
+
+  const relatedIds = Array.from(
+    new Set(
+      relationships.reduce<string[]>((acc, rel) => {
+        if (rel.personId) acc.push(rel.personId);
+        if (rel.relatedId) acc.push(rel.relatedId);
+        return acc;
+      }, [])
+    )
+  );
+  if (!relatedIds.includes(personId)) {
+    relatedIds.push(personId);
+  }
+
+  const { data: peopleRows, error: peopleError } = await supabase
+    .from('persons')
+    .select(
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, metadata, updated_at'
+    )
+    .in('id', relatedIds);
+
+  if (peopleError) throw new Error(peopleError.message);
+
+  return {
+    relationships,
+    people: mapBasicPeople(peopleRows || [])
+  };
+};
+
 export const searchPersonsInTree = async (
   treeId: string,
   term: string,

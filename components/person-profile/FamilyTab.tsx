@@ -26,6 +26,8 @@ interface FamilyTabProps {
   familyLayout?: FamilyLayoutState;
   onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
   canEdit: boolean;
+  loading?: boolean;
+  error?: string | null;
 }
 
 const formatYear = (input?: string) => {
@@ -120,6 +122,8 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   familyLayout,
   onPersistFamilyLayout,
   canEdit,
+  loading,
+  error,
 }) => {
   const createEmptyLayout = () => ({
     assignments: {},
@@ -179,6 +183,12 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">Kinship Map & Confidence</p>
+      {loading && (
+        <div className="text-sm text-slate-400">Loading family connections…</div>
+      )}
+      {error && (
+        <div className="text-sm text-rose-500">{error}</div>
+      )}
       <div className="space-y-8">
         <div className="space-y-4">
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Parental Connections</p>

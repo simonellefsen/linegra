@@ -1170,21 +1170,13 @@ useEffect(() => {
           </div>
 
           {selectedPerson && (
-            <>
-              <div
-                className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden"
-                onClick={() => handlePersonSelect(null)}
-              />
-              <PersonProfile 
-                person={selectedPerson} 
-                relationships={treeRelationships}
-                currentUser={currentUser}
-                allPeople={treePeople}
-                onClose={() => handlePersonSelect(null)} 
-                onNavigateToPerson={(next) => handlePersonSelect(next)}
-                onPersistFamilyLayout={handlePersistFamilyLayout}
-              />
-            </>
+            <PersonProfile 
+              person={selectedPerson} 
+              currentUser={currentUser}
+              onClose={() => handlePersonSelect(null)} 
+              onNavigateToPerson={(next) => handlePersonSelect(next)}
+              onPersistFamilyLayout={handlePersistFamilyLayout}
+            />
           )}
         </div>
       </main>

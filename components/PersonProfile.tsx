@@ -25,20 +25,52 @@ import MediaTab from './person-profile/MediaTab';
 import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
+import { fetchPersonConnections } from '../services/archive';
+
+const serializePlaceValue = (value: string | StructuredPlace) =>
+  typeof value === 'string' ? value : JSON.stringify(value ?? '');
+
+const extractMediaItemsFromPerson = (target: Person): MediaItem[] => {
+  const metadataMedia = (target.metadata as { mediaItems?: MediaItem[] } | undefined)?.mediaItems;
+  if (Array.isArray(metadataMedia)) {
+    return metadataMedia;
+  }
+  return [];
+};
+
+const buildSnapshotFromPerson = (target: Person) =>
+  JSON.stringify({
+    firstName: target.firstName,
+    lastName: target.lastName,
+    maidenName: target.maidenName || '',
+    birthDate: target.birthDate || '',
+    birthPlace: serializePlaceValue(target.birthPlace || ''),
+    deathDate: target.deathDate || '',
+    deathPlace: serializePlaceValue(target.deathPlace || ''),
+    residenceAtDeath: serializePlaceValue(target.residenceAtDeath || ''),
+    burialDate: target.burialDate || '',
+    burialPlace: serializePlaceValue(target.burialPlace || ''),
+    deathCause: target.deathCause || '',
+    deathCategory: target.deathCauseCategory || 'Unknown',
+    altNames: target.alternateNames || [],
+    events: target.events || [],
+    sources: target.sources || [],
+    notes: target.notes || [],
+    dnaTests: target.dnaTests || [],
+    mediaItems: extractMediaItemsFromPerson(target)
+  });
 
 interface PersonProfileProps {
   person: Person;
-  relationships: Relationship[];
   currentUser: UserType | null;
   onClose: () => void;
-  allPeople: Person[];
   onNavigateToPerson?: (person: Person) => void;
   onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
 }
 
 type ProfileSection = 'vital' | 'story' | 'family' | 'sources' | 'media' | 'dna' | 'notes';
 
-const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, currentUser, onClose, allPeople, onNavigateToPerson, onPersistFamilyLayout }) => {
+const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onClose, onNavigateToPerson, onPersistFamilyLayout }) => {
   const [activeSection, setActiveSection] = useState<ProfileSection>('vital');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,18 +95,16 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
   const [sources, setSources] = useState<Source[]>(person.sources || []);
   const [notes, setNotes] = useState<Note[]>(person.notes || []);
   const [dnaTests, setDnaTests] = useState<DNATest[]>(person.dnaTests || []);
-  const extractMediaItems = (target: Person): MediaItem[] => {
-    const metadataMedia = (target.metadata as { mediaItems?: MediaItem[] } | undefined)?.mediaItems;
-    if (Array.isArray(metadataMedia)) {
-      return metadataMedia;
-    }
-    return [];
-  };
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>(extractMediaItems(person));
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>(extractMediaItemsFromPerson(person));
 
-  const [relConfidences, setRelConfidences] = useState<Record<string, RelationshipConfidence>>(
-    relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {})
-  );
+  const [relationshipData, setRelationshipData] = useState<Relationship[]>([]);
+  const [relationPeople, setRelationPeople] = useState<Record<string, Person>>({ [person.id]: person });
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
+  const [connectionsError, setConnectionsError] = useState<string | null>(null);
+  const [relConfidences, setRelConfidences] = useState<Record<string, RelationshipConfidence>>({});
+  const [baselineSnapshot, setBaselineSnapshot] = useState<string>('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState('');
   const [shareFeedback, setShareFeedback] = useState<string>('');
 
   useEffect(() => {
@@ -95,12 +125,46 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     setSources(person.sources || []);
     setNotes(person.notes || []);
     setDnaTests(person.dnaTests || []);
-    setMediaItems(extractMediaItems(person));
+    setMediaItems(extractMediaItemsFromPerson(person));
   }, [person]);
 
   useEffect(() => {
-    setRelConfidences(relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {}));
-  }, [relationships]);
+    setRelationPeople((prev) => ({ ...prev, [person.id]: person }));
+    let cancelled = false;
+    const run = async () => {
+      setConnectionsLoading(true);
+      setConnectionsError(null);
+      try {
+        const { relationships, people } = await fetchPersonConnections(person.treeId, person.id);
+        if (cancelled) return;
+        setRelationshipData(relationships);
+        const map: Record<string, Person> = {};
+        [...people, person].forEach((entry) => {
+          map[entry.id] = entry;
+        });
+        setRelationPeople(map);
+        setRelConfidences(
+          relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {})
+        );
+      } catch (err) {
+        console.error('Failed to load relationships', err);
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : 'Unable to load family connections.';
+        setConnectionsError(message);
+        setRelationshipData([]);
+        setRelConfidences({});
+        setRelationPeople((prev) => ({ ...prev, [person.id]: person }));
+      } finally {
+        if (!cancelled) {
+          setConnectionsLoading(false);
+        }
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [person]);
 
   const getSourceCountForEvent = (eventLabel: string) => {
     return sources.filter((source) => (source.event || 'General') === eventLabel).length;
@@ -136,45 +200,46 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
 
   const canAccessDNA = !!currentUser?.isAdmin;
   const canEditFamily = !!currentUser?.isAdmin;
+  const canEditPerson = !!currentUser?.isAdmin;
 
   const parents = useMemo(() => {
-    return relationships
+    return relationshipData
       .filter(r => r.relatedId === person.id && PARENT_LINK_TYPES.includes(r.type))
       .map(r => ({
         rel: r,
-        person: allPeople.find(p => p.id === r.personId)
+        person: relationPeople[r.personId]
       }))
       .filter((item): item is { rel: Relationship; person: Person } => !!item.person);
-  }, [person.id, allPeople, relationships]);
+  }, [person.id, relationshipData, relationPeople]);
 
   const spouses = useMemo(() => {
-    return relationships
+    return relationshipData
       .filter(r => (r.personId === person.id || r.relatedId === person.id) && ['marriage', 'partner'].includes(r.type))
       .map(r => {
         const otherId = r.personId === person.id ? r.relatedId : r.personId;
         return {
           rel: r,
-          person: allPeople.find(p => p.id === otherId)
+          person: relationPeople[otherId]
         };
       })
       .filter((item): item is { rel: Relationship; person: Person } => !!item.person);
-  }, [person.id, allPeople, relationships]);
+  }, [person.id, relationshipData, relationPeople]);
 
   const children = useMemo(() => {
-    const asParent = relationships
+    const asParent = relationshipData
       .filter(r => r.personId === person.id && PARENT_LINK_TYPES.includes(r.type))
       .map(r => ({
         rel: r,
-        person: allPeople.find(p => p.id === r.relatedId)
+        person: relationPeople[r.relatedId]
       }));
-    const asChildRel = relationships
+    const asChildRel = relationshipData
       .filter(r => r.personId === person.id && r.type === 'child')
       .map(r => ({
         rel: r,
-        person: allPeople.find(p => p.id === r.relatedId)
+        person: relationPeople[r.relatedId]
       }));
     return [...asParent, ...asChildRel].filter((item): item is { rel: Relationship; person: Person } => !!item.person);
-  }, [person.id, allPeople, relationships]);
+  }, [person.id, relationshipData, relationPeople]);
 
   const tabs: { id: ProfileSection; label: string; icon: any; secure?: boolean }[] = [
     { id: 'vital', label: 'Vital', icon: Heart },
@@ -273,6 +338,74 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     setNotes((prev) => prev.filter((note) => note.id !== id));
   };
 
+  const confirmDiscard = (message: string) => {
+    if (!isDirty) return true;
+    return window.confirm(message);
+  };
+
+  const handleSaveDraft = () => {
+    // TODO: replace with real persistence call
+    console.info('[Linegra] Save draft placeholder');
+    setBaselineSnapshot(draftSnapshot);
+    setIsDirty(false);
+    setSaveFeedback('Saved');
+    setTimeout(() => setSaveFeedback(''), 2000);
+  };
+
+  const handleAttemptClose = () => {
+    if (!confirmDiscard('Discard unsaved changes before closing?')) return;
+    onClose();
+  };
+
+  const handleNavigateRequest = (target: Person) => {
+    if (!confirmDiscard('Discard changes before navigating to another profile?')) return;
+    onNavigateToPerson?.(target);
+  };
+
+  const draftSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        firstName,
+        lastName,
+        maidenName,
+        birthDate,
+        birthPlace: serializePlaceValue(birthPlace),
+        deathDate,
+        deathPlace: serializePlaceValue(deathPlace),
+        residenceAtDeath: serializePlaceValue(residenceAtDeath),
+        burialDate,
+        burialPlace: serializePlaceValue(burialPlace),
+        deathCause,
+        deathCategory,
+        altNames,
+        events,
+        sources,
+        notes,
+        dnaTests,
+        mediaItems
+      }),
+    [
+      firstName,
+      lastName,
+      maidenName,
+      birthDate,
+      birthPlace,
+      deathDate,
+      deathPlace,
+      residenceAtDeath,
+      burialDate,
+      burialPlace,
+      deathCause,
+      deathCategory,
+      altNames,
+      events,
+      sources,
+      notes,
+      dnaTests,
+      mediaItems
+    ]
+  );
+
   // Sync local editable state whenever the selected person changes
   useEffect(() => {
     setFirstName(person.firstName);
@@ -292,10 +425,18 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
     setSources(person.sources || []);
     setNotes(person.notes || []);
     setDnaTests(person.dnaTests || []);
-    setMediaItems(extractMediaItems(person));
-    setRelConfidences(relationships.reduce((acc, r) => ({ ...acc, [r.id]: r.confidence || 'Unknown' }), {}));
+    setMediaItems(extractMediaItemsFromPerson(person));
     setActiveSection('vital');
-  }, [person, relationships]);
+  }, [person]);
+
+  useEffect(() => {
+    setBaselineSnapshot(buildSnapshotFromPerson(person));
+    setIsDirty(false);
+  }, [person]);
+
+  useEffect(() => {
+    setIsDirty(draftSnapshot !== baselineSnapshot);
+  }, [draftSnapshot, baselineSnapshot]);
 
   const handleAddAltName = () => {
     const newAlt: AlternateName = {
@@ -368,7 +509,12 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white h-full w-full overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 lg:relative lg:inset-auto lg:z-auto lg:border-l lg:border-slate-200 lg:w-[500px] lg:slide-in-from-right">
+    <>
+      <div
+        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden"
+        onClick={handleAttemptClose}
+      />
+      <div className="fixed inset-0 z-50 flex flex-col bg-white h-full w-full overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 lg:relative lg:inset-auto lg:z-auto lg:border-l lg:border-slate-200 lg:w-[500px] lg:slide-in-from-right">
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,audio/*,video/*" onChange={handleFileUpload} />
       
       {/* Header with Photo & Name */}
@@ -381,6 +527,22 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
             className="absolute right-6 flex items-center gap-3 z-20"
             style={{ top: 'calc(1rem + env(safe-area-inset-top, 0px))' }}
           >
+            {canEditPerson && (
+              <button
+                onClick={handleSaveDraft}
+                disabled={!isDirty}
+                className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-[0.2em] ${
+                  isDirty
+                    ? 'bg-emerald-400 text-emerald-900 hover:bg-emerald-300 transition'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                Save
+              </button>
+            )}
+            {saveFeedback && (
+              <span className="text-[10px] font-bold text-emerald-300">{saveFeedback}</span>
+            )}
             <div className="relative">
               <button
                 onClick={async () => {
@@ -424,7 +586,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
                 </span>
               )}
             </div>
-            <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white"><X className="w-5 h-5" /></button>
+            <button onClick={handleAttemptClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all text-white"><X className="w-5 h-5" /></button>
           </div>
           <div className="relative z-10 flex items-center gap-6">
             <div className="w-24 h-24 rounded-3xl overflow-hidden ring-4 ring-white shadow-2xl relative group bg-slate-800">
@@ -513,13 +675,15 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
             spouses={spouses}
             children={children}
             person={person}
-            relationships={relationships}
+            relationships={relationshipData}
             relConfidences={relConfidences}
             onUpdateConfidence={handleUpdateConfidence}
-            onNavigateToPerson={onNavigateToPerson}
+            onNavigateToPerson={handleNavigateRequest}
             familyLayout={person.metadata?.familyLayout as FamilyLayoutState | undefined}
             onPersistFamilyLayout={onPersistFamilyLayout}
             canEdit={canEditFamily}
+            loading={connectionsLoading}
+            error={connectionsError}
           />
         )}
 
@@ -569,6 +733,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, relationships, cu
         )}
       </div>
     </div>
+    </>
   );
 };
 
