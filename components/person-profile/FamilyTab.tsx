@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Baby,
   CheckCircle,
+  Droplet,
   HelpCircle,
   Info,
   Search,
@@ -554,10 +556,22 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
     });
   };
 
-  const getChildLifeLabel = (child: Person) => {
-    if (child.birthDate) return `Born ${formatYear(child.birthDate)}`;
+  const getChildLifeMeta = (child: Person) => {
+    if (child.birthDate) {
+      return {
+        label: formatYear(child.birthDate),
+        icon: Baby,
+        title: `Born ${child.birthDate}`,
+      };
+    }
     const christening = child.events?.find((ev) => /christen|baptis/i.test(ev.type));
-    if (christening?.date) return `Christened ${formatYear(christening.date)}`;
+    if (christening?.date) {
+      return {
+        label: formatYear(christening.date),
+        icon: Droplet,
+        title: `Christened ${christening.date}`,
+      };
+    }
     return null;
   };
 
@@ -565,7 +579,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
     const assignment = assignments[child.rel.id] ?? null;
     const confidence = relConfidences[child.rel.id] || 'Unknown';
     const style = getConfidenceStyle(confidence);
-    const lifeLabel = getChildLifeLabel(child.person);
+    const lifeMeta = getChildLifeMeta(child.person);
     return (
       <div
         key={child.rel.id}
@@ -580,11 +594,12 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              draggable
+              draggable={canEdit}
               onDragStart={(event) => beginDrag(event, child.rel.id, assignment)}
               onDragEnd={endDrag}
-              className="p-1 text-slate-400 hover:text-slate-900 cursor-grab active:cursor-grabbing"
+              className={`p-1 ${canEdit ? 'text-slate-400 hover:text-slate-900 cursor-grab active:cursor-grabbing' : 'text-slate-300 cursor-not-allowed'}`}
               aria-label="Drag to reorder child"
+              disabled={!canEdit}
             >
               <GripVertical className="w-4 h-4" />
             </button>
@@ -595,15 +610,26 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
             >
               {child.person.firstName} {child.person.lastName}
             </button>
-            {lifeLabel && <p className="text-[11px] text-slate-400 uppercase tracking-widest">{lifeLabel}</p>}
+            {lifeMeta && (
+              <span
+                className="flex items-center gap-1 text-[11px] text-slate-400 uppercase tracking-widest"
+                title={lifeMeta.title}
+              >
+                <lifeMeta.icon className="w-3 h-3 text-slate-400" />
+                {lifeMeta.label}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            <div className={`flex items-center gap-1 px-2 py-1 rounded-full border ${style.bg} ${style.border}`}>
+            <div className={`flex items-center gap-1 px-2 py-1 rounded-full border ${style.bg} ${style.border} ${!canEdit ? 'opacity-60' : ''}`}>
               <style.icon className={`w-3 h-3 ${style.text}`} />
               <select
                 value={confidence}
                 onChange={(event) => onUpdateConfidence(child.rel.id, event.target.value as RelationshipConfidence)}
-                className={`bg-transparent border-none text-[9px] font-black uppercase tracking-widest outline-none cursor-pointer ${style.text}`}
+                className={`bg-transparent border-none text-[9px] font-black uppercase tracking-widest outline-none ${style.text} ${
+                  canEdit ? 'cursor-pointer' : 'cursor-not-allowed'
+                }`}
+                disabled={!canEdit}
               >
                 {CONFIDENCE_LEVELS.map((level) => (
                   <option key={level} value={level}>
@@ -612,14 +638,16 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
                 ))}
               </select>
             </div>
-            <button
-              type="button"
-              onClick={() => handleUnlinkChild(child.rel.id)}
-              className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
-              aria-label="Unlink child from family"
-            >
-              <UnlinkIcon className="w-4 h-4" />
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => handleUnlinkChild(child.rel.id)}
+                className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
+                aria-label="Unlink child from family"
+              >
+                <UnlinkIcon className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
