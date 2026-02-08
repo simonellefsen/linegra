@@ -47,7 +47,6 @@ const App: React.FC = () => {
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
   const [adminSection, setAdminSection] = useState<'database' | 'trees' | 'gedcom'>('gedcom');
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -78,7 +77,7 @@ const App: React.FC = () => {
       }
       setArchiveError(null);
       try {
-        const archive = await loadArchiveData(tree.id, opts.search ?? (opts.silent ? searchQuery : undefined));
+        const archive = await loadArchiveData(tree.id, opts.search);
         setAllPeople(archive.people);
         setAllRelationships(archive.relationships);
       } catch (err) {
@@ -91,7 +90,7 @@ const App: React.FC = () => {
         }
       }
     },
-    [searchQuery, supabaseActive]
+    [supabaseActive]
   );
 
   useEffect(() => {
@@ -222,8 +221,43 @@ useEffect(() => {
   }, [allRelationships, activeTreeId]);
 
   const filteredPeople = useMemo(() => {
-    return treePeople;
-  }, [treePeople]);
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return treePeople;
+    const tokens = query.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return treePeople;
+    return treePeople.filter((person) => {
+      const nameParts = [
+        person.firstName || '',
+        person.lastName || '',
+        person.maidenName || '',
+        ...(person.alternateNames?.map((alt) => `${alt.firstName ?? ''} ${alt.lastName ?? ''}`) ?? [])
+      ]
+        .join(' ')
+        .toLowerCase();
+      const birth = (person.birthDate || '').toLowerCase();
+      const death = (person.deathDate || '').toLowerCase();
+      const notes = (person.bio || '').toLowerCase();
+      const placeText = [
+        typeof person.birthPlace === 'string'
+          ? person.birthPlace
+          : (person.birthPlace as any)?.fullText ?? '',
+        typeof person.deathPlace === 'string'
+          ? person.deathPlace
+          : (person.deathPlace as any)?.fullText ?? ''
+      ]
+        .join(' ')
+        .toLowerCase();
+      return tokens.every((token) => {
+        return (
+          nameParts.includes(token) ||
+          birth.includes(token) ||
+          death.includes(token) ||
+          placeText.includes(token) ||
+          notes.includes(token)
+        );
+      });
+    });
+  }, [treePeople, searchQuery]);
 
   const filteredRelationships = useMemo(() => {
     const visibleIds = new Set(filteredPeople.map(p => p.id));
@@ -399,36 +433,6 @@ useEffect(() => {
     loadTreeArchive(tree, { silent: false });
   };
 
-  const isRealTreeId = Boolean(supabaseActive && activeTreeId);
-
-  useEffect(() => {
-    if (!isRealTreeId || !activeTreeId) return;
-    let cancelled = false;
-    if (!searchQuery.trim()) {
-      setIsSearching(false);
-    } else {
-      setIsSearching(true);
-    }
-    const timer = setTimeout(() => {
-      if (!activeTree) return;
-      loadTreeArchive(activeTree, { silent: true, search: searchQuery })
-        .catch((err) => {
-          if (!cancelled) {
-            console.error('Search failed', err);
-          }
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setIsSearching(false);
-          }
-        });
-    }, 400);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [isRealTreeId, activeTreeId, searchQuery, activeTree, loadTreeArchive]);
-
   const handleImport = async (data: { people: Person[]; relationships: Relationship[] }) => {
     if (!supabaseActive || !activeTreeId) {
       console.error('Cannot import GEDCOM without an active Supabase-backed tree.');
@@ -595,9 +599,6 @@ useEffect(() => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-              {isSearching && (
-                <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
-              )}
             </div>
           </div>
           <div className="flex items-center gap-4 relative ml-auto">
@@ -655,7 +656,7 @@ useEffect(() => {
                 </div>
                 <button
                   className="ml-auto text-xs font-bold uppercase tracking-[0.2em] text-rose-500 hover:text-rose-700"
-                  onClick={() => loadTreeArchive(activeTree, { silent: false, search: searchQuery })}
+                  onClick={() => loadTreeArchive(activeTree, { silent: false })}
                 >
                   Retry
                 </button>
