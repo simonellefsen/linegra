@@ -15,7 +15,7 @@ import {
   Citation,
   FamilyLayoutState,
 } from '../types';
-import { X, Library, Image as ImageIcon, FileText, ShieldCheck, Microscope, Share2, Share, Heart, Edit3 } from 'lucide-react';
+import { X, Library, Image as ImageIcon, FileText, ShieldCheck, Microscope, Share2, Share, Heart, Edit3, Check } from 'lucide-react';
 import { PARENT_LINK_TYPES } from './person-profile/constants';
 import FamilyTab from './person-profile/FamilyTab';
 import VitalTab from './person-profile/VitalTab';
@@ -69,7 +69,9 @@ const buildSnapshotFromPerson = (target: Person) =>
     sources: target.sources || [],
     notes: target.notes || [],
     dnaTests: target.dnaTests || [],
-    mediaItems: extractMediaItemsFromPerson(target)
+    mediaItems: extractMediaItemsFromPerson(target),
+    isLiving: !!target.isLiving,
+    isPrivate: !!target.isPrivate
   });
 
 interface PersonProfileProps {
@@ -110,6 +112,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   const [notes, setNotes] = useState<Note[]>(person.notes || []);
   const [dnaTests, setDnaTests] = useState<DNATest[]>(person.dnaTests || []);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(extractMediaItemsFromPerson(person));
+  const [isLiving, setIsLiving] = useState<boolean>(!!person.isLiving);
+  const [isPrivate, setIsPrivate] = useState<boolean>(!!person.isPrivate);
 
   const [relationshipData, setRelationshipData] = useState<Relationship[]>([]);
   const [relationPeople, setRelationPeople] = useState<Record<string, Person>>({ [person.id]: person });
@@ -142,6 +146,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
     setNotes(person.notes || []);
     setDnaTests(person.dnaTests || []);
     setMediaItems(extractMediaItemsFromPerson(person));
+    setIsLiving(!!person.isLiving);
+    setIsPrivate(!!person.isPrivate);
   }, [person]);
 
   const applyConnectionData = useCallback(
@@ -417,6 +423,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
       death_cause: deathCause || null,
       death_cause_category: deathCategory || null,
       alternate_names: altNames,
+      is_living: isLiving,
+      is_private: isPrivate,
       metadata: metadataPatch
     };
   };
@@ -542,7 +550,9 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         sources,
         notes,
         dnaTests,
-        mediaItems
+        mediaItems,
+        isLiving,
+        isPrivate
       }),
     [
       firstName,
@@ -562,7 +572,9 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
       sources,
       notes,
       dnaTests,
-      mediaItems
+      mediaItems,
+      isLiving,
+      isPrivate
     ]
   );
 
@@ -773,6 +785,34 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-200">Verified DNA Match</span>
                 </div>
               )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => canEditPerson && setIsLiving((prev) => !prev)}
+                  disabled={!canEditPerson}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition ${
+                    isLiving
+                      ? 'bg-emerald-400/20 border-emerald-300 text-emerald-100'
+                      : 'border-white/20 text-white/60'
+                  } ${canEditPerson ? 'hover:bg-white/10' : 'opacity-60 cursor-not-allowed'}`}
+                >
+                  <Check className={`w-3 h-3 ${isLiving ? 'text-emerald-200' : 'text-white/40'}`} />
+                  <span>Living</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => canEditPerson && setIsPrivate((prev) => !prev)}
+                  disabled={!canEditPerson}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition ${
+                    isPrivate
+                      ? 'bg-rose-500/20 border-rose-300 text-rose-100'
+                      : 'border-white/20 text-white/60'
+                  } ${canEditPerson ? 'hover:bg-white/10' : 'opacity-60 cursor-not-allowed'}`}
+                >
+                  <Check className={`w-3 h-3 ${isPrivate ? 'text-rose-200' : 'text-white/40'}`} />
+                  <span>Private</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

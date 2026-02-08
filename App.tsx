@@ -98,11 +98,23 @@ const App: React.FC = () => {
   });
   const [landingLoading, setLandingLoading] = useState(false);
   const [landingError, setLandingError] = useState<string | null>(null);
+  const canViewPrivate = !!currentUser?.isAdmin;
+  const filterVisiblePeople = useCallback(
+    (list: Person[]) => (canViewPrivate ? list : list.filter((person) => !person.isPrivate)),
+    [canViewPrivate]
+  );
   const applySearchFilters = useCallback(
     (results: Person[], filters: { livingOnly: boolean; missingData: boolean }) => {
       return results.filter((person) => {
-        if (filters.livingOnly && person.deathDate) {
+        if (!canViewPrivate && person.isPrivate) {
           return false;
+        }
+        if (filters.livingOnly) {
+          const livingStatus =
+            typeof person.isLiving === 'boolean' ? person.isLiving : !person.deathDate;
+          if (!livingStatus) {
+            return false;
+          }
         }
         if (
           filters.missingData &&
@@ -115,7 +127,7 @@ const App: React.FC = () => {
         return true;
       });
     },
-    []
+    [canViewPrivate]
   );
   const activeTreeId = activeTree?.id ?? null;
 
@@ -233,10 +245,10 @@ useEffect(() => {
       .then(([whatsNew, anniversaries, mostWanted, media]) => {
         if (cancelled) return;
         setLandingCards({
-          whatsNew,
-          anniversaries,
-          mostWanted,
-          randomMedia: media
+          whatsNew: filterVisiblePeople(whatsNew),
+          anniversaries: filterVisiblePeople(anniversaries),
+          mostWanted: filterVisiblePeople(mostWanted),
+          randomMedia: filterVisiblePeople(media)
         });
       })
       .catch((err) => {
@@ -258,7 +270,7 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [activeTreeId]);
+  }, [activeTreeId, filterVisiblePeople]);
 
   useEffect(() => {
     if (!treeViewReady || !activeTree) return;
@@ -348,8 +360,10 @@ useEffect(() => {
   const hasMoreAudits = layoutAudits.length < auditTotal;
   const treePeople = useMemo(() => {
     if (!activeTreeId) return [];
-    return allPeople.filter((p) => p.treeId === activeTreeId);
-  }, [allPeople, activeTreeId]);
+    return allPeople.filter(
+      (p) => p.treeId === activeTreeId && (canViewPrivate || !p.isPrivate)
+    );
+  }, [allPeople, activeTreeId, canViewPrivate]);
 
   const handlePersistFamilyLayout = useCallback(async (personId: string, layout: FamilyLayoutState) => {
     try {
@@ -370,8 +384,13 @@ useEffect(() => {
 
   const treeRelationships = useMemo(() => {
     if (!activeTreeId) return [];
-    return allRelationships.filter((r) => r.treeId === activeTreeId);
-  }, [allRelationships, activeTreeId]);
+    const visibleIds = new Set(treePeople.map((p) => p.id));
+    return allRelationships.filter(
+      (r) =>
+        r.treeId === activeTreeId &&
+        (canViewPrivate || (visibleIds.has(r.personId) && visibleIds.has(r.relatedId)))
+    );
+  }, [allRelationships, activeTreeId, canViewPrivate, treePeople]);
 
   const deferredSearch = useDeferredValue(searchQuery);
   const filteredPeople = useMemo(() => {
@@ -447,9 +466,10 @@ useEffect(() => {
           limit: SEARCH_PAGE_SIZE,
           offset: page * SEARCH_PAGE_SIZE
         });
-        setSearchTotal(total);
+        const visibleResults = filterVisiblePeople(results);
+        setSearchTotal((prev) => (canViewPrivate ? total ?? 0 : append ? prev + visibleResults.length : visibleResults.length));
         setSearchPage(page);
-        setSearchModalBaseResults((prev) => (append ? [...prev, ...results] : results));
+        setSearchModalBaseResults((prev) => (append ? [...prev, ...visibleResults] : visibleResults));
       } catch (err) {
         console.error('Search failed', err);
         const message = err instanceof Error ? err.message : 'Search failed.';
@@ -462,7 +482,7 @@ useEffect(() => {
         setSearchLoading(false);
       }
     },
-    [activeTreeId, searchQuery]
+    [activeTreeId, searchQuery, filterVisiblePeople, canViewPrivate]
   );
 
   const executeSearch = useCallback(() => {
@@ -495,6 +515,9 @@ useEffect(() => {
 
   const handlePersonSelect = useCallback(
     (person: Person | null) => {
+      if (person && person.isPrivate && !canViewPrivate) {
+        return;
+      }
       setSelectedPerson(person);
       setPendingPersonId(person ? person.id : null);
       if (person) {
@@ -513,7 +536,7 @@ useEffect(() => {
         window.history.replaceState({}, '', url);
       }
     },
-    [handleEnsurePersonDetails]
+    [handleEnsurePersonDetails, canViewPrivate]
   );
 
   const handleOpenTreeFromProfile = useCallback(

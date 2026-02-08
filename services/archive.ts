@@ -80,6 +80,8 @@ const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
     occupations: person.occupations || [],
     is_dna_match: person.isDNAMatch || false,
     dna_match_info: person.dnaMatchInfo || null,
+    is_living: typeof person.isLiving === 'boolean' ? person.isLiving : null,
+    is_private: !!person.isPrivate,
     tags: [],
     user_role: person.userRole || null,
     metadata
@@ -116,6 +118,8 @@ const mapDbPerson = (
     occupations: row.occupations || [],
     generation: row.generation || undefined,
     updatedAt: row.updated_at,
+    isLiving: row.is_living === null ? undefined : row.is_living ?? undefined,
+    isPrivate: !!row.is_private,
     isDNAMatch: row.is_dna_match,
     dnaMatchInfo: row.dna_match_info || undefined,
     addedByUserId: row.created_by || undefined,
@@ -230,7 +234,7 @@ export const loadArchiveData = async (treeId: string) => {
     const { data, error } = await supabase
       .from('persons')
       .select(
-        'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, updated_at, metadata'
+        'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, updated_at, metadata, is_living, is_private'
       )
       .eq('tree_id', treeId)
       .order('last_name', { ascending: true })
@@ -282,7 +286,7 @@ export const fetchWhatsNewPeople = async (treeId: string, limit = 4): Promise<Pe
   const { data, error } = await supabase
     .from('persons')
     .select(
-      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata'
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata, is_living, is_private'
     )
     .eq('tree_id', treeId)
     .order('updated_at', { ascending: false })
@@ -299,7 +303,7 @@ export const fetchThisMonthHighlights = async (treeId: string, limit = 3): Promi
   const { data, error } = await supabase
     .from('persons')
     .select(
-      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata'
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata, is_living, is_private'
     )
     .eq('tree_id', treeId)
     .not('birth_date_text', 'is', null)
@@ -321,7 +325,7 @@ export const fetchMostWantedPeople = async (treeId: string, limit = 4): Promise<
   const { data, error } = await supabase
     .from('persons')
     .select(
-      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata'
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata, is_living, is_private'
     )
     .eq('tree_id', treeId)
     .or('birth_date_text.is.null,photo_url.is.null,bio.is.null')
@@ -339,7 +343,7 @@ export const fetchRandomMediaPeople = async (treeId: string, limit = 4): Promise
   const { data, error } = await supabase
     .from('persons')
     .select(
-      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata'
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, bio, updated_at, metadata, is_living, is_private'
     )
     .eq('tree_id', treeId)
     .not('photo_url', 'is', null)
@@ -393,7 +397,7 @@ export const fetchPersonConnections = async (
   const { data: peopleRows, error: peopleError } = await supabase
     .from('persons')
     .select(
-      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, metadata, updated_at'
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, photo_url, metadata, updated_at, is_living, is_private'
     )
     .in('id', relatedIds);
 
@@ -489,7 +493,7 @@ export const searchPersonsInTree = async (
   let query = supabase
     .from('persons')
     .select(
-      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, burial_date_text, burial_place_text, residence_at_death_text, metadata, bio, occupations, updated_at, created_by, is_dna_match, dna_match_info',
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, burial_date_text, burial_place_text, residence_at_death_text, metadata, bio, occupations, updated_at, created_by, is_dna_match, dna_match_info, is_living, is_private',
       { count: 'exact' }
     )
     .eq('tree_id', treeId)
@@ -513,7 +517,7 @@ export const searchPersonsInTree = async (
   });
 
   if (options.filters?.livingOnly) {
-    query = query.is('death_date_text', null);
+    query = query.or('is_living.eq.true,death_date_text.is.null');
   }
 
   if (options.filters?.missingData) {
