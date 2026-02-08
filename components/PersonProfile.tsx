@@ -1197,6 +1197,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
   const [removedChildIds, setRemovedChildIds] = useState<Set<string>>(layoutSeed.removedChildren);
   const hydratingRef = useRef(false);
   const [dragContext, setDragContext] = useState<{ childId: string; groupKey: string } | null>(null);
+  const [hoverGroup, setHoverGroup] = useState<string | null>(null);
   const lastPersistedRef = useRef<string>(JSON.stringify({
     assignments: layoutSeed.assignments,
     manualOrders: layoutSeed.manualOrders,
@@ -1313,37 +1314,71 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
     if (dragContext.groupKey !== canonical) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
+    setHoverGroup(canonical);
   };
 
   const normalizeGroupKey = (groupKey: string) => (groupKey === 'unassigned' ? null : groupKey);
 
+  const insertChildInOrder = (order: string[], childId: string, targetChildId: string | null) => {
+    const filtered = order.filter((id) => id !== childId);
+    if (targetChildId && filtered.includes(targetChildId)) {
+      const targetIndex = filtered.indexOf(targetChildId);
+      filtered.splice(targetIndex, 0, childId);
+    } else {
+      filtered.push(childId);
+    }
+    return filtered;
+  };
+
   const reorderWithinGroup = (targetChildId: string | null, groupId: string | null) => {
-    if (!dragContext) return;
+    if (!dragContext) return false;
     const canonical = keyForGroup(groupId);
-    if (dragContext.groupKey !== canonical) return;
+    if (dragContext.groupKey !== canonical) return false;
     const normalized = normalizeGroupKey(canonical);
     const orderedIds = getDisplayChildren(normalized).map((child) => child.rel.id);
-    const dragIndex = orderedIds.indexOf(dragContext.childId);
-    if (dragIndex === -1) return;
-    orderedIds.splice(dragIndex, 1);
-    if (targetChildId && orderedIds.includes(targetChildId)) {
-      const targetIndex = orderedIds.indexOf(targetChildId);
-      orderedIds.splice(targetIndex, 0, dragContext.childId);
-    } else {
-      orderedIds.push(dragContext.childId);
+    const newOrder = insertChildInOrder(orderedIds, dragContext.childId, targetChildId);
+    setManualOrders((prev) => ({ ...prev, [canonical]: newOrder }));
+    return true;
+  };
+
+  const moveChildToGroup = (targetChildId: string | null, groupId: string | null) => {
+    if (!dragContext) return;
+    const targetKey = keyForGroup(groupId);
+    const sourceKey = dragContext.groupKey;
+    if (sourceKey === targetKey) {
+      reorderWithinGroup(targetChildId, groupId);
+      endDrag();
+      return;
     }
-    setManualOrders((prev) => ({ ...prev, [canonical]: orderedIds }));
+    const normalizedTarget = normalizeGroupKey(targetKey);
+    setAssignments((prev) => ({ ...prev, [dragContext.childId]: normalizedTarget }));
+    scrubChildFromManualOrders(dragContext.childId);
+    setManualOrders((prev) => {
+      const next = { ...prev };
+      const base = next[targetKey] ? next[targetKey].filter((id) => id !== dragContext.childId) : [];
+      next[targetKey] = insertChildInOrder(base, dragContext.childId, targetChildId);
+      return next;
+    });
     endDrag();
   };
 
   const handleDropOnChild = (event: React.DragEvent, childId: string, groupId: string | null) => {
     event.preventDefault();
-    reorderWithinGroup(childId, groupId);
+    moveChildToGroup(childId, groupId);
+    setHoverGroup(null);
   };
 
   const handleDropOnGroup = (event: React.DragEvent, groupId: string | null) => {
     event.preventDefault();
-    reorderWithinGroup(null, groupId);
+    moveChildToGroup(null, groupId);
+    setHoverGroup(null);
+  };
+
+  const handleDragLeave = (event: React.DragEvent, groupId: string | null) => {
+    const canonical = keyForGroup(groupId);
+    if (hoverGroup === canonical) {
+      setHoverGroup(null);
+    }
   };
 
   useEffect(() => {
@@ -1403,8 +1438,11 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
     return (
       <div
         key={child.rel.id}
-        className="p-4 bg-white rounded-2xl border border-slate-100 flex flex-col gap-3 shadow-sm"
+        className={`p-4 bg-white rounded-2xl border flex flex-col gap-3 shadow-sm transition ${
+          hoverGroup === keyForGroup(assignment) ? 'border-blue-400 bg-blue-50/40' : 'border-slate-100'
+        }`}
         onDragOver={(event) => handleDragOver(event, assignment)}
+        onDragLeave={(event) => handleDragLeave(event, assignment)}
         onDrop={(event) => handleDropOnChild(event, child.rel.id, assignment)}
       >
         <div className="flex items-center justify-between gap-3">
@@ -1478,8 +1516,11 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
               </button>
             </div>
             <div
-              className="ml-4 border-l border-slate-200 pl-4 space-y-3"
+              className={`ml-4 border-l pl-4 space-y-3 transition ${
+                hoverGroup === spouse.rel.id ? 'border-blue-300 bg-blue-50/30 rounded-2xl' : 'border-slate-200'
+              }`}
               onDragOver={(event) => handleDragOver(event, spouse.rel.id)}
+              onDragLeave={(event) => handleDragLeave(event, spouse.rel.id)}
               onDrop={(event) => handleDropOnGroup(event, spouse.rel.id)}
             >
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Children of this union</p>
@@ -1500,8 +1541,11 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
 
       {unassignedChildren.length > 0 && (
         <div
-          className="space-y-3"
+          className={`space-y-3 transition ${
+            hoverGroup === 'unassigned' ? 'border border-dashed border-blue-300 rounded-2xl bg-blue-50/30 p-3' : ''
+          }`}
           onDragOver={(event) => handleDragOver(event, null)}
+          onDragLeave={(event) => handleDragLeave(event, null)}
           onDrop={(event) => handleDropOnGroup(event, null)}
         >
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Unassigned Descendants</p>
