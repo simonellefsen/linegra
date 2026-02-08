@@ -808,36 +808,38 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-200">Verified DNA Match</span>
                 </div>
               )}
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => canEditPerson && !deathDate && setIsLiving((prev) => !prev)}
-                  disabled={!canEditPerson || !!deathDate}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition ${
-                    isLiving
-                      ? 'bg-emerald-400/20 border-emerald-300 text-emerald-100'
-                      : 'border-white/20 text-white/60'
-                  } ${
-                    canEditPerson && !deathDate ? 'hover:bg-white/10' : 'opacity-60 cursor-not-allowed'
-                  }`}
-                >
-                  <Check className={`w-3 h-3 ${isLiving ? 'text-emerald-200' : 'text-white/40'}`} />
-                  <span>Living</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => canEditPerson && setIsPrivate((prev) => !prev)}
-                  disabled={!canEditPerson}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition ${
-                    isPrivate
-                      ? 'bg-rose-500/20 border-rose-300 text-rose-100'
-                      : 'border-white/20 text-white/60'
-                  } ${canEditPerson ? 'hover:bg-white/10' : 'opacity-60 cursor-not-allowed'}`}
-                >
-                  <Check className={`w-3 h-3 ${isPrivate ? 'text-rose-200' : 'text-white/40'}`} />
-                  <span>Private</span>
-                </button>
-              </div>
+              {canEditPerson && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => canEditPerson && !deathDate && setIsLiving((prev) => !prev)}
+                    disabled={!canEditPerson || !!deathDate}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition ${
+                      isLiving
+                        ? 'bg-emerald-400/20 border-emerald-300 text-emerald-100'
+                        : 'border-white/20 text-white/60'
+                    } ${
+                      canEditPerson && !deathDate ? 'hover:bg-white/10' : 'opacity-60 cursor-not-allowed'
+                    }`}
+                  >
+                    <Check className={`w-3 h-3 ${isLiving ? 'text-emerald-200' : 'text-white/40'}`} />
+                    <span>Living</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => canEditPerson && setIsPrivate((prev) => !prev)}
+                    disabled={!canEditPerson}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition ${
+                      isPrivate
+                        ? 'bg-rose-500/20 border-rose-300 text-rose-100'
+                        : 'border-white/20 text-white/60'
+                    } ${canEditPerson ? 'hover:bg-white/10' : 'opacity-60 cursor-not-allowed'}`}
+                  >
+                    <Check className={`w-3 h-3 ${isPrivate ? 'text-rose-200' : 'text-white/40'}`} />
+                    <span>Private</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
