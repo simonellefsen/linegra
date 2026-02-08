@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
@@ -241,8 +241,9 @@ useEffect(() => {
     return allRelationships.filter((r) => r.treeId === activeTreeId);
   }, [allRelationships, activeTreeId]);
 
+  const deferredSearch = useDeferredValue(searchQuery);
   const filteredPeople = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = deferredSearch.trim().toLowerCase();
     if (!query) return treePeople;
     const tokens = query.split(/\s+/).filter(Boolean);
     if (!tokens.length) return treePeople;
@@ -278,7 +279,7 @@ useEffect(() => {
         );
       });
     });
-  }, [treePeople, searchQuery]);
+  }, [treePeople, deferredSearch]);
 
   const filteredRelationships = useMemo(() => {
     const visibleIds = new Set(filteredPeople.map(p => p.id));
