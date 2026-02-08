@@ -24,9 +24,10 @@ interface PlaceInputProps {
   label: string;
   value: string | StructuredPlace;
   onChange: (val: StructuredPlace) => void;
+  disabled?: boolean;
 }
 
-export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }) => {
+export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange, disabled = false }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
 
@@ -55,8 +56,11 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</label>
         <button 
           type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="text-[10px] font-bold text-slate-400 hover:text-slate-900 flex items-center gap-1 transition-colors"
+          onClick={() => !disabled && setIsExpanded(!isExpanded)}
+          disabled={disabled}
+          className={`text-[10px] font-bold flex items-center gap-1 transition-colors ${
+            disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-slate-900'
+          }`}
         >
           {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           {isExpanded ? 'Simple' : 'Details'}
@@ -70,11 +74,15 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
           value={place.fullText}
           onChange={(e) => updateField('fullText', e.target.value)}
           placeholder="e.g. Christianshavn, Copenhagen, Denmark"
-          className="w-full pl-11 pr-24 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 focus:border-slate-900 outline-none text-sm font-medium transition-all"
+          disabled={disabled}
+          readOnly={disabled}
+          className={`w-full pl-11 pr-24 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 focus:border-slate-900 outline-none text-sm font-medium transition-all ${
+            disabled ? 'opacity-70 cursor-not-allowed' : ''
+          }`}
         />
         <button 
           onClick={handleSmartParse}
-          disabled={isParsing || !place.fullText}
+          disabled={disabled || isParsing || !place.fullText}
           className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[9px] font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50"
         >
           {isParsing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-amber-500" />}
@@ -94,6 +102,7 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
                   icon={Home} 
                   value={place.street} 
                   onChange={(v) => updateField('street', v)} 
+                  disabled={disabled}
                   placeholder="e.g. Amagerbrogade"
                 />
               </div>
@@ -102,6 +111,7 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
                 icon={Hash} 
                 value={place.houseNumber} 
                 onChange={(v) => updateField('houseNumber', v)} 
+                disabled={disabled}
               />
               <div className="grid grid-cols-2 gap-2">
                  <DetailField 
@@ -109,12 +119,14 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
                   icon={Layers} 
                   value={place.floor} 
                   onChange={(v) => updateField('floor', v)} 
+                  disabled={disabled}
                 />
                 <DetailField 
                   label="Lejl. (Apt)" 
                   icon={DoorOpen} 
                   value={place.apartment} 
                   onChange={(v) => updateField('apartment', v)} 
+                  disabled={disabled}
                 />
               </div>
             </div>
@@ -129,24 +141,28 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
                 icon={Compass} 
                 value={place.placeName} 
                 onChange={(v) => updateField('placeName', v)} 
+                disabled={disabled}
               />
               <DetailField 
                 label="Sogn / By (Town / Parish)" 
                 icon={Home} 
                 value={place.city} 
                 onChange={(v) => updateField('city', v)} 
+                disabled={disabled}
               />
               <DetailField 
                 label="Amt / Herred / Region" 
                 icon={MapIcon} 
                 value={place.county} 
                 onChange={(v) => updateField('county', v)} 
+                disabled={disabled}
               />
               <DetailField 
                 label="Land (Country)" 
                 icon={Globe} 
                 value={place.country} 
                 onChange={(v) => updateField('country', v)} 
+                disabled={disabled}
               />
             </div>
           </div>
@@ -160,6 +176,7 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
                 icon={History} 
                 value={place.historicalName} 
                 onChange={(v) => updateField('historicalName', v)} 
+                disabled={disabled}
                 placeholder="e.g. Københavns Amt"
               />
               <div className="grid grid-cols-2 gap-2">
@@ -168,12 +185,14 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
                   icon={Navigation} 
                   value={place.lat?.toString()} 
                   onChange={(v) => updateField('lat', v ? parseFloat(v) : undefined)} 
+                  disabled={disabled}
                 />
                 <DetailField 
                   label="Lng (Longitude)" 
                   icon={Navigation} 
                   value={place.lng?.toString()} 
                   onChange={(v) => updateField('lng', v ? parseFloat(v) : undefined)} 
+                  disabled={disabled}
                 />
               </div>
             </div>
@@ -186,7 +205,8 @@ export const PlaceInput: React.FC<PlaceInputProps> = ({ label, value, onChange }
                 value={place.notes || ''}
                 onChange={(e) => updateField('notes', e.target.value)}
                 placeholder="Extra details like 'Destroyed in fire' or 'Next to the town hall'..."
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-medium focus:ring-2 focus:ring-slate-900/5 focus:border-slate-900 outline-none min-h-[80px] resize-none"
+                disabled={disabled}
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-medium focus:ring-2 focus:ring-slate-900/5 focus:border-slate-900 outline-none min-h-[80px] resize-none disabled:opacity-50"
               />
             </div>
           </div>
@@ -202,9 +222,10 @@ interface DetailFieldProps {
   value?: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }
 
-const DetailField: React.FC<DetailFieldProps> = ({ label, icon: Icon, value, onChange, placeholder }) => (
+const DetailField: React.FC<DetailFieldProps> = ({ label, icon: Icon, value, onChange, placeholder, disabled }) => (
   <div className="space-y-1">
     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1 truncate block">{label}</label>
     <div className="relative">
@@ -214,7 +235,11 @@ const DetailField: React.FC<DetailFieldProps> = ({ label, icon: Icon, value, onC
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all"
+        disabled={disabled}
+        readOnly={disabled}
+        className={`w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all ${
+          disabled ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''
+        }`}
       />
     </div>
   </div>

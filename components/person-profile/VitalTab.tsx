@@ -23,6 +23,7 @@ import { ALT_NAME_TYPES, DEATH_CATEGORIES, EVENT_TYPES } from './constants';
 import { AlternateName, DeathCauseCategory, PersonEvent, StructuredPlace } from '../../types';
 
 interface VitalTabProps {
+  canEdit: boolean;
   firstName: string;
   lastName: string;
   maidenName: string;
@@ -87,6 +88,7 @@ const getEventIcon = (type: string) => {
 };
 
 const VitalTab: React.FC<VitalTabProps> = ({
+  canEdit,
   firstName,
   lastName,
   maidenName,
@@ -125,6 +127,7 @@ const VitalTab: React.FC<VitalTabProps> = ({
   getNoteCountForEvent,
   getMediaCountForEvent,
 }) => {
+  const readOnly = !canEdit;
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="space-y-6">
@@ -137,16 +140,17 @@ const VitalTab: React.FC<VitalTabProps> = ({
           </div>
           <button
             onClick={onAddAltName}
-            className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5 hover:translate-x-1 transition-all"
+            disabled={readOnly}
+            className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5 hover:translate-x-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" /> Add Identity
           </button>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <DetailEdit label="First Name" value={firstName} onChange={onFirstNameChange} />
-          <DetailEdit label="Surname" value={lastName} onChange={onLastNameChange} />
+          <DetailEdit label="First Name" value={firstName} onChange={onFirstNameChange} disabled={readOnly} />
+          <DetailEdit label="Surname" value={lastName} onChange={onLastNameChange} disabled={readOnly} />
         </div>
-        <DetailEdit label="Maiden Name" value={maidenName} onChange={onMaidenNameChange} placeholder="née..." />
+        <DetailEdit label="Maiden Name" value={maidenName} onChange={onMaidenNameChange} placeholder="née..." disabled={readOnly} />
 
         {altNames.length > 0 && (
           <div className="space-y-4 pt-2">
@@ -158,14 +162,16 @@ const VitalTab: React.FC<VitalTabProps> = ({
               >
                 <button
                   onClick={() => onRemoveAltName(idx)}
-                  className="absolute top-4 right-4 text-slate-300 hover:text-rose-500 opacity-0 group-hover/alt:opacity-100 transition-all"
+                  disabled={readOnly}
+                  className="absolute top-4 right-4 text-slate-300 hover:text-rose-500 opacity-0 group-hover/alt:opacity-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
                 <select
                   value={alt.type}
                   onChange={(e) => onUpdateAltName(idx, 'type', e.target.value)}
-                  className="text-[10px] font-black bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 uppercase tracking-widest text-slate-900 shadow-sm outline-none cursor-pointer"
+                  disabled={readOnly}
+                  className="text-[10px] font-black bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 uppercase tracking-widest text-slate-900 shadow-sm outline-none cursor-pointer disabled:opacity-50"
                 >
                   {ALT_NAME_TYPES.map((type) => (
                     <option key={type} value={type}>
@@ -174,8 +180,8 @@ const VitalTab: React.FC<VitalTabProps> = ({
                   ))}
                 </select>
                 <div className="grid grid-cols-2 gap-3">
-                  <DetailEdit label="First Name" value={alt.firstName} onChange={(value) => onUpdateAltName(idx, 'firstName', value)} />
-                  <DetailEdit label="Surname" value={alt.lastName} onChange={(value) => onUpdateAltName(idx, 'lastName', value)} />
+                  <DetailEdit label="First Name" value={alt.firstName} onChange={(value) => onUpdateAltName(idx, 'firstName', value)} disabled={readOnly} />
+                  <DetailEdit label="Surname" value={alt.lastName} onChange={(value) => onUpdateAltName(idx, 'lastName', value)} disabled={readOnly} />
                 </div>
               </div>
             ))}
@@ -194,8 +200,8 @@ const VitalTab: React.FC<VitalTabProps> = ({
               eventLabel: 'Birth',
               fields: (
                 <>
-                  <FluentDateInput label="Date" value={birthDate} onChange={onBirthDateChange} />
-                  <PlaceInput label="Location" value={birthPlace} onChange={onBirthPlaceChange} />
+                  <FluentDateInput label="Date" value={birthDate} onChange={onBirthDateChange} disabled={readOnly} />
+                  <PlaceInput label="Location" value={birthPlace} onChange={onBirthPlaceChange} disabled={readOnly} />
                 </>
               ),
               wrapperClass: 'bg-white',
@@ -207,16 +213,17 @@ const VitalTab: React.FC<VitalTabProps> = ({
               eventLabel: 'Death',
               fields: (
                 <>
-                  <FluentDateInput label="Date" value={deathDate} onChange={onDeathDateChange} />
-                  <PlaceInput label="Place of Death (e.g. Hospital)" value={deathPlace} onChange={onDeathPlaceChange} />
-                  <PlaceInput label="Residence at Death (e.g. Home)" value={residenceAtDeath} onChange={onResidenceAtDeathChange} />
-                  <DetailEdit label="Cause of Death" value={deathCause} onChange={onDeathCauseChange} />
+                  <FluentDateInput label="Date" value={deathDate} onChange={onDeathDateChange} disabled={readOnly} />
+                  <PlaceInput label="Place of Death (e.g. Hospital)" value={deathPlace} onChange={onDeathPlaceChange} disabled={readOnly} />
+                  <PlaceInput label="Residence at Death (e.g. Home)" value={residenceAtDeath} onChange={onResidenceAtDeathChange} disabled={readOnly} />
+                  <DetailEdit label="Cause of Death" value={deathCause} onChange={onDeathCauseChange} disabled={readOnly} />
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Death Category</label>
                     <select
                       value={deathCategory}
                       onChange={(event) => onDeathCategoryChange(event.target.value as DeathCauseCategory)}
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none cursor-pointer"
+                      disabled={readOnly}
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none cursor-pointer disabled:opacity-50"
                     >
                       {DEATH_CATEGORIES.map((category) => (
                         <option key={category} value={category}>
@@ -236,8 +243,8 @@ const VitalTab: React.FC<VitalTabProps> = ({
               eventLabel: 'Burial',
               fields: (
                 <>
-                  <FluentDateInput label="Date" value={burialDate} onChange={onBurialDateChange} />
-                  <PlaceInput label="Burial Location (e.g. Cemetery)" value={burialPlace} onChange={onBurialPlaceChange} />
+                  <FluentDateInput label="Date" value={burialDate} onChange={onBurialDateChange} disabled={readOnly} />
+                  <PlaceInput label="Burial Location (e.g. Cemetery)" value={burialPlace} onChange={onBurialPlaceChange} disabled={readOnly} />
                 </>
               ),
               wrapperClass: 'bg-white',

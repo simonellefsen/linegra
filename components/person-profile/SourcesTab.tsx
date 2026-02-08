@@ -5,6 +5,7 @@ import { SOURCE_TYPES } from './constants';
 import { Citation, Source } from '../../types';
 
 interface SourcesTabProps {
+  canEdit: boolean;
   sources: Source[];
   availableEvents: string[];
   onAddSource: () => void;
@@ -14,19 +15,23 @@ interface SourcesTabProps {
 }
 
 const SourcesTab: React.FC<SourcesTabProps> = ({
+  canEdit,
   sources,
   availableEvents,
   onAddSource,
   onUpdateSource,
   onRemoveSource,
   citationMap,
-}) => (
+}) => {
+  const readOnly = !canEdit;
+  return (
   <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
     <div className="flex items-center justify-between">
       <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">Documentary Evidence</p>
       <button
         onClick={onAddSource}
-        className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5 hover:translate-x-1 transition-all"
+        disabled={readOnly}
+        className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5 hover:translate-x-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <Library className="w-4 h-4" /> Add Record
       </button>
@@ -44,7 +49,8 @@ const SourcesTab: React.FC<SourcesTabProps> = ({
                 <select
                   value={source.type}
                   onChange={(e) => onUpdateSource(source.id, { type: e.target.value as Source['type'] })}
-                  className="px-2 py-0.5 bg-slate-900 text-white text-[9px] font-black uppercase rounded-lg border-none outline-none cursor-pointer"
+                  disabled={readOnly}
+                  className="px-2 py-0.5 bg-slate-900 text-white text-[9px] font-black uppercase rounded-lg border-none outline-none cursor-pointer disabled:opacity-50"
                 >
                   {SOURCE_TYPES.map((type) => (
                     <option key={type} value={type}>
@@ -57,7 +63,8 @@ const SourcesTab: React.FC<SourcesTabProps> = ({
                   <select
                     value={source.event || 'General'}
                     onChange={(e) => onUpdateSource(source.id, { event: e.target.value })}
-                    className="bg-transparent text-[10px] text-blue-600 font-black uppercase tracking-widest border-none outline-none cursor-pointer"
+                    disabled={readOnly}
+                    className="bg-transparent text-[10px] text-blue-600 font-black uppercase tracking-widest border-none outline-none cursor-pointer disabled:opacity-50"
                   >
                     {availableEvents.map((ev) => (
                       <option key={ev} value={ev}>
@@ -67,31 +74,34 @@ const SourcesTab: React.FC<SourcesTabProps> = ({
                   </select>
                 </div>
               </div>
-              <button onClick={() => onRemoveSource(source.id)} className="text-slate-300 hover:text-rose-500">
+              <button onClick={() => onRemoveSource(source.id)} className="text-slate-300 hover:text-rose-500 disabled:opacity-40" disabled={readOnly}>
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
             <input
               value={source.title || source.abbreviation || source.externalId || ''}
               onChange={(e) => onUpdateSource(source.id, { title: e.target.value })}
-              className="w-full font-bold text-slate-900 border-none outline-none bg-transparent text-lg font-serif"
+              disabled={readOnly}
+              className="w-full font-bold text-slate-900 border-none outline-none bg-transparent text-lg font-serif disabled:opacity-60"
               placeholder="Record Title..."
             />
             {source.abbreviation && <p className="text-xs text-slate-500 italic">{source.abbreviation}</p>}
             <div className="grid grid-cols-2 gap-3">
-              <DetailEdit label="Citation Date" value={source.citationDate} onChange={(v) => onUpdateSource(source.id, { citationDate: v })} />
-              <DetailEdit label="URL / Link" value={source.url} onChange={(v) => onUpdateSource(source.id, { url: v })} />
+              <DetailEdit label="Citation Date" value={source.citationDate} onChange={(v) => onUpdateSource(source.id, { citationDate: v })} disabled={readOnly} />
+              <DetailEdit label="URL / Link" value={source.url} onChange={(v) => onUpdateSource(source.id, { url: v })} disabled={readOnly} />
               <DetailEdit
                 label="Short Title / Abbreviation"
                 value={source.abbreviation || ''}
                 onChange={(v) => onUpdateSource(source.id, { abbreviation: v })}
+                disabled={readOnly}
               />
-              <DetailEdit label="Call Number" value={source.callNumber || ''} onChange={(v) => onUpdateSource(source.id, { callNumber: v })} />
+              <DetailEdit label="Call Number" value={source.callNumber || ''} onChange={(v) => onUpdateSource(source.id, { callNumber: v })} disabled={readOnly} />
             </div>
             <textarea
               value={source.actualText || ''}
               onChange={(e) => onUpdateSource(source.id, { actualText: e.target.value })}
-              className="w-full text-xs text-slate-500 italic border-none outline-none bg-slate-50 rounded-xl p-3 min-h-[60px]"
+              disabled={readOnly}
+              className="w-full text-xs text-slate-500 italic border-none outline-none bg-slate-50 rounded-xl p-3 min-h-[60px] disabled:opacity-60"
               placeholder="Transcription of the record contents..."
             />
             {linkedCitations.length > 0 && (
@@ -117,6 +127,7 @@ const SourcesTab: React.FC<SourcesTabProps> = ({
       {sources.length === 0 && <p className="text-center py-20 text-xs text-slate-400 italic">No source documents linked to this profile.</p>}
     </div>
   </div>
-);
+  );
+};
 
 export default SourcesTab;

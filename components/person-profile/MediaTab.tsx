@@ -3,6 +3,7 @@ import { Upload as UploadIcon, Link2, Image as ImageIcon, Music, Video, File, Tr
 import { MediaItem, MediaType } from '../../types';
 
 interface MediaTabProps {
+  canEdit: boolean;
   mediaItems: MediaItem[];
   onUploadClick: () => void;
   onLinkMedia: () => void;
@@ -23,20 +24,22 @@ const getMediaTypeIcon = (type: MediaType) => {
   }
 };
 
-const MediaTab: React.FC<MediaTabProps> = ({ mediaItems, onUploadClick, onLinkMedia, onUpdateMedia, onRemoveMedia }) => (
+const MediaTab: React.FC<MediaTabProps> = ({ canEdit, mediaItems, onUploadClick, onLinkMedia, onUpdateMedia, onRemoveMedia }) => (
   <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
     <div className="flex items-center justify-between">
       <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">Visual & Audio Archive</p>
       <div className="flex gap-2">
         <button
           onClick={onUploadClick}
-          className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 rounded-xl hover:bg-slate-200 transition-all"
+          disabled={!canEdit}
+          className="text-[9px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 rounded-xl hover:bg-slate-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <UploadIcon className="w-3.5 h-3.5" /> Upload
         </button>
         <button
           onClick={onLinkMedia}
-          className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-xl hover:bg-blue-100 transition-all"
+          disabled={!canEdit}
+          className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-xl hover:bg-blue-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Link2 className="w-3.5 h-3.5" /> Link URL
         </button>
@@ -57,7 +60,8 @@ const MediaTab: React.FC<MediaTabProps> = ({ mediaItems, onUploadClick, onLinkMe
                   <select
                     value={media.type}
                     onChange={(e) => onUpdateMedia(media.id, { type: e.target.value as MediaType })}
-                    className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-transparent border-none outline-none cursor-pointer"
+                    disabled={!canEdit}
+                    className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-transparent border-none outline-none cursor-pointer disabled:opacity-50"
                   >
                     {['image', 'audio', 'video', 'document'].map((type) => (
                       <option key={type} value={type}>
@@ -68,7 +72,7 @@ const MediaTab: React.FC<MediaTabProps> = ({ mediaItems, onUploadClick, onLinkMe
                   <p className="text-[10px] font-bold text-blue-600 uppercase tracking-tight">{media.source === 'local' ? 'Local File' : 'External Link'}</p>
                 </div>
               </div>
-              <button onClick={() => onRemoveMedia(media.id)} className="text-slate-300 hover:text-rose-500 p-2">
+              <button onClick={() => onRemoveMedia(media.id)} className="text-slate-300 hover:text-rose-500 p-2 disabled:opacity-40" disabled={!canEdit}>
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
@@ -84,13 +88,15 @@ const MediaTab: React.FC<MediaTabProps> = ({ mediaItems, onUploadClick, onLinkMe
                 value={media.caption}
                 onChange={(e) => onUpdateMedia(media.id, { caption: e.target.value })}
                 placeholder="Add a descriptive caption..."
-                className="w-full font-bold text-slate-900 border-none outline-none bg-transparent"
+                disabled={!canEdit}
+                className="w-full font-bold text-slate-900 border-none outline-none bg-transparent disabled:opacity-60"
               />
               <div className="flex items-center gap-4 flex-wrap">
                 <select
                   value={media.category}
                   onChange={(e) => onUpdateMedia(media.id, { category: e.target.value as MediaItem['category'] })}
-                  className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 outline-none cursor-pointer"
+                  disabled={!canEdit}
+                  className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 outline-none cursor-pointer disabled:opacity-50"
                 >
                   {['Portrait', 'Family', 'Location', 'Document', 'Event', 'Other'].map((category) => (
                     <option key={category} value={category}>
@@ -105,7 +111,8 @@ const MediaTab: React.FC<MediaTabProps> = ({ mediaItems, onUploadClick, onLinkMe
                       value={media.url}
                       onChange={(e) => onUpdateMedia(media.id, { url: e.target.value })}
                       placeholder="Paste URL..."
-                      className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-medium outline-none"
+                      disabled={!canEdit}
+                      className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-medium outline-none disabled:opacity-60"
                     />
                   </div>
                 )}

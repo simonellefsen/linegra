@@ -4,6 +4,7 @@ import { NOTE_TYPES } from './constants';
 import { Note } from '../../types';
 
 interface NotesTabProps {
+  canEdit: boolean;
   notes: Note[];
   availableEvents: string[];
   onAddNote: () => void;
@@ -11,11 +12,11 @@ interface NotesTabProps {
   onRemoveNote: (id: string) => void;
 }
 
-const NotesTab: React.FC<NotesTabProps> = ({ notes, availableEvents, onAddNote, onUpdateNote, onRemoveNote }) => (
+const NotesTab: React.FC<NotesTabProps> = ({ canEdit, notes, availableEvents, onAddNote, onUpdateNote, onRemoveNote }) => (
   <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
     <div className="flex items-center justify-between">
       <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">Researcher Ledger</p>
-      <button onClick={onAddNote} className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5">
+      <button onClick={onAddNote} disabled={!canEdit} className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
         <Plus className="w-4 h-4" /> Add Entry
       </button>
     </div>
@@ -27,7 +28,8 @@ const NotesTab: React.FC<NotesTabProps> = ({ notes, availableEvents, onAddNote, 
               <select
                 value={note.type}
                 onChange={(e) => onUpdateNote(note.id, { type: e.target.value as Note['type'] })}
-                className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded-lg border-none outline-none cursor-pointer"
+                disabled={!canEdit}
+                className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded-lg border-none outline-none cursor-pointer disabled:opacity-50"
               >
                 {NOTE_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -40,7 +42,8 @@ const NotesTab: React.FC<NotesTabProps> = ({ notes, availableEvents, onAddNote, 
                 <select
                   value={note.event || 'General'}
                   onChange={(e) => onUpdateNote(note.id, { event: e.target.value })}
-                  className="bg-transparent text-[10px] text-amber-600 font-black uppercase tracking-widest border-none outline-none cursor-pointer"
+                  disabled={!canEdit}
+                  className="bg-transparent text-[10px] text-amber-600 font-black uppercase tracking-widest border-none outline-none cursor-pointer disabled:opacity-50"
                 >
                   {availableEvents.map((ev) => (
                     <option key={ev} value={ev}>
@@ -52,7 +55,7 @@ const NotesTab: React.FC<NotesTabProps> = ({ notes, availableEvents, onAddNote, 
             </div>
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{note.date || 'Today'}</span>
-              <button onClick={() => onRemoveNote(note.id)} className="text-slate-300 hover:text-rose-500">
+              <button onClick={() => onRemoveNote(note.id)} className="text-slate-300 hover:text-rose-500 disabled:opacity-40" disabled={!canEdit}>
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
@@ -60,7 +63,9 @@ const NotesTab: React.FC<NotesTabProps> = ({ notes, availableEvents, onAddNote, 
           <textarea
             value={note.text}
             onChange={(e) => onUpdateNote(note.id, { text: e.target.value })}
-            className="w-full text-sm text-slate-700 leading-relaxed font-medium border-none outline-none bg-transparent min-h-[100px] resize-none"
+            readOnly={!canEdit}
+            className="w-full text-sm text-slate-700 leading-relaxed font-medium border-none outline-none bg-transparent min-h-[100px] resize-none disabled:opacity-60"
+            disabled={!canEdit}
             placeholder="Enter research observations, task lists, or discrepancy reports..."
           />
         </div>

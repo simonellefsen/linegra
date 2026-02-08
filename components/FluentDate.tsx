@@ -38,7 +38,8 @@ export const FluentDateInput: React.FC<{
   onChange: (val: string) => void;
   placeholder?: string;
   label?: string;
-}> = ({ value, onChange, placeholder, label }) => {
+  disabled?: boolean;
+}> = ({ value, onChange, placeholder, label, disabled = false }) => {
   const helpers = ['Abt', 'Circa', 'Bet', 'Unknown'];
 
   return (
@@ -50,8 +51,11 @@ export const FluentDateInput: React.FC<{
             <button
               key={h}
               type="button"
-              onClick={() => onChange(h === 'Unknown' ? 'Unknown' : `${h} ${value}`.trim())}
-              className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-500 rounded uppercase tracking-tighter transition-colors"
+              onClick={() => !disabled && onChange(h === 'Unknown' ? 'Unknown' : `${h} ${value}`.trim())}
+              disabled={disabled}
+              className={`px-2 py-0.5 bg-slate-100 text-[9px] font-bold rounded uppercase tracking-tighter transition-colors ${
+                disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-200 text-slate-500'
+              }`}
             >
               +{h}
             </button>
@@ -64,7 +68,11 @@ export const FluentDateInput: React.FC<{
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || "e.g. Abt Jan 1880"}
-          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all text-sm font-medium"
+          disabled={disabled}
+          readOnly={disabled}
+          className={`w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all text-sm font-medium ${
+            disabled ? 'opacity-70 cursor-not-allowed' : ''
+          }`}
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
           <History className="w-4 h-4 text-slate-300" />

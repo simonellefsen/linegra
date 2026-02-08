@@ -871,6 +871,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         )}
         {activeSection === 'vital' && (
           <VitalTab
+            canEdit={canEditPerson}
             firstName={firstName}
             lastName={lastName}
             maidenName={maidenName}
@@ -936,6 +937,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
 
         {activeSection === 'sources' && (
           <SourcesTab
+            canEdit={canEditPerson}
             sources={sources}
             availableEvents={availableEvents}
             onAddSource={() => handleAddSource()}
@@ -947,6 +949,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
 
         {activeSection === 'media' && (
           <MediaTab
+            canEdit={canEditPerson}
             mediaItems={mediaItems}
             onUploadClick={() => fileInputRef.current?.click()}
             onLinkMedia={handleLinkMedia}
@@ -967,6 +970,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
 
         {activeSection === 'notes' && (
           <NotesTab
+            canEdit={canEditPerson}
             notes={notes}
             availableEvents={availableEvents}
             onAddNote={() => handleAddNote()}
