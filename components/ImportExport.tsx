@@ -39,6 +39,7 @@ const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
   BURI: 'Burial',
   CREM: 'Cremation',
   PROB: 'Probate',
+  ADOP: 'Adoption',
   EVEN: 'Other'
 };
 
@@ -48,6 +49,7 @@ const GEDCOM_EVENT_LABELS: Record<string, string> = {
   BURI: 'Burial',
   CREM: 'Cremation',
   CHR: 'Christening',
+  ADOP: 'Adoption',
   PROB: 'Probate',
   RESI: 'Residence',
   OCCU: 'Occupation',
@@ -131,6 +133,7 @@ const ImportExport: React.FC<ImportExportProps> = ({
       updatedAt?: string 
     }> = {};
     const parsedSources: Record<string, Source & { abbreviation?: string; callNumber?: string }> = {};
+    const familyChildRoles: Record<string, Record<string, { father?: string; mother?: string; overall?: string }>> = {};
     const warnings: string[] = [];
     
     let currentId = '';
@@ -184,6 +187,9 @@ const ImportExport: React.FC<ImportExportProps> = ({
     let currentNameLevel = -1;
     let primaryNameCaptured = false;
     let currentNameContext: { target: 'primary' | 'alternate'; index?: number } | null = null;
+    let currentFamcRef: string | null = null;
+    let currentAdopFamId: string | null = null;
+    let pendingAdoption: { familyId: string; childId: string } | null = null;
 
     const ensureMetadata = (person: ParsedPerson) => {
       if (!person.metadata) person.metadata = {};
@@ -302,6 +308,42 @@ const ImportExport: React.FC<ImportExportProps> = ({
 
     const addressTags = new Set(['ADDR', 'ADR1', 'ADR2', 'ADR3', 'CITY', 'STAE', 'STATE', 'CTRY', 'POST', 'POSTAL', 'POSTCODE', 'ZIP']);
 
+    const markChildRole = (
+      familyId: string,
+      childId: string,
+      role: string,
+      side: 'father' | 'mother' | 'both' = 'both'
+    ) => {
+      if (!familyId || !childId || !role) return;
+      const bucket = familyChildRoles[familyId] || (familyChildRoles[familyId] = {});
+      const entry = bucket[childId] || (bucket[childId] = {});
+      const normalized = role.toLowerCase();
+      if (side === 'father' || side === 'both') entry.father = normalized;
+      if (side === 'mother' || side === 'both') entry.mother = normalized;
+      if (!entry.overall) entry.overall = normalized;
+    };
+
+    const deriveParentRelationshipType = (
+      roleValue: string | undefined,
+      defaultType: Relationship['type']
+    ): Relationship['type'] => {
+      if (!roleValue) return defaultType;
+      const normalized = roleValue.toLowerCase();
+      if (/(adopt|sealed|legal)/.test(normalized)) {
+        return defaultType === 'bio_father' ? 'adoptive_father' : 'adoptive_mother';
+      }
+      if (/(foster|guardian|custod|ward|care)/.test(normalized)) {
+        return 'guardian';
+      }
+      if (/(step|half)/.test(normalized)) {
+        return 'step_parent';
+      }
+      if (/(birth|bio|natural|blood|genetic)/.test(normalized)) {
+        return defaultType;
+      }
+      return defaultType;
+    };
+
     lines.forEach((line) => {
       const match = line.match(lineRegex);
       if (!match) return;
@@ -373,6 +415,11 @@ const ImportExport: React.FC<ImportExportProps> = ({
           currentEvent = null;
           currentTag = '';
           currentEventLabel = GEDCOM_EVENT_LABELS[tag] || '';
+          if (tag !== 'FAMC') currentFamcRef = null;
+          if (tag !== 'ADOP') {
+            currentAdopFamId = null;
+            pendingAdoption = null;
+          }
         }
         if (tag === 'NAME' && level === 1) {
           const { firstName, lastName } = parseNameValue(value);
@@ -462,13 +509,20 @@ const ImportExport: React.FC<ImportExportProps> = ({
           currentEventLabel = GEDCOM_EVENT_LABELS[tag];
         } else if (tag === 'FAMC') {
           const famId = value.replace(/@/g, '');
-          if (famId) {
+          if (!famId) {
+            currentFamcRef = null;
+          }
+          if (currentTag === 'ADOP' && level >= 2) {
+            currentAdopFamId = famId;
+            pendingAdoption = famId ? { familyId: famId, childId: currentId } : null;
+          } else if (famId) {
             if (!parsedFamilies[famId]) {
               parsedFamilies[famId] = { children: [] };
             }
             if (!parsedFamilies[famId].children.includes(currentId)) {
               parsedFamilies[famId].children.push(currentId);
             }
+            currentFamcRef = famId;
           }
         } else if (tag === 'FAMS') {
           const famId = value.replace(/@/g, '');
@@ -493,6 +547,27 @@ const ImportExport: React.FC<ImportExportProps> = ({
           p.isLiving = value.trim().toUpperCase() === 'Y';
         } else if (tag === '_PRIVATE') {
           p.isPrivate = value.trim().toUpperCase() === 'Y';
+        } else if (tag === 'PEDI' && currentFamcRef) {
+          markChildRole(currentFamcRef, currentId, value || 'adopted');
+        } else if (tag === 'ADOP' && level > 1 && currentAdopFamId) {
+          const adopChildId =
+            (pendingAdoption && pendingAdoption.familyId === currentAdopFamId
+              ? pendingAdoption.childId
+              : currentId) || currentId;
+          if (adopChildId) {
+            const normalizedValue = (value || '').toLowerCase();
+            let side: 'father' | 'mother' | 'both' = 'both';
+            if (normalizedValue.includes('husb') || normalizedValue.includes('father')) {
+              side = 'father';
+            } else if (normalizedValue.includes('wife') || normalizedValue.includes('mother')) {
+              side = 'mother';
+            }
+            const roleToken =
+              normalizedValue && !['husb', 'wife', 'mother', 'father', 'both'].includes(normalizedValue)
+                ? normalizedValue
+                : 'adopted';
+            markChildRole(currentAdopFamId, adopChildId, roleToken || 'adopted', side);
+          }
         } else if (GEDCOM_EVENT_MAP[tag]) {
           currentTag = tag;
           const events = p.events || (p.events = []);
@@ -740,39 +815,54 @@ const ImportExport: React.FC<ImportExportProps> = ({
         });
       }
       f.children.forEach((childId, cIdx) => {
+        const roleEntry = familyChildRoles[familyId]?.[childId];
+        const fatherRole = roleEntry?.father || roleEntry?.overall;
+        const motherRole = roleEntry?.mother || roleEntry?.overall;
         if (f.husb) {
+          const parentType = deriveParentRelationshipType(fatherRole, 'bio_father');
+          const metadata: Record<string, unknown> = { familyId, parentSide: 'father' };
+          if (fatherRole) metadata.childRole = fatherRole;
           finalRelationships.push({
             id: `rel-f-${idx}-${cIdx}`,
             treeId: 'imported',
-            type: 'bio_father',
+            type: parentType,
             personId: f.husb,
             relatedId: childId,
             confidence: 'Confirmed',
-            metadata: { familyId }
+            metadata
           });
         }
         if (f.wife) {
+          const parentType = deriveParentRelationshipType(motherRole, 'bio_mother');
+          const metadata: Record<string, unknown> = { familyId, parentSide: 'mother' };
+          if (motherRole) metadata.childRole = motherRole;
           finalRelationships.push({
             id: `rel-mo-${idx}-${cIdx}`,
             treeId: 'imported',
-            type: 'bio_mother',
+            type: parentType,
             personId: f.wife,
             relatedId: childId,
             confidence: 'Confirmed',
-            metadata: { familyId }
+            metadata
           });
         }
       });
     });
 
     const parentLocks = new Map<string, string>();
+    const exclusiveParentTypes: Relationship['type'][] = [
+      'bio_father',
+      'bio_mother',
+      'adoptive_father',
+      'adoptive_mother'
+    ];
     finalRelationships.forEach((rel) => {
-      if (rel.type === 'bio_father' || rel.type === 'bio_mother') {
+      if (exclusiveParentTypes.includes(rel.type)) {
         const key = `${rel.type}:${rel.relatedId}`;
         if (!parentLocks.has(key)) {
           parentLocks.set(key, rel.personId);
         } else if (parentLocks.get(key) !== rel.personId) {
-          const conflictLabel = rel.type === 'bio_mother' ? 'mother' : 'father';
+          const conflictLabel = rel.type.includes('mother') ? 'mother' : 'father';
           warnings.push(
             `Child ${rel.relatedId} already has a ${conflictLabel} link. Converted relationship from ${rel.personId} to guardian.`
           );
