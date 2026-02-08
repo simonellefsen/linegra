@@ -29,7 +29,7 @@ import {
   Skull, Heart, Trash2, Calendar,
   CheckCircle, HelpCircle, Edit3, Link, Music, Video, File,
   Upload as UploadIcon, Globe, Fingerprint, Sparkles, Home, GraduationCap, Sword, PlaneLanding, PlaneTakeoff,
-  History, Unlink as UnlinkIcon
+  History, Unlink as UnlinkIcon, GripVertical
 } from 'lucide-react';
 
 interface PersonProfileProps {
@@ -1196,6 +1196,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
   const [removedSpouseIds, setRemovedSpouseIds] = useState<Set<string>>(layoutSeed.removedSpouses);
   const [removedChildIds, setRemovedChildIds] = useState<Set<string>>(layoutSeed.removedChildren);
   const hydratingRef = useRef(false);
+  const [dragContext, setDragContext] = useState<{ childId: string; groupKey: string } | null>(null);
   const lastPersistedRef = useRef<string>(JSON.stringify({
     assignments: layoutSeed.assignments,
     manualOrders: layoutSeed.manualOrders,
@@ -1296,6 +1297,55 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
     onPersist(personId, payload);
   }, [assignments, manualOrders, removedSpouseIds, removedChildIds, onPersist, personId]);
 
+  const beginDrag = (event: React.DragEvent, childId: string, groupId: string | null) => {
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = 'move';
+    setDragContext({ childId, groupKey: keyForGroup(groupId) });
+  };
+
+  const endDrag = () => {
+    setDragContext(null);
+  };
+
+  const handleDragOver = (event: React.DragEvent, groupId: string | null) => {
+    if (!dragContext) return;
+    const canonical = keyForGroup(groupId);
+    if (dragContext.groupKey !== canonical) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  };
+
+  const normalizeGroupKey = (groupKey: string) => (groupKey === 'unassigned' ? null : groupKey);
+
+  const reorderWithinGroup = (targetChildId: string | null, groupId: string | null) => {
+    if (!dragContext) return;
+    const canonical = keyForGroup(groupId);
+    if (dragContext.groupKey !== canonical) return;
+    const normalized = normalizeGroupKey(canonical);
+    const orderedIds = getDisplayChildren(normalized).map((child) => child.rel.id);
+    const dragIndex = orderedIds.indexOf(dragContext.childId);
+    if (dragIndex === -1) return;
+    orderedIds.splice(dragIndex, 1);
+    if (targetChildId && orderedIds.includes(targetChildId)) {
+      const targetIndex = orderedIds.indexOf(targetChildId);
+      orderedIds.splice(targetIndex, 0, dragContext.childId);
+    } else {
+      orderedIds.push(dragContext.childId);
+    }
+    setManualOrders((prev) => ({ ...prev, [canonical]: orderedIds }));
+    endDrag();
+  };
+
+  const handleDropOnChild = (event: React.DragEvent, childId: string, groupId: string | null) => {
+    event.preventDefault();
+    reorderWithinGroup(childId, groupId);
+  };
+
+  const handleDropOnGroup = (event: React.DragEvent, groupId: string | null) => {
+    event.preventDefault();
+    reorderWithinGroup(null, groupId);
+  };
+
   useEffect(() => {
     if (hydratingRef.current) return;
     const debounce = setTimeout(() => {
@@ -1351,9 +1401,24 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
     const assignment = assignments[child.rel.id] ?? null;
     const selectedValue = assignment ?? 'unassigned';
     return (
-      <div key={child.rel.id} className="p-4 bg-white rounded-2xl border border-slate-100 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div>
+      <div
+        key={child.rel.id}
+        className="p-4 bg-white rounded-2xl border border-slate-100 flex flex-col gap-3 shadow-sm"
+        onDragOver={(event) => handleDragOver(event, assignment)}
+        onDrop={(event) => handleDropOnChild(event, child.rel.id, assignment)}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              draggable
+              onDragStart={(event) => beginDrag(event, child.rel.id, assignment)}
+              onDragEnd={endDrag}
+              className="p-1 text-slate-400 hover:text-slate-900 cursor-grab active:cursor-grabbing"
+              aria-label="Drag to reorder child"
+            >
+              <GripVertical className="w-4 h-4" />
+            </button>
             <p className="text-sm font-semibold text-slate-900">{child.person.firstName} {child.person.lastName}</p>
             {child.person.birthDate && (
               <p className="text-[10px] text-slate-400">Born {formatYear(child.person.birthDate)}</p>
@@ -1412,22 +1477,38 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({ personId, spouses, children,
                 Unlink Spouse
               </button>
             </div>
-            {childrenForSpouse.length > 0 ? (
-              <div className="ml-4 border-l border-slate-200 pl-4 space-y-3">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Children of this union</p>
-                {childrenForSpouse.map((child) => renderChildRow(child))}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 italic ml-6">No children linked to this spouse.</p>
-            )}
-          </div>
-        );
-      })}
+            <div
+              className="ml-4 border-l border-slate-200 pl-4 space-y-3"
+              onDragOver={(event) => handleDragOver(event, spouse.rel.id)}
+              onDrop={(event) => handleDropOnGroup(event, spouse.rel.id)}
+            >
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Children of this union</p>
+              {childrenForSpouse.length > 0 ? (
+                <>
+                  {childrenForSpouse.map((child) => renderChildRow(child))}
+                  <div className="border border-dashed border-slate-200 rounded-xl text-[10px] text-slate-400 uppercase tracking-widest text-center py-2">
+                    Drag here to place last
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-slate-400 italic">No children linked to this spouse.</p>
+              )}
+            </div>
+         </div>
+       );
+     })}
 
       {unassignedChildren.length > 0 && (
-        <div className="space-y-3">
+        <div
+          className="space-y-3"
+          onDragOver={(event) => handleDragOver(event, null)}
+          onDrop={(event) => handleDropOnGroup(event, null)}
+        >
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Unassigned Descendants</p>
           {unassignedChildren.map((child) => renderChildRow(child))}
+          <div className="border border-dashed border-slate-200 rounded-xl text-[10px] text-slate-400 uppercase tracking-widest text-center py-2">
+            Drag here to place last
+          </div>
         </div>
       )}
     </div>
