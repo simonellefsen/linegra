@@ -2,11 +2,11 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Linegra
 
-This contains everything you need to run your app locally.
+This repo contains everything you need to run Linegra locally or deploy it to Vercel.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1pWfS3iW2IEOX4MJO3XMvFjAs7UmzdLXV
+> Historical note: the very first UI mockups for Linegra were prototyped inside Google AI Studio; this repository now hosts the live codebase.
 
 > Agentic dev flow: start with [`AGENT.md`](AGENT.md) for expectations, then use [docs/CONTENT_MAP.md](docs/CONTENT_MAP.md) to locate feature-specific files quickly.
 
