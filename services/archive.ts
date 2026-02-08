@@ -425,10 +425,15 @@ export const updatePersonProfile = async (
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');
   }
+  const normalizedActor = normalizeActor(
+    payload.actorId || payload.actorName
+      ? { id: payload.actorId ?? null, name: payload.actorName ?? undefined }
+      : null
+  );
   const { data, error } = await supabase.rpc('admin_update_person_profile', {
     target_person_id: personId,
-    payload_actor_id: payload.actorId ?? null,
-    payload_actor_name: payload.actorName ?? null,
+    payload_actor_id: normalizedActor.id,
+    payload_actor_name: payload.actorName ?? normalizedActor.name,
     payload_profile: payload.profile,
     payload_events: payload.events ?? [],
     payload_notes: payload.notes ?? [],
@@ -446,11 +451,12 @@ export const updateRelationshipConfidence = async (
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');
   }
+  const normalizedActor = normalizeActor(actor);
   const { error } = await supabase.rpc('admin_set_relationship_confidence', {
     target_relationship_id: relationshipId,
     payload_confidence: confidence,
-    payload_actor_id: actor?.id ?? null,
-    payload_actor_name: actor?.name ?? null
+    payload_actor_id: normalizedActor.id,
+    payload_actor_name: normalizedActor.name
   });
   if (error) throw new Error(error.message);
 };
@@ -462,10 +468,11 @@ export const unlinkRelationship = async (
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');
   }
+  const normalizedActor = normalizeActor(actor);
   const { error } = await supabase.rpc('admin_unlink_relationship', {
     target_relationship_id: relationshipId,
-    payload_actor_id: actor?.id ?? null,
-    payload_actor_name: actor?.name ?? null
+    payload_actor_id: normalizedActor.id,
+    payload_actor_name: normalizedActor.name
   });
   if (error) throw new Error(error.message);
 };
