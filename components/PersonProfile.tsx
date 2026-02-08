@@ -50,6 +50,13 @@ const generateUuid = () => {
   });
 };
 
+const resolveLivingState = (target: Person) => {
+  if (typeof target.isLiving === 'boolean') {
+    return target.isLiving;
+  }
+  return !target.deathDate;
+};
+
 const buildSnapshotFromPerson = (target: Person) =>
   JSON.stringify({
     firstName: target.firstName,
@@ -70,7 +77,7 @@ const buildSnapshotFromPerson = (target: Person) =>
     notes: target.notes || [],
     dnaTests: target.dnaTests || [],
     mediaItems: extractMediaItemsFromPerson(target),
-    isLiving: !!target.isLiving,
+    isLiving: resolveLivingState(target),
     isPrivate: !!target.isPrivate
   });
 
@@ -112,7 +119,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   const [notes, setNotes] = useState<Note[]>(person.notes || []);
   const [dnaTests, setDnaTests] = useState<DNATest[]>(person.dnaTests || []);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(extractMediaItemsFromPerson(person));
-  const [isLiving, setIsLiving] = useState<boolean>(!!person.isLiving);
+  const [isLiving, setIsLiving] = useState<boolean>(resolveLivingState(person));
   const [isPrivate, setIsPrivate] = useState<boolean>(!!person.isPrivate);
 
   const [relationshipData, setRelationshipData] = useState<Relationship[]>([]);
@@ -146,7 +153,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
     setNotes(person.notes || []);
     setDnaTests(person.dnaTests || []);
     setMediaItems(extractMediaItemsFromPerson(person));
-    setIsLiving(!!person.isLiving);
+    setIsLiving(resolveLivingState(person));
     setIsPrivate(!!person.isPrivate);
   }, [person]);
 
@@ -195,6 +202,12 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   useEffect(() => {
     setRelationPeople((prev) => ({ ...prev, [person.id]: person }));
   }, [person]);
+
+  useEffect(() => {
+    if (deathDate && isLiving) {
+      setIsLiving(false);
+    }
+  }, [deathDate, isLiving]);
 
   useEffect(() => {
     let cancelled = false;
@@ -788,13 +801,15 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => canEditPerson && setIsLiving((prev) => !prev)}
-                  disabled={!canEditPerson}
+                  onClick={() => canEditPerson && !deathDate && setIsLiving((prev) => !prev)}
+                  disabled={!canEditPerson || !!deathDate}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition ${
                     isLiving
                       ? 'bg-emerald-400/20 border-emerald-300 text-emerald-100'
                       : 'border-white/20 text-white/60'
-                  } ${canEditPerson ? 'hover:bg-white/10' : 'opacity-60 cursor-not-allowed'}`}
+                  } ${
+                    canEditPerson && !deathDate ? 'hover:bg-white/10' : 'opacity-60 cursor-not-allowed'
+                  }`}
                 >
                   <Check className={`w-3 h-3 ${isLiving ? 'text-emerald-200' : 'text-white/40'}`} />
                   <span>Living</span>

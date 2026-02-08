@@ -4,6 +4,15 @@ alter table public.persons
   add column if not exists is_living boolean,
   add column if not exists is_private boolean not null default false;
 
+update public.persons
+set is_living = false
+where death_date_text is not null;
+
+update public.persons
+set is_living = true
+where death_date_text is null
+  and (is_living is distinct from true);
+
 create or replace function public.person_visibility(tree_id uuid, person_is_private boolean)
 returns boolean
 language sql
