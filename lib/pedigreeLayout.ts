@@ -166,7 +166,7 @@ export const buildPedigreeLayout = (
     });
   };
 
-  const ancestorRowDelta = (depth: number) => Math.pow(2, depth + 1);
+  const ancestorRowDelta = (depth: number) => Math.min(3, 1 + depth * 1.25);
 
   const buildAncestors = (childId: string, column: number, depth: number) => {
     if (depth >= maxAncestorDepth) return;
