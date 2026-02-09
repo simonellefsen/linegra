@@ -426,6 +426,7 @@ useEffect(() => {
 
   const pedigreeAllowsPlaceholders = !!currentUser?.isAdmin;
   const siblingHints = pedigreeScope.siblingHints || {};
+  const childHints = pedigreeScope.childHints || {};
 
   const [treeStatistics, setTreeStatistics] = useState<TreeStatistics | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -1114,6 +1115,7 @@ useEffect(() => {
                           ancestorsRemaining={pedigreeScope.hasMoreAncestors}
                           descendantsRemaining={pedigreeScope.hasMoreDescendants}
                           siblingHints={siblingHints}
+                          childHints={childHints}
                         />
                       </>
                     ) : (

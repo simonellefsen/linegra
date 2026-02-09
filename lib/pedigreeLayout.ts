@@ -94,11 +94,12 @@ export const buildPedigreeLayout = (
     person: Person,
     column: number,
     direction: PedigreeDirection,
-    relatedPersonId?: string
+    relatedPersonId?: string,
+    desiredRow?: number
   ): PedigreeNode => {
     const existing = nodeMap.get(person.id);
     if (existing) return existing;
-    const row = assignRow(column);
+    const row = typeof desiredRow === 'number' ? desiredRow : assignRow(column);
     minColumn = Math.min(minColumn, column);
     maxColumn = Math.max(maxColumn, column);
     const node: PedigreeNode = {
@@ -176,14 +177,21 @@ export const buildPedigreeLayout = (
     }
   };
 
+  const childRowPosition = new Map<string, number>();
+
   const buildDescendants = (parentId: string, column: number, depth: number) => {
     if (depth >= maxDescendantDepth) return;
     const childLinks = childLinksByParent.get(parentId) || [];
-    childLinks.forEach((link) => {
+    if (!childLinks.length) {
+      childRowPosition.set(parentId, nodeMap.get(parentId)?.row ?? 0);
+      return;
+    }
+    childLinks.forEach((link, index) => {
       const child = peopleById.get(link.relatedId);
       if (!child) return;
-      const childNode = createPersonNode(child, column, 'descendant', parentId);
+      const childNode = createPersonNode(child, column, 'descendant', parentId, index);
       addParentEdge(nodeMap.get(parentId)!, childNode);
+      childRowPosition.set(parentId, index);
       buildDescendants(child.id, column + 1, depth + 1);
     });
   };

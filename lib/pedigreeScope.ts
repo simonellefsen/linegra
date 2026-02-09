@@ -6,6 +6,7 @@ export interface PedigreeScopeResult {
   hasMoreAncestors: boolean;
   hasMoreDescendants: boolean;
   siblingHints: Record<string, boolean>;
+  childHints: Record<string, boolean>;
 }
 
 const PARENTAL_TYPES: RelationshipType[] = [
@@ -27,13 +28,13 @@ export const computePedigreeScope = (
   maxDescendantDepth: number
 ): PedigreeScopeResult => {
   if (!focusId || !people.length) {
-    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {} };
+    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
   }
 
   const peopleById = new Map<string, Person>(people.map((p) => [p.id, p]));
   const focus = peopleById.get(focusId);
   if (!focus) {
-    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {} };
+    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
   }
 
   const parentLinksByChild = new Map<string, Relationship[]>();
@@ -50,6 +51,7 @@ export const computePedigreeScope = (
   let hasMoreAncestors = false;
   let hasMoreDescendants = false;
   const siblingHints: Record<string, boolean> = {};
+  const childHints: Record<string, boolean> = {};
 
   const ancestorQueue: Array<{ id: string; depth: number }> = [{ id: focus.id, depth: 0 }];
   while (ancestorQueue.length) {
@@ -93,6 +95,9 @@ export const computePedigreeScope = (
         descendantQueue.push({ id: child.id, depth: depth + 1 });
       }
     });
+    if (allowedPersonIds.has(id)) {
+      childHints[id] = childLinks.length > 0;
+    }
   }
 
 
@@ -114,5 +119,6 @@ export const computePedigreeScope = (
     hasMoreAncestors,
     hasMoreDescendants,
     siblingHints,
+    childHints,
   };
 };
