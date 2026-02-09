@@ -6,7 +6,17 @@ interface AdminTreesPanelProps {
   trees: FamilyTreeSummary[];
   onCreate: (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => Promise<void>;
   onDelete: (treeId: string) => Promise<void>;
-  onUpdateSettings: (treeId: string, payload: { isPublic: boolean; probandId: string | null }) => Promise<void>;
+  onUpdateSettings: (
+    treeId: string,
+    payload: {
+      isPublic: boolean;
+      probandId: string | null;
+      probandLabel?: string | null;
+      description?: string;
+      ownerName?: string;
+      ownerEmail?: string;
+    }
+  ) => Promise<void>;
   onSearchPersons?: (treeId: string, query: string) => Promise<Person[]>;
   onLoadPersonById?: (treeId: string, personId: string) => Promise<Person | null>;
   creating?: boolean;
@@ -38,6 +48,9 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   const [editVisibility, setEditVisibility] = useState(true);
   const [editProbandId, setEditProbandId] = useState<string | null>(null);
   const [editProbandLabel, setEditProbandLabel] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editOwnerName, setEditOwnerName] = useState('');
+  const [editOwnerEmail, setEditOwnerEmail] = useState('');
   const [probandSearchTerm, setProbandSearchTerm] = useState('');
   const [probandResults, setProbandResults] = useState<Person[]>([]);
   const [probandLabels, setProbandLabels] = useState<Record<string, string>>({});
@@ -88,6 +101,18 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
     const initialLabel = formatProbandDisplay(tree) || '';
     setEditProbandId(tree.defaultProbandId ?? null);
     setEditProbandLabel(initialLabel);
+    setEditDescription(tree.description ?? '');
+    const metadata = tree.metadata || {};
+    const ownerNameValue =
+      (metadata?.owner_name as string | undefined) ??
+      (metadata?.ownerName as string | undefined) ??
+      '';
+    const ownerEmailValue =
+      (metadata?.owner_email as string | undefined) ??
+      (metadata?.ownerEmail as string | undefined) ??
+      '';
+    setEditOwnerName(ownerNameValue || '');
+    setEditOwnerEmail(ownerEmailValue || '');
     setProbandSearchTerm('');
     setProbandResults([]);
     setSettingsError(null);
@@ -97,6 +122,9 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
     setEditingTreeId(null);
     setSettingsError(null);
     setProbandResults([]);
+    setEditDescription('');
+    setEditOwnerName('');
+    setEditOwnerEmail('');
   };
 
   const handleSearchProband = async (treeId: string) => {
@@ -132,7 +160,10 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
       await onUpdateSettings(treeId, {
         isPublic: editVisibility,
         probandId: editProbandId,
-        probandLabel: editProbandLabel || null,
+        probandLabel: editProbandId ? editProbandLabel || null : null,
+        description: editDescription,
+        ownerName: editOwnerName,
+        ownerEmail: editOwnerEmail,
       });
       handleCancelEdit();
     } catch (err) {
@@ -401,6 +432,42 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                         >
                           Private
                         </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Archive Description
+                      </label>
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="w-full px-4 py-3 bg-white border border-slate-300 rounded-2xl focus:ring-2 focus:ring-slate-900/5 outline-none min-h-[80px]"
+                        placeholder="Brief summary of this archive"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                          Owner Name
+                        </label>
+                        <input
+                          value={editOwnerName}
+                          onChange={(e) => setEditOwnerName(e.target.value)}
+                          className="w-full px-4 py-3 bg-white border border-slate-300 rounded-2xl focus:ring-2 focus:ring-slate-900/5 outline-none"
+                          placeholder="Lead Researcher"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                          Owner Email
+                        </label>
+                        <input
+                          type="email"
+                          value={editOwnerEmail}
+                          onChange={(e) => setEditOwnerEmail(e.target.value)}
+                          className="w-full px-4 py-3 bg-white border border-slate-300 rounded-2xl focus:ring-2 focus:ring-slate-900/5 outline-none"
+                          placeholder="owner@example.com"
+                        />
                       </div>
                     </div>
                     <div className="space-y-2">

@@ -237,7 +237,14 @@ export const deleteFamilyTreeRecord = async (treeId: string, actor?: ImportActor
 
 export const updateTreeSettings = async (
   treeId: string,
-  payload: { isPublic?: boolean; probandId?: string | null; probandLabel?: string | null },
+  payload: {
+    isPublic?: boolean;
+    probandId?: string | null;
+    probandLabel?: string | null;
+    description?: string;
+    ownerName?: string;
+    ownerEmail?: string;
+  },
   actor?: ImportActor | null
 ): Promise<FamilyTreeType> => {
   if (!isSupabaseConfigured()) {
@@ -249,6 +256,9 @@ export const updateTreeSettings = async (
     payload_is_public: typeof payload.isPublic === 'boolean' ? payload.isPublic : null,
     payload_proband_id: payload.probandId ?? null,
     payload_proband_label: payload.probandLabel ?? null,
+    payload_description: payload.description !== undefined ? payload.description : null,
+    payload_owner_name: payload.ownerName !== undefined ? payload.ownerName : null,
+    payload_owner_email: payload.ownerEmail !== undefined ? payload.ownerEmail : null,
     payload_actor_id: normalizedActor.id,
     payload_actor_name: normalizedActor.name,
   });
