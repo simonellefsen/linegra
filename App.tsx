@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople } from './services/archive';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
 import FamilyTree from './components/FamilyTree';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
@@ -447,135 +447,60 @@ useEffect(() => {
   const focusPersonId = pedigreeFocusId ?? selectedPerson?.id ?? treePeople[0]?.id;
   const focusPerson = focusPersonId ? treePeople.find((p) => p.id === focusPersonId) ?? null : null;
 
-  const treeStatistics = useMemo<TreeStatistics | null>(() => {
-    if (!treePeople.length) return null;
-    const personLookup = new Map(treePeople.map((p) => [p.id, p]));
-    let maleCount = 0;
-    let femaleCount = 0;
-    let unknownGenderCount = 0;
-    let livingCount = 0;
-    let deceasedCount = 0;
-    let totalLifespan = 0;
-    let lifespanSamples = 0;
-    let totalLifespan16 = 0;
-    let lifespanSamples16 = 0;
-    let oldestRecord: { person: Person; year: number } | null = null;
+  const [treeStatistics, setTreeStatistics] = useState<TreeStatistics | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
-    const parentTypes = new Set([
-      'bio_father',
-      'bio_mother',
-      'adoptive_father',
-      'adoptive_mother',
-      'step_parent',
-      'guardian',
-    ]);
-    const childCounts = new Map<string, number>();
-    const marriageCounts = new Map<string, number>();
-    const centuryMap = new Map<
-      number,
-      { people: number; lifespanTotal: number; lifespanSamples: number }
-    >();
-
-    treeRelationships.forEach((rel) => {
-      if (parentTypes.has(rel.type)) {
-        childCounts.set(rel.personId, (childCounts.get(rel.personId) || 0) + 1);
-      }
-      if (rel.type === 'marriage') {
-        [rel.personId, rel.relatedId].forEach((id) => {
-          marriageCounts.set(id, (marriageCounts.get(id) || 0) + 1);
+  useEffect(() => {
+    if (!activeTreeId || !supabaseActive) {
+      setTreeStatistics(null);
+      setStatsError(null);
+      return;
+    }
+    setStatsLoading(true);
+    setStatsError(null);
+    fetchTreeStatistics(activeTreeId)
+      .then((data) => {
+        const lookup = new Map(treePeople.map((p) => [p.id, p]));
+        const ensurePerson = (payload?: { id: string; treeId: string; firstName: string; lastName: string } | null) => {
+          if (!payload) return null;
+          return (
+            lookup.get(payload.id) || {
+              id: payload.id,
+              treeId: payload.treeId,
+              firstName: payload.firstName,
+              lastName: payload.lastName,
+              updatedAt: new Date().toISOString(),
+              gender: 'O'
+            }
+          );
+        };
+        setTreeStatistics({
+          totalIndividuals: data.totalIndividuals ?? 0,
+          maleCount: data.maleCount ?? 0,
+          femaleCount: data.femaleCount ?? 0,
+          unknownGenderCount: data.unknownGenderCount ?? 0,
+          livingCount: data.livingCount ?? 0,
+          deceasedCount: data.deceasedCount ?? 0,
+          marriages: data.marriages ?? 0,
+          averageLifespan: data.averageLifespan ?? null,
+          averageAgeOver16: data.averageAgeOver16 ?? null,
+          oldestPerson: ensurePerson(data.oldestPerson),
+          oldestYear: data.oldestPerson?.year ?? null,
+          mostChildrenPerson: ensurePerson(data.mostChildren),
+          mostChildrenCount: data.mostChildren?.count ?? null,
+          mostMarriagesPerson: ensurePerson(data.mostMarriages),
+          mostMarriagesCount: data.mostMarriages?.count ?? null,
+          centuryStats: Array.isArray(data.centuryStats) ? data.centuryStats : []
         });
-      }
-    });
-
-    treePeople.forEach((person) => {
-      if (person.gender === 'M') maleCount += 1;
-      else if (person.gender === 'F') femaleCount += 1;
-      else unknownGenderCount += 1;
-
-      const living = typeof person.isLiving === 'boolean' ? person.isLiving : !person.deathDate;
-      if (living) livingCount += 1;
-      else deceasedCount += 1;
-
-      const birthYear = parseYear(person.birthDate);
-      const deathYear = parseYear(person.deathDate);
-      if (birthYear !== null && deathYear !== null && deathYear >= birthYear) {
-        totalLifespan += deathYear - birthYear;
-        lifespanSamples += 1;
-        if (deathYear - birthYear >= 16) {
-          totalLifespan16 += deathYear - birthYear;
-          lifespanSamples16 += 1;
-        }
-      }
-      if (birthYear !== null) {
-        if (!oldestRecord || birthYear < oldestRecord.year) {
-          oldestRecord = { person, year: birthYear };
-        }
-        const centuryStart = Math.floor(birthYear / 100) * 100;
-        const bucket =
-          centuryMap.get(centuryStart) || {
-            people: 0,
-            lifespanTotal: 0,
-            lifespanSamples: 0,
-          };
-        bucket.people += 1;
-        if (birthYear !== null && deathYear !== null && deathYear >= birthYear) {
-          bucket.lifespanTotal += deathYear - birthYear;
-          bucket.lifespanSamples += 1;
-        }
-        centuryMap.set(centuryStart, bucket);
-      }
-    });
-
-    const marriages = treeRelationships.filter((rel) => rel.type === 'marriage').length;
-    const averageLifespan = lifespanSamples ? Math.round(totalLifespan / lifespanSamples) : null;
-    const averageAgeOver16 = lifespanSamples16 ? Math.round(totalLifespan16 / lifespanSamples16) : null;
-
-    let maxChildrenId: string | null = null;
-    let maxChildrenCount = 0;
-    childCounts.forEach((count, id) => {
-      if (count > maxChildrenCount) {
-        maxChildrenCount = count;
-        maxChildrenId = id;
-      }
-    });
-
-    let maxMarriagesId: string | null = null;
-    let maxMarriagesCount = 0;
-    marriageCounts.forEach((count, id) => {
-      if (count > maxMarriagesCount) {
-        maxMarriagesCount = count;
-        maxMarriagesId = id;
-      }
-    });
-
-    const centuryStats = Array.from(centuryMap.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([startYear, data]) => ({
-        label: `${startYear}s`,
-        startYear,
-        people: data.people,
-        averageAge: data.lifespanSamples ? Math.round(data.lifespanTotal / data.lifespanSamples) : null,
-      }));
-
-    return {
-      totalIndividuals: treePeople.length,
-      maleCount,
-      femaleCount,
-      unknownGenderCount,
-      livingCount,
-      deceasedCount,
-      marriages,
-      averageLifespan,
-      averageAgeOver16,
-      oldestPerson: oldestRecord?.person ?? null,
-      oldestYear: oldestRecord?.year ?? null,
-      mostChildrenPerson: maxChildrenId ? personLookup.get(maxChildrenId) ?? null : null,
-      mostChildrenCount: maxChildrenCount || null,
-      mostMarriagesPerson: maxMarriagesId ? personLookup.get(maxMarriagesId) ?? null : null,
-      mostMarriagesCount: maxMarriagesCount || null,
-      centuryStats
-    };
-  }, [treePeople, treeRelationships, parseYear]);
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : 'Failed to load statistics.';
+        setStatsError(message);
+        setTreeStatistics(null);
+      })
+      .finally(() => setStatsLoading(false));
+  }, [activeTreeId, supabaseActive, treePeople]);
 
   const localTreeSummaries = useMemo<FamilyTreeSummary[]>(() => {
     return trees.map((tree) => {
@@ -1110,8 +1035,8 @@ useEffect(() => {
                   onPersonSelect={handlePersonSelect}
                   isAdmin={currentUser?.isAdmin || false}
                   stats={treeStatistics}
-                  loading={landingLoading}
-                  error={landingError}
+                  loading={landingLoading || statsLoading}
+                  error={landingError || statsError}
                 />
               ) : (
                 <div className="bg-white border border-slate-200 rounded-[32px] p-12 text-center space-y-4 shadow-sm">

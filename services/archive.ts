@@ -168,6 +168,22 @@ export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
   return data.map((row: any) => mapDbTree(row));
 };
 
+export const fetchTreeStatistics = async (treeId: string): Promise<SupabaseTreeStatistics> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data, error } = await supabase.rpc('tree_statistics', { target_tree_id: treeId });
+  if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error('Statistics not available for this tree.');
+  }
+  const parsed = data as SupabaseTreeStatistics;
+  if (!Array.isArray(parsed.centuryStats)) {
+    parsed.centuryStats = [];
+  }
+  return parsed;
+};
+
 export const createFamilyTree = async (
   payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string },
   actor?: ImportActor | null
@@ -916,3 +932,36 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
     citations: citations.length
   });
 };
+export interface SupabaseTreeStatistics {
+  totalIndividuals: number;
+  maleCount: number;
+  femaleCount: number;
+  unknownGenderCount: number;
+  livingCount: number;
+  deceasedCount: number;
+  marriages: number;
+  averageLifespan: number | null;
+  averageAgeOver16: number | null;
+  oldestPerson: {
+    id: string;
+    treeId: string;
+    firstName: string;
+    lastName: string;
+    year?: number | null;
+  } | null;
+  mostChildren: {
+    id: string;
+    treeId: string;
+    firstName: string;
+    lastName: string;
+    count?: number | null;
+  } | null;
+  mostMarriages: {
+    id: string;
+    treeId: string;
+    firstName: string;
+    lastName: string;
+    count?: number | null;
+  } | null;
+  centuryStats: Array<{ label: string; startYear: number; people: number; averageAge: number | null }>;
+}
