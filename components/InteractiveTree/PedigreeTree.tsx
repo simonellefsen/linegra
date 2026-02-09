@@ -15,12 +15,13 @@ interface PedigreeTreeProps {
   showPivots?: boolean;
   ancestorsRemaining?: boolean;
   descendantsRemaining?: boolean;
+  showPlaceholders?: boolean;
 }
 
 const columnWidth = 240;
 const rowHeight = 170;
 const cardWidth = 180;
-const cardHeight = 96;
+const cardHeight = 104;
 
 const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   people,
@@ -33,6 +34,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   showPivots = false,
   ancestorsRemaining = false,
   descendantsRemaining = false,
+  showPlaceholders = true,
 }) => {
   const layout = useMemo(
     () =>
@@ -40,8 +42,9 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
         focusId,
         maxAncestorDepth: maxAncestors,
         maxDescendantDepth: maxDescendants,
+        allowPlaceholders: showPlaceholders,
       }),
-    [people, relationships, focusId, maxAncestors, maxDescendants]
+    [people, relationships, focusId, maxAncestors, maxDescendants, showPlaceholders]
   );
 
   const columnOffset = -layout.minColumn;
@@ -148,11 +151,8 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                 <div className="text-left min-w-0 flex-1">
                   {node.person ? (
                     <>
-                      <p className="text-sm font-bold text-slate-900 truncate">
+                      <p className="text-sm font-bold text-slate-900 leading-5 line-clamp-2">
                         {node.person.firstName} {node.person.lastName}
-                      </p>
-                      <p className="text-[11px] text-slate-500 uppercase tracking-widest truncate">
-                        {node.person.birthDate ? node.person.birthDate : node.person.deathDate ? node.person.deathDate : 'Living'}
                       </p>
                     </>
                   ) : (

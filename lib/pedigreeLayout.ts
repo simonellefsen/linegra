@@ -34,6 +34,7 @@ export interface BuildPedigreeOptions {
   focusId?: string;
   maxAncestorDepth?: number;
   maxDescendantDepth?: number;
+  allowPlaceholders?: boolean;
 }
 
 const FATHER_TYPES: RelationshipType[] = ['bio_father', 'adoptive_father'];
@@ -55,7 +56,7 @@ export const buildPedigreeLayout = (
   relationships: Relationship[],
   options: BuildPedigreeOptions = {}
 ): PedigreeLayout => {
-  const { focusId, maxAncestorDepth = 4, maxDescendantDepth = 3 } = options;
+  const { focusId, maxAncestorDepth = 4, maxDescendantDepth = 3, allowPlaceholders = true } = options;
   if (!people.length) {
     return { nodes: [], edges: [], minColumn: 0, maxColumn: 0, maxRow: 0 };
   }
@@ -165,11 +166,11 @@ export const buildPedigreeLayout = (
     });
 
     const targetNode = nodeMap.get(childId)!;
-    if (!hasFather) {
+    if (!hasFather && allowPlaceholders) {
       const placeholder = createPlaceholder(column, 'ancestor', 'father', childId);
       addParentEdge(placeholder, targetNode);
     }
-    if (!hasMother) {
+    if (!hasMother && allowPlaceholders) {
       const placeholder = createPlaceholder(column, 'ancestor', 'mother', childId);
       addParentEdge(placeholder, targetNode);
     }

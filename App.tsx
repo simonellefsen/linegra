@@ -424,6 +424,8 @@ useEffect(() => {
     return computePedigreeScope(filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth);
   }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth]);
 
+  const pedigreeAllowsPlaceholders = !!currentUser?.isAdmin;
+
   const [treeStatistics, setTreeStatistics] = useState<TreeStatistics | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState<string | null>(null);
@@ -1107,6 +1109,7 @@ useEffect(() => {
                           maxAncestors={ancestorDepth}
                           maxDescendants={descendantDepth}
                           showPivots
+                          showPlaceholders={pedigreeAllowsPlaceholders}
                           ancestorsRemaining={pedigreeScope.hasMoreAncestors}
                           descendantsRemaining={pedigreeScope.hasMoreDescendants}
                         />
