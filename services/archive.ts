@@ -767,6 +767,84 @@ export const fetchFamilyLayoutAudits = async (treeId: string, limit = 10, offset
   return { audits, total: count || 0 };
 };
 
+export const createPlaceholderParent = async ({
+  treeId,
+  childId,
+  parentType,
+  actor,
+}: {
+  treeId: string;
+  childId: string;
+  parentType: 'father' | 'mother';
+  actor?: ImportActor | null;
+}): Promise<Person> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const normalizedActor = normalizeActor(actor);
+  const parentId = randomId();
+  const defaultGender = parentType === 'father' ? 'M' : 'F';
+  const metadata: Record<string, any> = {
+    createdVia: 'manual_parent_button',
+  };
+
+  const { data: parentRow, error: parentError } = await supabase
+    .from('persons')
+    .insert({
+      id: parentId,
+      tree_id: treeId,
+      first_name: '',
+      last_name: '',
+      maiden_name: null,
+      gender: defaultGender,
+      birth_date_text: null,
+      death_date_text: null,
+      birth_place_text: null,
+      death_place_text: null,
+      burial_date_text: null,
+      burial_place_text: null,
+      residence_at_death_text: null,
+      metadata,
+      bio: null,
+      occupations: [],
+      created_by: normalizedActor.id,
+      is_private: true,
+      is_dna_match: false,
+      dna_match_info: null,
+      is_living: null,
+      tags: [],
+      user_role: null,
+    })
+    .select(
+      'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, burial_date_text, burial_place_text, residence_at_death_text, metadata, bio, occupations, updated_at, created_by, is_dna_match, dna_match_info, is_living, is_private'
+    )
+    .single();
+
+  if (parentError) {
+    throw new Error(parentError.message);
+  }
+
+  const newRelationship = {
+    id: randomId(),
+    tree_id: treeId,
+    person_id: parentRow.id,
+    related_id: childId,
+    type: parentType === 'father' ? 'bio_father' : 'bio_mother',
+    status: 'current',
+    confidence: 'Unknown',
+    metadata: {
+      createdVia: 'manual_parent_button',
+    },
+  };
+
+  const { error: relError } = await supabase.from('relationships').insert(newRelationship as any);
+  if (relError) {
+    throw new Error(relError.message);
+  }
+
+  return mapDbPerson(parentRow, {}, {}, {}, {});
+};
+
 interface ImportActor {
   id?: string | null;
   name?: string | null;

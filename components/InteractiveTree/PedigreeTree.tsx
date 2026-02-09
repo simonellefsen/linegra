@@ -12,7 +12,6 @@ interface PedigreeTreeProps {
   maxAncestors?: number;
   maxDescendants?: number;
   selectedPersonId?: string;
-  showPivots?: boolean;
   ancestorsRemaining?: boolean;
   descendantsRemaining?: boolean;
   showPlaceholders?: boolean;
@@ -36,7 +35,6 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   maxAncestors = 4,
   maxDescendants = 3,
   selectedPersonId,
-  showPivots = false,
   ancestorsRemaining = false,
   descendantsRemaining = false,
   showPlaceholders = true,
@@ -94,20 +92,6 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
 
   return (
     <div className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
-      {showPivots && (
-        <div className="absolute z-20 top-4 left-4 flex flex-wrap gap-3 pointer-events-none">
-          {ancestorsRemaining && (
-            <div className="px-4 py-2 rounded-2xl bg-white/90 border border-slate-200 text-xs font-bold uppercase tracking-[0.3em] text-slate-600 shadow">
-              More ancestors available
-            </div>
-          )}
-          {descendantsRemaining && (
-            <div className="px-4 py-2 rounded-2xl bg-white/90 border border-slate-200 text-xs font-bold uppercase tracking-[0.3em] text-slate-600 shadow">
-              More descendants available
-            </div>
-          )}
-        </div>
-      )}
       <div className="w-full h-full overflow-auto">
         <div style={{ width, height }} className="relative min-h-full min-w-full">
           <svg width={width} height={height} className="absolute inset-0 pointer-events-none">

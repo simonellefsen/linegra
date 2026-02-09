@@ -1129,7 +1129,6 @@ useEffect(() => {
                           onPersonSelect={handlePersonSelect}
                           maxAncestors={ancestorDepth}
                           maxDescendants={descendantDepth}
-                          showPivots
                           showPlaceholders={pedigreeAllowsPlaceholders}
                           ancestorsRemaining={pedigreeScope.hasMoreAncestors}
                           descendantsRemaining={pedigreeScope.hasMoreDescendants}

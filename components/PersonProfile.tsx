@@ -25,7 +25,7 @@ import MediaTab from './person-profile/MediaTab';
 import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
-import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, unlinkRelationship } from '../services/archive';
+import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, unlinkRelationship, createPlaceholderParent } from '../services/archive';
 
 const serializePlaceValue = (value: string | StructuredPlace) =>
   typeof value === 'string' ? value : JSON.stringify(value ?? '');
@@ -36,6 +36,22 @@ const extractMediaItemsFromPerson = (target: Person): MediaItem[] => {
     return metadataMedia;
   }
   return [];
+};
+
+const dedupeAlternateNames = (names: AlternateName[] = []) => {
+  const seen = new Set<string>();
+  return names.filter((entry) => {
+    const key = [
+      entry.type || '',
+      (entry.firstName || '').trim().toLowerCase(),
+      (entry.lastName || '').trim().toLowerCase(),
+    ].join('|');
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 };
 
 const generateUuid = () => {
@@ -110,7 +126,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   const [burialPlace, setBurialPlace] = useState<string | StructuredPlace>(person.burialPlace || '');
   const [deathCause, setDeathCause] = useState(person.deathCause || '');
   const [deathCategory, setDeathCategory] = useState<DeathCauseCategory>(person.deathCauseCategory || 'Unknown');
-  const [altNames, setAltNames] = useState<AlternateName[]>(person.alternateNames || []);
+  const [altNames, setAltNames] = useState<AlternateName[]>(dedupeAlternateNames(person.alternateNames || []));
   const [events, setEvents] = useState<PersonEvent[]>(person.events || []);
   const isDNAMatch = !!person.isDNAMatch;
 
@@ -133,6 +149,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [shareFeedback, setShareFeedback] = useState<string>('');
+  const [overlayProfile, setOverlayProfile] = useState<Person | null>(null);
+  const [pendingParentType, setPendingParentType] = useState<'father' | 'mother' | null>(null);
 
   useEffect(() => {
     setFirstName(person.firstName);
@@ -147,7 +165,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
     setBurialPlace(person.burialPlace || '');
     setDeathCause(person.deathCause || '');
     setDeathCategory(person.deathCauseCategory || 'Unknown');
-    setAltNames(person.alternateNames || []);
+    setAltNames(dedupeAlternateNames(person.alternateNames || []));
     setEvents(person.events || []);
     setSources(person.sources || []);
     setNotes(person.notes || []);
@@ -703,6 +721,35 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
     setActiveSection('dna');
   };
 
+  const handleRequestAddParent = useCallback(
+    async (parentType: 'father' | 'mother') => {
+      if (!canEditFamily || pendingParentType) return;
+      setPendingParentType(parentType);
+      try {
+        const newParent = await createPlaceholderParent({
+          treeId: person.treeId,
+          childId: person.id,
+          parentType,
+          actor: currentUser
+            ? {
+                id: currentUser.id,
+                name: currentUser.name,
+              }
+            : null,
+        });
+        setRelationPeople((prev) => ({ ...prev, [newParent.id]: newParent }));
+        await refreshConnections({ silent: true });
+        setOverlayProfile(newParent);
+      } catch (err) {
+        console.error('Failed to create parent placeholder', err);
+        setConnectionsError((prev) => prev || 'Could not create parent record.');
+      } finally {
+        setPendingParentType(null);
+      }
+    },
+    [canEditFamily, pendingParentType, person, currentUser, refreshConnections]
+  );
+
   return (
     <>
       <div
@@ -928,6 +975,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
             loading={connectionsLoading}
             error={connectionsError}
             onUnlinkRelationship={handleUnlinkRelationship}
+            onRequestAddParent={handleRequestAddParent}
+            pendingParentType={pendingParentType}
           />
         )}
 
@@ -980,6 +1029,25 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         )}
       </div>
     </div>
+    {overlayProfile && (
+      <PersonProfile
+        person={overlayProfile}
+        currentUser={currentUser}
+        onClose={() => {
+          setOverlayProfile(null);
+          refreshConnections();
+        }}
+        onNavigateToPerson={(target) => setOverlayProfile(target)}
+        onPersistFamilyLayout={onPersistFamilyLayout}
+        onPersonUpdated={(updated) => {
+          if (overlayProfile && updated.id === overlayProfile.id) {
+            setOverlayProfile(updated);
+          }
+          onPersonUpdated?.(updated);
+        }}
+        onOpenTreeFromProfile={onOpenTreeFromProfile}
+      />
+    )}
     </>
   );
 };

@@ -9,6 +9,7 @@ import {
   Target,
   GripVertical,
   Unlink as UnlinkIcon,
+  Plus,
 } from 'lucide-react';
 import { FamilyLayoutState, Person, Relationship, RelationshipConfidence } from '../../types';
 import { CONFIDENCE_LEVELS, PARENT_LINK_TYPES } from './constants';
@@ -29,6 +30,8 @@ interface FamilyTabProps {
   loading?: boolean;
   error?: string | null;
   onUnlinkRelationship?: (relId: string) => void;
+  onRequestAddParent?: (parentType: 'father' | 'mother') => void;
+  pendingParentType?: 'father' | 'mother' | null;
 }
 
 const formatYear = (input?: string) => {
@@ -126,6 +129,8 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   loading,
   error,
   onUnlinkRelationship,
+  onRequestAddParent,
+  pendingParentType = null,
 }) => {
   const createEmptyLayout = () => ({
     assignments: {},
@@ -183,6 +188,8 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   };
 
   const visibleParents = parents.filter((item) => !removedParentIds.has(item.rel.id));
+  const hasFather = visibleParents.some((item) => item.rel.type?.toLowerCase().includes('father'));
+  const hasMother = visibleParents.some((item) => item.rel.type?.toLowerCase().includes('mother'));
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">Kinship Map & Confidence</p>
@@ -222,6 +229,32 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
             );
           })}
           {visibleParents.length === 0 && <p className="text-xs text-slate-400 italic p-4">No parental records found.</p>}
+          {canEdit && onRequestAddParent && (
+            <div className="flex flex-wrap gap-3">
+              {!hasFather && (
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                  onClick={() => onRequestAddParent('father')}
+                  disabled={pendingParentType === 'father'}
+                >
+                  <Plus className="inline w-3 h-3 mr-2" />
+                  {pendingParentType === 'father' ? 'Adding Father…' : 'Add Father'}
+                </button>
+              )}
+              {!hasMother && (
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                  onClick={() => onRequestAddParent('mother')}
+                  disabled={pendingParentType === 'mother'}
+                >
+                  <Plus className="inline w-3 h-3 mr-2" />
+                  {pendingParentType === 'mother' ? 'Adding Mother…' : 'Add Mother'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <FamilyGroups
           personId={person.id}
