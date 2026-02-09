@@ -87,6 +87,7 @@ export const buildPedigreeLayout = (
   const ancestorVisited = new Set<string>();
   const descendantVisited = new Set<string>();
   const descendantSpanCache = new Map<string, number>();
+  const ancestorSpanCache = new Map<string, number>();
   const edgeIds = new Set<string>();
 
   const assignRow = (column: number) => {
@@ -166,41 +167,126 @@ export const buildPedigreeLayout = (
     });
   };
 
-  const ancestorRowDelta = (depth: number) => Math.min(3, 1 + depth * 1.25);
+  const computeAncestorSpan = (personId: string, depth: number, stack: Set<string> = new Set()): number => {
+    const cacheKey = `${personId}:${depth}`;
+    if (ancestorSpanCache.has(cacheKey)) return ancestorSpanCache.get(cacheKey)!;
+    if (depth >= maxAncestorDepth) {
+      ancestorSpanCache.set(cacheKey, 1);
+      return 1;
+    }
+    if (stack.has(cacheKey)) {
+      return 1;
+    }
+    stack.add(cacheKey);
+    const parentLinks = parentLinksByChild.get(personId) || [];
+    const seen = new Set<string>();
+    let total = 0;
+    parentLinks.forEach((link) => {
+      if (seen.has(link.personId)) return;
+      seen.add(link.personId);
+      const parent = peopleById.get(link.personId);
+      if (!parent) {
+        total += 1;
+        return;
+      }
+      total += computeAncestorSpan(parent.id, depth + 1, stack);
+    });
+    if (!total) total = parentLinks.length || 1;
+    ancestorSpanCache.set(cacheKey, total);
+    stack.delete(cacheKey);
+    return total;
+  };
 
   const buildAncestors = (childId: string, column: number, depth: number) => {
     if (depth >= maxAncestorDepth) return;
     const parentLinks = parentLinksByChild.get(childId) || [];
-    let hasFather = false;
-    let hasMother = false;
     const childNode = nodeMap.get(childId);
     const childRow = childNode?.row ?? 0;
-    const delta = ancestorRowDelta(depth);
-    const fatherRow = childRow - delta;
-    const motherRow = childRow + delta;
+    const parentEntries: Array<{
+      person?: Person;
+      placeholder?: PedigreePlaceholder;
+      span: number;
+      link?: Relationship;
+      isFather?: boolean;
+      isMother?: boolean;
+    }> = [];
+    const seenParents = new Set<string>();
     parentLinks.forEach((link) => {
+      if (seenParents.has(link.personId)) return;
+      seenParents.add(link.personId);
       const parent = peopleById.get(link.personId);
       if (!parent) return;
-      const targetRow = isFatherLink(link.type) ? fatherRow : isMotherLink(link.type) ? motherRow : undefined;
-      const parentNode = createPersonNode(parent, column, 'ancestor', childId, targetRow);
-      addParentEdge(parentNode, nodeMap.get(childId)!);
-      if (isFatherLink(link.type)) hasFather = true;
-      if (isMotherLink(link.type)) hasMother = true;
-      if (!ancestorVisited.has(parent.id)) {
-        ancestorVisited.add(parent.id);
-        buildAncestors(parent.id, column - 1, depth + 1);
-      }
+      parentEntries.push({
+        person: parent,
+        span: Math.max(1, computeAncestorSpan(parent.id, depth + 1)),
+        link,
+        isFather: isFatherLink(link.type),
+        isMother: isMotherLink(link.type),
+      });
     });
 
-    const targetNode = nodeMap.get(childId)!;
-    if (!hasFather && allowPlaceholders) {
-      const placeholder = createPlaceholder(column, 'ancestor', 'father', childId, fatherRow);
-      addParentEdge(placeholder, targetNode);
+    if (!parentEntries.length && allowPlaceholders) {
+      parentEntries.push({
+        placeholder: 'unknown',
+        span: 1,
+      });
     }
-    if (!hasMother && allowPlaceholders) {
-      const placeholder = createPlaceholder(column, 'ancestor', 'mother', childId, motherRow);
-      addParentEdge(placeholder, targetNode);
+
+    const hasFather = parentEntries.some((entry) => entry.isFather);
+    const hasMother = parentEntries.some((entry) => entry.isMother);
+
+    if (allowPlaceholders) {
+      if (!hasFather) {
+        parentEntries.push({
+          placeholder: 'father',
+          span: 1,
+          isFather: true,
+        });
+      }
+      if (!hasMother) {
+        parentEntries.push({
+          placeholder: 'mother',
+          span: 1,
+          isMother: true,
+        });
+      }
     }
+
+    parentEntries.sort((a, b) => {
+      if (a.isFather && !b.isFather) return -1;
+      if (!a.isFather && b.isFather) return 1;
+      if (a.isMother && !b.isMother) return 1;
+      if (!a.isMother && b.isMother) return -1;
+      if (a.person && b.person) return a.person.firstName.localeCompare(b.person.firstName);
+      return 0;
+    });
+
+    const totalSpan =
+      parentEntries.reduce((sum, entry) => sum + (entry.span || 1), 0) || parentEntries.length;
+    let cursor = childRow - totalSpan / 2;
+
+    parentEntries.forEach((entry) => {
+      const span = entry.span || 1;
+      const targetRow = cursor + span / 2;
+      cursor += span;
+      if (entry.person) {
+        const parentNode = createPersonNode(entry.person, column, 'ancestor', childId, targetRow);
+        addParentEdge(parentNode, nodeMap.get(childId)!);
+        if (!ancestorVisited.has(entry.person.id)) {
+          ancestorVisited.add(entry.person.id);
+          buildAncestors(entry.person.id, column - 1, depth + 1);
+        }
+      } else if (allowPlaceholders && entry.placeholder) {
+        const placeholderNode = createPlaceholder(
+          column,
+          'ancestor',
+          entry.placeholder,
+          childId,
+          targetRow
+        );
+        addParentEdge(placeholderNode, nodeMap.get(childId)!);
+      }
+    });
   };
 
   const computeDescendantSpan = (personId: string, depth: number, stack: Set<string> = new Set()): number => {
