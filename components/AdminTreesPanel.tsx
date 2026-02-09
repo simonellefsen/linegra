@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { FamilyTreeSummary, Person } from '../types';
 import { Users, GitBranch, Trash2, Inbox, Loader2, Database, AlertTriangle, Settings, Eye, EyeOff } from 'lucide-react';
 
@@ -69,7 +69,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
     tree.defaultProbandId ||
     null;
 
-  const formatCandidateLabel = (candidate: Person) => {
+  const formatCandidateLabel = useCallback((candidate: Person) => {
     const name = `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim() || candidate.id;
     const birthYear = extractYear(candidate.birthDate);
     const deathYear = extractYear(candidate.deathDate);
@@ -80,7 +80,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
           })`
         : '';
     return `${name}${vital}`;
-  };
+  }, []);
 
   const beginEditSettings = (tree: FamilyTreeSummary) => {
     setEditingTreeId(tree.id);
@@ -164,7 +164,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
           .catch(() => {});
       }
     });
-  }, [sortedTrees, onLoadPersonById, probandLabels]);
+  }, [sortedTrees, onLoadPersonById, probandLabels, formatCandidateLabel]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
