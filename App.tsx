@@ -783,6 +783,19 @@ useEffect(() => {
     [supabaseActive]
   );
 
+  const handleAdminLoadPersonById = useCallback(
+    async (_treeId: string, personId: string) => {
+      try {
+        const person = await fetchPersonDetails(personId);
+        return person;
+      } catch (err) {
+        console.error('Failed to load proband details', err);
+        return null;
+      }
+    },
+    []
+  );
+
   const handleNukeConfirm = useCallback(async () => {
     if (!supabaseActive) {
       setNukeError('Link a Supabase project before issuing a reset.');
@@ -1323,6 +1336,7 @@ useEffect(() => {
                     onDelete={handleAdminDeleteTree}
                     onUpdateSettings={handleAdminUpdateTreeSettings}
                     onSearchPersons={handleAdminSearchTreePersons}
+                    onLoadPersonById={handleAdminLoadPersonById}
                     creating={creatingTree}
                     deletingTreeId={deletingTreeId}
                     updatingTreeId={updatingTreeId}

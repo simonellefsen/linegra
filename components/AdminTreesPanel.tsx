@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { FamilyTreeSummary, Person } from '../types';
 import { Users, GitBranch, Trash2, Inbox, Loader2, Database, AlertTriangle, Settings, Eye, EyeOff } from 'lucide-react';
 
@@ -8,6 +8,7 @@ interface AdminTreesPanelProps {
   onDelete: (treeId: string) => Promise<void>;
   onUpdateSettings: (treeId: string, payload: { isPublic: boolean; probandId: string | null }) => Promise<void>;
   onSearchPersons?: (treeId: string, query: string) => Promise<Person[]>;
+  onLoadPersonById?: (treeId: string, personId: string) => Promise<Person | null>;
   creating?: boolean;
   deletingTreeId?: string | null;
   updatingTreeId?: string | null;
@@ -20,6 +21,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   onDelete,
   onUpdateSettings,
   onSearchPersons,
+  onLoadPersonById,
   creating = false,
   deletingTreeId = null,
   updatingTreeId = null,
@@ -38,6 +40,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   const [editProbandLabel, setEditProbandLabel] = useState('');
   const [probandSearchTerm, setProbandSearchTerm] = useState('');
   const [probandResults, setProbandResults] = useState<Person[]>([]);
+  const [probandLabels, setProbandLabels] = useState<Record<string, string>>({});
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [searchingProband, setSearchingProband] = useState(false);
 
@@ -62,6 +65,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
     tree.defaultProbandLabel ||
     tree.metadata?.defaultProbandLabel ||
     tree.metadata?.defaultProbandName ||
+    probandLabels[tree.id] ||
     tree.defaultProbandId ||
     null;
 
@@ -136,6 +140,31 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
       setSettingsError(message);
     }
   };
+
+  useEffect(() => {
+    if (!onLoadPersonById) return;
+    sortedTrees.forEach((tree) => {
+      if (
+        tree.defaultProbandId &&
+        !(
+          tree.defaultProbandLabel ||
+          tree.metadata?.defaultProbandLabel ||
+          tree.metadata?.defaultProbandName ||
+          probandLabels[tree.id]
+        )
+      ) {
+        onLoadPersonById(tree.id, tree.defaultProbandId)
+          .then((person) => {
+            if (!person) return;
+            setProbandLabels((prev) => {
+              if (prev[tree.id]) return prev;
+              return { ...prev, [tree.id]: formatCandidateLabel(person) };
+            });
+          })
+          .catch(() => {});
+      }
+    });
+  }, [sortedTrees, onLoadPersonById, probandLabels]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
