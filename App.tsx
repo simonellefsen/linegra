@@ -425,7 +425,12 @@ useEffect(() => {
   }, [treeRelationships, filteredPeople]);
   const parentalRelationshipSet = useMemo(() => new Set<Relationship['type']>(PARENTAL_REL_TYPES), []);
 
-  const focusPersonId = pedigreeFocusId ?? selectedPerson?.id ?? treePeople[0]?.id;
+  const treeDefaultProbandId =
+    activeTree?.defaultProbandId ??
+    (activeTree?.metadata && typeof activeTree.metadata.defaultProbandId === 'string'
+      ? (activeTree.metadata.defaultProbandId as string)
+      : null);
+  const focusPersonId = pedigreeFocusId ?? selectedPerson?.id ?? treeDefaultProbandId ?? treePeople[0]?.id;
   const focusPerson = focusPersonId ? treePeople.find((p) => p.id === focusPersonId) ?? null : null;
 
   const pedigreeScope = useMemo(() => {
@@ -1202,9 +1207,12 @@ useEffect(() => {
                         <p className="text-sm text-slate-500 max-w-2xl mx-auto">
                           Load the interactive pedigree when you’re ready. We’ll start with {focusPerson ? `${focusPerson.firstName} ${focusPerson.lastName}` : 'your focus person'} and show parents plus grandparents, then you can unfold more generations on demand.
                         </p>
-                        <button
+                          <button
                           onClick={async () => {
                             if (!activeTree) return;
+                            if (!pedigreeFocusId && !selectedPerson && treeDefaultProbandId) {
+                              setPedigreeFocusId(treeDefaultProbandId);
+                            }
                             setTreeViewReady(true);
                             await loadTreeArchive(activeTree, { silent: false });
                           }}
