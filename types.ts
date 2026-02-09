@@ -221,6 +221,7 @@ export interface FamilyTree {
   isPublic: boolean;
   themeColor?: string | null;
   metadata?: Record<string, any>;
+  defaultProbandId?: string | null;
   createdAt?: string;
   updatedAt?: string;
   lastModified?: string;

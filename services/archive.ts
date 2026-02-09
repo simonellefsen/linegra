@@ -134,6 +134,7 @@ const mapDbPerson = (
 };
 
 const mapDbTree = (row: any): FamilyTreeType => {
+  const metadata = row.metadata || undefined;
   return {
     id: row.id,
     name: row.name,
@@ -141,7 +142,8 @@ const mapDbTree = (row: any): FamilyTreeType => {
     ownerId: row.owner_id ?? null,
     isPublic: !!row.is_public,
     themeColor: row.theme_color ?? undefined,
-    metadata: row.metadata || undefined,
+    metadata,
+    defaultProbandId: metadata?.defaultProbandId ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastModified: row.updated_at
@@ -230,6 +232,26 @@ export const deleteFamilyTreeRecord = async (treeId: string, actor?: ImportActor
     payload_actor_name: normalizedActor.name
   });
   if (error) throw new Error(error.message);
+};
+
+export const updateTreeSettings = async (
+  treeId: string,
+  payload: { isPublic?: boolean; probandId?: string | null },
+  actor?: ImportActor | null
+): Promise<FamilyTreeType> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured. Cannot update tree.');
+  }
+  const normalizedActor = normalizeActor(actor);
+  const { data, error } = await supabase.rpc('admin_update_tree_settings', {
+    target_tree_id: treeId,
+    payload_is_public: typeof payload.isPublic === 'boolean' ? payload.isPublic : null,
+    payload_proband_id: payload.probandId ?? null,
+    payload_actor_id: normalizedActor.id,
+    payload_actor_name: normalizedActor.name,
+  });
+  if (error) throw new Error(error.message);
+  return mapDbTree(data);
 };
 
 export const nukeSupabaseDatabase = async (confirmText = 'NUKE') => {

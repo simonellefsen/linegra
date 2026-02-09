@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics } from './services/archive';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
 import FamilyTree from './components/FamilyTree';
@@ -65,6 +65,7 @@ const App: React.FC = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [adminTrees, setAdminTrees] = useState<FamilyTreeSummary[]>([]);
   const [adminTreesLoading, setAdminTreesLoading] = useState(false);
+  const [updatingTreeId, setUpdatingTreeId] = useState<string | null>(null);
   const [creatingTree, setCreatingTree] = useState(false);
   const [deletingTreeId, setDeletingTreeId] = useState<string | null>(null);
   const [showNukeModal, setShowNukeModal] = useState(false);
@@ -742,6 +743,46 @@ useEffect(() => {
     [supabaseActive, currentUser, activeTree, fetchAdminTreeStats]
   );
 
+  const handleAdminUpdateTreeSettings = useCallback(
+    async (treeId: string, payload: { isPublic: boolean; probandId: string | null }) => {
+      if (!supabaseActive) throw new Error('Link Supabase before updating trees.');
+      setUpdatingTreeId(treeId);
+      try {
+        await updateTreeSettings(treeId, payload, currentUser);
+        const updatedTrees = await ensureTrees();
+        const ordered = [...updatedTrees].sort((a, b) => a.name.localeCompare(b.name));
+        setTrees(ordered);
+        const refreshedActive = ordered.find((t) => t.id === (activeTree?.id ?? '')) || ordered.find((t) => t.id === treeId) || ordered[0] || null;
+        if (refreshedActive) {
+          setActiveTree(refreshedActive);
+        }
+        await fetchAdminTreeStats();
+      } catch (err) {
+        console.error('Failed to update tree settings', err);
+        throw err;
+      } finally {
+        setUpdatingTreeId(null);
+      }
+    },
+    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats]
+  );
+
+  const handleAdminSearchTreePersons = useCallback(
+    async (treeId: string, query: string) => {
+      if (!supabaseActive) return [];
+      const trimmed = query.trim();
+      if (!trimmed) return [];
+      try {
+        const { results } = await searchPersonsInTree(treeId, trimmed, { limit: 10 });
+        return results;
+      } catch (err) {
+        console.error('Failed to search tree members', err);
+        throw err;
+      }
+    },
+    [supabaseActive]
+  );
+
   const handleNukeConfirm = useCallback(async () => {
     if (!supabaseActive) {
       setNukeError('Link a Supabase project before issuing a reset.');
@@ -1280,8 +1321,11 @@ useEffect(() => {
                     trees={adminTreeData}
                     onCreate={handleAdminCreateTree}
                     onDelete={handleAdminDeleteTree}
+                    onUpdateSettings={handleAdminUpdateTreeSettings}
+                    onSearchPersons={handleAdminSearchTreePersons}
                     creating={creatingTree}
                     deletingTreeId={deletingTreeId}
+                    updatingTreeId={updatingTreeId}
                     loading={adminTreesLoading}
                   />
                 )}

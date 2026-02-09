@@ -1,13 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { FamilyTreeSummary } from '../types';
-import { Users, GitBranch, Trash2, Inbox, Loader2, Database, AlertTriangle } from 'lucide-react';
+import { FamilyTreeSummary, Person } from '../types';
+import { Users, GitBranch, Trash2, Inbox, Loader2, Database, AlertTriangle, Settings, Eye, EyeOff } from 'lucide-react';
 
 interface AdminTreesPanelProps {
   trees: FamilyTreeSummary[];
   onCreate: (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => Promise<void>;
   onDelete: (treeId: string) => Promise<void>;
+  onUpdateSettings: (treeId: string, payload: { isPublic: boolean; probandId: string | null }) => Promise<void>;
+  onSearchPersons?: (treeId: string, query: string) => Promise<Person[]>;
   creating?: boolean;
   deletingTreeId?: string | null;
+  updatingTreeId?: string | null;
   loading?: boolean;
 }
 
@@ -15,8 +18,11 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   trees,
   onCreate,
   onDelete,
+  onUpdateSettings,
+  onSearchPersons,
   creating = false,
   deletingTreeId = null,
+  updatingTreeId = null,
   loading = false
 }) => {
   const [name, setName] = useState('');
@@ -26,6 +32,14 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [editingTreeId, setEditingTreeId] = useState<string | null>(null);
+  const [editVisibility, setEditVisibility] = useState(true);
+  const [editProbandId, setEditProbandId] = useState<string | null>(null);
+  const [editProbandLabel, setEditProbandLabel] = useState('');
+  const [probandSearchTerm, setProbandSearchTerm] = useState('');
+  const [probandResults, setProbandResults] = useState<Person[]>([]);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [searchingProband, setSearchingProband] = useState(false);
 
   const sortedTrees = useMemo(() => {
     return [...trees].sort((a, b) => {
@@ -37,6 +51,64 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
 
   const confirmTarget = sortedTrees.find((t) => t.id === pendingDeleteId);
   const disableDelete = sortedTrees.length <= 1;
+
+  const beginEditSettings = (tree: FamilyTreeSummary) => {
+    setEditingTreeId(tree.id);
+    setEditVisibility(tree.isPublic);
+    const initialLabel =
+      tree.metadata?.defaultProbandName ||
+      tree.metadata?.defaultProbandLabel ||
+      (tree.defaultProbandId ?? '');
+    setEditProbandId(tree.defaultProbandId ?? null);
+    setEditProbandLabel(initialLabel);
+    setProbandSearchTerm('');
+    setProbandResults([]);
+    setSettingsError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTreeId(null);
+    setSettingsError(null);
+    setProbandResults([]);
+  };
+
+  const handleSearchProband = async (treeId: string) => {
+    if (!onSearchPersons) return;
+    const term = probandSearchTerm.trim();
+    if (!term) {
+      setProbandResults([]);
+      return;
+    }
+    setSearchingProband(true);
+    setSettingsError(null);
+    try {
+      const results = await onSearchPersons(treeId, term);
+      setProbandResults(results);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to search individuals.';
+      setSettingsError(message);
+    } finally {
+      setSearchingProband(false);
+    }
+  };
+
+  const handleSelectProband = (candidate: Person) => {
+    setEditProbandId(candidate.id);
+    const label = `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim() || candidate.id;
+    setEditProbandLabel(label);
+    setProbandResults([]);
+  };
+
+  const handleSaveSettings = async (treeId: string) => {
+    setSettingsError(null);
+    try {
+      await onUpdateSettings(treeId, { isPublic: editVisibility, probandId: editProbandId });
+      handleCancelEdit();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update tree settings.';
+      setSettingsError(message);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,23 +257,29 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                       Updated {tree.updatedAt ? new Date(tree.updatedAt).toLocaleDateString() : 'Recently'}
                     </p>
                   </div>
-                  {disableDelete && (
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">At least one tree required</p>
-                  )}
-                  <button
-                    onClick={() => setPendingDeleteId(tree.id)}
-                    className={`px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 ${
-                      disableDelete || deletingTreeId === tree.id
-                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                        : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-                    }`}
-                    disabled={disableDelete || deletingTreeId === tree.id}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Delete
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => beginEditSettings(tree)}
+                      className="px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Edit Settings
+                    </button>
+                    <button
+                      onClick={() => setPendingDeleteId(tree.id)}
+                      className={`px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 ${
+                        disableDelete || deletingTreeId === tree.id
+                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                          : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                      }`}
+                      disabled={disableDelete || deletingTreeId === tree.id}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                   <div className="p-4 rounded-2xl bg-slate-50 flex items-center gap-3">
                     <Users className="w-5 h-5 text-slate-500" />
                     <div>
@@ -217,7 +295,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                     </div>
                   </div>
                   <div className="p-4 rounded-2xl bg-slate-50 flex items-center gap-3">
-                    <Database className="w-5 h-5 text-slate-500" />
+                    {tree.isPublic ? <Eye className="w-5 h-5 text-slate-500" /> : <EyeOff className="w-5 h-5 text-slate-500" />}
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Visibility</p>
                       <p className="text-lg font-black text-slate-900">
@@ -225,7 +303,131 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                       </p>
                     </div>
                   </div>
+                  <div className="p-4 rounded-2xl bg-slate-50 flex items-center gap-3">
+                    <Database className="w-5 h-5 text-slate-500" />
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Default Proband</p>
+                      <p className="text-lg font-black text-slate-900">
+                        {tree.metadata?.defaultProbandName || tree.defaultProbandId || 'Not selected'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
+                {editingTreeId === tree.id && (
+                  <div className="border border-slate-200 rounded-2xl p-5 space-y-5 bg-slate-50/60">
+                    <div className="flex items-center justify-between">
+                      <h5 className="text-sm font-black uppercase tracking-[0.3em] text-slate-500">Tree Settings</h5>
+                      <button
+                        onClick={handleCancelEdit}
+                        className="text-xs text-slate-500 hover:text-slate-700 font-bold"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Visibility</label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditVisibility(true)}
+                          className={`flex-1 px-4 py-2 rounded-2xl border text-xs font-black uppercase tracking-[0.2em] ${
+                            editVisibility ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'border-slate-200 text-slate-500'
+                          }`}
+                        >
+                          Public
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditVisibility(false)}
+                          className={`flex-1 px-4 py-2 rounded-2xl border text-xs font-black uppercase tracking-[0.2em] ${
+                            !editVisibility ? 'bg-amber-50 border-amber-200 text-amber-700' : 'border-slate-200 text-slate-500'
+                          }`}
+                        >
+                          Private
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Default Proband</label>
+                      <div className="text-sm text-slate-600">
+                        {editProbandId ? (
+                          <span>
+                            Selected: <strong>{editProbandLabel || editProbandId}</strong>
+                          </span>
+                        ) : (
+                          <span className="italic text-slate-400">No proband selected</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          value={probandSearchTerm}
+                          onChange={(e) => setProbandSearchTerm(e.target.value)}
+                          className="flex-1 px-4 py-2 rounded-2xl border border-slate-200 bg-white focus:ring-2 focus:ring-slate-900/10 outline-none text-sm"
+                          placeholder="Search by name…"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSearchProband(tree.id)}
+                          className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.2em]"
+                          disabled={!onSearchPersons}
+                        >
+                          {searchingProband ? 'Searching…' : 'Search'}
+                        </button>
+                        {editProbandId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditProbandId(null);
+                              setEditProbandLabel('');
+                            }}
+                            className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.2em]"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      {probandResults.length > 0 && (
+                        <div className="border border-slate-200 rounded-2xl divide-y divide-slate-100 bg-white max-h-48 overflow-y-auto">
+                          {probandResults.map((candidate) => (
+                            <button
+                              key={candidate.id}
+                              type="button"
+                              onClick={() => handleSelectProband(candidate)}
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50"
+                            >
+                              <p className="font-semibold text-slate-800">
+                                {candidate.firstName} {candidate.lastName}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {candidate.birthDate ? `b. ${candidate.birthDate}` : 'Birth unknown'} • {candidate.id}
+                              </p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {settingsError && <p className="text-rose-500 text-xs font-bold">{settingsError}</p>}
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveSettings(tree.id)}
+                        className={`px-6 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] ${
+                          updatingTreeId === tree.id ? 'bg-slate-200 text-slate-500' : 'bg-slate-900 text-white hover:bg-slate-800'
+                        }`}
+                        disabled={updatingTreeId === tree.id}
+                      >
+                        {updatingTreeId === tree.id ? 'Saving…' : 'Save Settings'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="px-6 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.2em] text-slate-600 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
