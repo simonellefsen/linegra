@@ -384,6 +384,36 @@ export const fetchPersonConnections = async (
 
   if (error) throw new Error(error.message);
 
+  const parentTypes = ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'step_parent', 'guardian'];
+  const spouseIds = new Set<string>();
+  const sharedChildIds = new Set<string>();
+
+  (relationshipRows || []).forEach((row) => {
+    if (row.type === 'marriage' || row.type === 'partner') {
+      const otherId = row.person_id === personId ? row.related_id : row.person_id;
+      if (otherId) spouseIds.add(otherId);
+    }
+    if (parentTypes.includes(row.type) && row.person_id === personId && row.related_id) {
+      sharedChildIds.add(row.related_id);
+    }
+  });
+
+  if (spouseIds.size && sharedChildIds.size) {
+    const { data: coparentRows, error: coparentError } = await supabase
+      .from('relationships')
+      .select('*')
+      .eq('tree_id', treeId)
+      .in('person_id', Array.from(spouseIds))
+      .in('related_id', Array.from(sharedChildIds))
+      .in('type', parentTypes);
+    if (coparentError) throw new Error(coparentError.message);
+    coparentRows?.forEach((row) => {
+      if (!relationshipRows?.some((existing) => existing.id === row.id)) {
+        relationshipRows?.push(row);
+      }
+    });
+  }
+
   const relationships = (relationshipRows || []).map((row) => ({
     id: row.id,
     treeId: row.tree_id,
