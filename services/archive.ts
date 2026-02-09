@@ -499,7 +499,12 @@ export const searchPersonsInTree = async (
   options: {
     limit?: number;
     offset?: number;
-    filters?: { livingOnly?: boolean; missingData?: boolean };
+    filters?: {
+      livingOnly?: boolean;
+      deceasedOnly?: boolean;
+      missingData?: boolean;
+      gender?: 'M' | 'F';
+    };
   } = {}
 ) => {
   if (!isSupabaseConfigured()) {
@@ -541,6 +546,14 @@ export const searchPersonsInTree = async (
 
   if (options.filters?.livingOnly) {
     query = query.or('is_living.eq.true,death_date_text.is.null');
+  }
+
+  if (options.filters?.deceasedOnly) {
+    query = query.or('is_living.eq.false,death_date_text.not.is.null');
+  }
+
+  if (options.filters?.gender) {
+    query = query.eq('gender', options.filters.gender);
   }
 
   if (options.filters?.missingData) {

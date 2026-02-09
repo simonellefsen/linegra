@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
@@ -73,13 +73,18 @@ const App: React.FC = () => {
   const [ancestorDepth, setAncestorDepth] = useState(DEFAULT_ANCESTOR_DEPTH);
   const [descendantDepth, setDescendantDepth] = useState(DEFAULT_DESCENDANT_DEPTH);
   const [pedigreeFocusId, setPedigreeFocusId] = useState<string | null>(null);
+  type SearchFiltersState = { livingOnly: boolean; deceasedOnly: boolean; missingData: boolean; gender: 'all' | 'M' | 'F' };
+  const createDefaultSearchFilters = useCallback<SearchFiltersState>(() => ({
+    livingOnly: false,
+    deceasedOnly: false,
+    missingData: false,
+    gender: 'all'
+  }), []);
+
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchModalBaseResults, setSearchModalBaseResults] = useState<Person[]>([]);
   const [searchModalResults, setSearchModalResults] = useState<Person[]>([]);
-  const [searchFilters, setSearchFilters] = useState<{ livingOnly: boolean; missingData: boolean }>({
-    livingOnly: false,
-    missingData: false
-  });
+  const [searchFilters, setSearchFilters] = useState<SearchFiltersState>(() => createDefaultSearchFilters());
   const SEARCH_PAGE_SIZE = 40;
   const [searchPage, setSearchPage] = useState(0);
   const [searchTotal, setSearchTotal] = useState(0);
@@ -98,20 +103,13 @@ const App: React.FC = () => {
   });
   const [landingLoading, setLandingLoading] = useState(false);
   const [landingError, setLandingError] = useState<string | null>(null);
-  const parseYear = useCallback((value?: string | null) => {
-    if (!value) return null;
-    const match = value.match(/(\d{4})/);
-    if (!match) return null;
-    const year = Number(match[1]);
-    return Number.isNaN(year) ? null : year;
-  }, []);
   const canViewPrivate = !!currentUser?.isAdmin;
   const filterVisiblePeople = useCallback(
     (list: Person[]) => (canViewPrivate ? list : list.filter((person) => !person.isPrivate)),
     [canViewPrivate]
   );
   const applySearchFilters = useCallback(
-    (results: Person[], filters: { livingOnly: boolean; missingData: boolean }) => {
+    (results: Person[], filters: SearchFiltersState) => {
       return results.filter((person) => {
         if (!canViewPrivate && person.isPrivate) {
           return false;
@@ -122,6 +120,15 @@ const App: React.FC = () => {
           if (!livingStatus) {
             return false;
           }
+        }
+        if (filters.deceasedOnly) {
+          const deceased = typeof person.isLiving === 'boolean' ? !person.isLiving : !!person.deathDate;
+          if (!deceased) {
+            return false;
+          }
+        }
+        if (filters.gender !== 'all' && person.gender !== filters.gender) {
+          return false;
         }
         if (
           filters.missingData &&
@@ -399,45 +406,7 @@ useEffect(() => {
     );
   }, [allRelationships, activeTreeId, canViewPrivate, treePeople]);
 
-  const deferredSearch = useDeferredValue(searchQuery);
-  const filteredPeople = useMemo(() => {
-    const query = deferredSearch.trim().toLowerCase();
-    if (!query) return treePeople;
-    const tokens = query.split(/\s+/).filter(Boolean);
-    if (!tokens.length) return treePeople;
-    return treePeople.filter((person) => {
-      const nameParts = [
-        person.firstName || '',
-        person.lastName || '',
-        person.maidenName || '',
-        ...(person.alternateNames?.map((alt) => `${alt.firstName ?? ''} ${alt.lastName ?? ''}`) ?? [])
-      ]
-        .join(' ')
-        .toLowerCase();
-      const birth = (person.birthDate || '').toLowerCase();
-      const death = (person.deathDate || '').toLowerCase();
-      const notes = (person.bio || '').toLowerCase();
-      const placeText = [
-        typeof person.birthPlace === 'string'
-          ? person.birthPlace
-          : (person.birthPlace as any)?.fullText ?? '',
-        typeof person.deathPlace === 'string'
-          ? person.deathPlace
-          : (person.deathPlace as any)?.fullText ?? ''
-      ]
-        .join(' ')
-        .toLowerCase();
-      return tokens.every((token) => {
-        return (
-          nameParts.includes(token) ||
-          birth.includes(token) ||
-          death.includes(token) ||
-          placeText.includes(token) ||
-          notes.includes(token)
-        );
-      });
-    });
-  }, [treePeople, deferredSearch]);
+  const filteredPeople = useMemo(() => treePeople, [treePeople]);
 
   const filteredRelationships = useMemo(() => {
     const visibleIds = new Set(filteredPeople.map(p => p.id));
@@ -526,7 +495,13 @@ useEffect(() => {
       try {
         const { results, total } = await searchPersonsInTree(activeTreeId, trimmed, {
           limit: SEARCH_PAGE_SIZE,
-          offset: page * SEARCH_PAGE_SIZE
+          offset: page * SEARCH_PAGE_SIZE,
+          filters: {
+            livingOnly: searchFilters.livingOnly,
+            deceasedOnly: searchFilters.deceasedOnly,
+            missingData: searchFilters.missingData,
+            gender: searchFilters.gender === 'all' ? undefined : searchFilters.gender
+          }
         });
         const visibleResults = filterVisiblePeople(results);
         setSearchTotal((prev) => (canViewPrivate ? total ?? 0 : append ? prev + visibleResults.length : visibleResults.length));
@@ -544,7 +519,7 @@ useEffect(() => {
         setSearchLoading(false);
       }
     },
-    [activeTreeId, searchQuery, filterVisiblePeople, canViewPrivate]
+    [activeTreeId, searchQuery, filterVisiblePeople, canViewPrivate, searchFilters]
   );
 
   const executeSearch = useCallback(() => {
@@ -561,14 +536,14 @@ useEffect(() => {
       setSearchError('Select a tree before searching.');
       return;
     }
-    setSearchFilters({ livingOnly: false, missingData: false });
+    setSearchFilters(createDefaultSearchFilters());
     setSearchModalBaseResults([]);
     setSearchModalResults([]);
     setSearchTotal(0);
     setSearchPage(0);
     setSearchModalOpen(true);
     fetchSearchPage(0, false);
-  }, [searchQuery, activeTreeId, fetchSearchPage]);
+  }, [searchQuery, activeTreeId, fetchSearchPage, createDefaultSearchFilters]);
 
   const handleLoadMoreResults = useCallback(() => {
     if (searchLoading) return;
@@ -1314,11 +1289,29 @@ useEffect(() => {
             <div className="px-8 py-4 border-b border-slate-100 flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
               <SlidersHorizontal className="w-4 h-4" />
               <button
-                onClick={() => setSearchFilters((prev) => ({ ...prev, livingOnly: !prev.livingOnly }))}
+                onClick={() => setSearchFilters((prev) => ({ ...prev, livingOnly: !prev.livingOnly, deceasedOnly: false }))}
                 className={`px-4 py-2 rounded-2xl border ${searchFilters.livingOnly ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200 text-slate-600'}`}
               >
                 Living Only
               </button>
+              <button
+                onClick={() => setSearchFilters((prev) => ({ ...prev, deceasedOnly: !prev.deceasedOnly, livingOnly: false }))}
+                className={`px-4 py-2 rounded-2xl border ${searchFilters.deceasedOnly ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200 text-slate-600'}`}
+              >
+                Deceased
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-[0.3em]">Gender:</span>
+                {(['all','M','F'] as const).map((genderOption) => (
+                  <button
+                    key={genderOption}
+                    onClick={() => setSearchFilters((prev) => ({ ...prev, gender: genderOption }))}
+                    className={`px-3 py-1 rounded-full border text-[10px] font-bold ${searchFilters.gender === genderOption ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200 text-slate-600'}`}
+                  >
+                    {genderOption === 'all' ? 'Any' : genderOption === 'M' ? 'Male' : 'Female'}
+                  </button>
+                ))}
+              </div>
               <button
                 onClick={() => setSearchFilters((prev) => ({ ...prev, missingData: !prev.missingData }))}
                 className={`px-4 py-2 rounded-2xl border ${searchFilters.missingData ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200 text-slate-600'}`}
