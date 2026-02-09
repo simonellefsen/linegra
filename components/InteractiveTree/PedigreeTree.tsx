@@ -19,10 +19,10 @@ interface PedigreeTreeProps {
   siblingHints?: Record<string, boolean>;
 }
 
-const columnWidth = 240;
-const rowHeight = 170;
+const horizontalSpacing = 220;
+const verticalSpacing = 180;
 const cardWidth = 180;
-const cardHeight = 104;
+const cardHeight = 120;
 
 const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   people,
@@ -51,16 +51,17 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   );
 
   const columnOffset = -layout.minColumn;
-  const totalColumns = layout.maxColumn - layout.minColumn + 1 || 1;
-  const width = totalColumns * columnWidth + cardWidth;
-  const height = (layout.maxRow + 1) * rowHeight + cardHeight;
+  const totalGenerations = layout.maxColumn - layout.minColumn + 1 || 1;
+  const totalRows = layout.maxRow + 1 || 1;
+  const width = totalRows * horizontalSpacing + cardWidth;
+  const height = totalGenerations * verticalSpacing + cardHeight;
 
   const nodeRects = useMemo(() => {
     const map = new Map<string, { left: number; top: number }>();
     layout.nodes.forEach((node) => {
-      const columnIndex = node.column + columnOffset;
-      const left = columnIndex * columnWidth + columnWidth / 2 - cardWidth / 2;
-      const top = node.row * rowHeight;
+      const depthIndex = node.column + columnOffset;
+      const left = node.row * horizontalSpacing + horizontalSpacing / 2 - cardWidth / 2;
+      const top = depthIndex * verticalSpacing;
       map.set(node.id, { left, top });
     });
     return map;
