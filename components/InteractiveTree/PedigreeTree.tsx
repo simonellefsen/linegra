@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Person, Relationship } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
 import { getAvatarForPerson } from '../../lib/avatar';
-import { Baby, Droplet } from 'lucide-react';
+import { Baby, Droplet, ChevronDown } from 'lucide-react';
 
 interface PedigreeTreeProps {
   people: Person[];
@@ -17,6 +17,7 @@ interface PedigreeTreeProps {
   descendantsRemaining?: boolean;
   showPlaceholders?: boolean;
   siblingHints?: Record<string, boolean>;
+  childHints?: Record<string, boolean>;
 }
 
 const horizontalSpacing = 220;
@@ -37,6 +38,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   descendantsRemaining = false,
   showPlaceholders = true,
   siblingHints = {},
+  childHints = {},
 }) => {
   const [minimapOpen, setMinimapOpen] = useState(false);
   const layout = useMemo(
@@ -51,8 +53,9 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   );
 
   const columnOffset = -layout.minColumn;
+  const rowOffset = -layout.minRow;
   const totalGenerations = layout.maxColumn - layout.minColumn + 1 || 1;
-  const totalRows = layout.maxRow + 1 || 1;
+  const totalRows = layout.maxRow - layout.minRow + 1 || 1;
   const width = totalRows * horizontalSpacing + cardWidth;
   const height = totalGenerations * verticalSpacing + cardHeight;
 
@@ -60,12 +63,13 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     const map = new Map<string, { left: number; top: number }>();
     layout.nodes.forEach((node) => {
       const depthIndex = node.column + columnOffset;
-      const left = node.row * horizontalSpacing + horizontalSpacing / 2 - cardWidth / 2;
+      const left =
+        (node.row + rowOffset) * horizontalSpacing + horizontalSpacing / 2 - cardWidth / 2;
       const top = depthIndex * verticalSpacing;
       map.set(node.id, { left, top });
     });
     return map;
-  }, [layout, columnOffset]);
+  }, [layout, columnOffset, rowOffset]);
 
   return (
     <div className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
@@ -95,11 +99,11 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
               const toX = toRect.left + cardWidth / 2;
               const toY = toRect.top;
               const dash = layout.nodes.find((n) => n.id === edge.fromId)?.placeholder ? '6,5' : 'none';
-              const ctrlY = (fromY + toY) / 2;
+              const midY = (fromY + toY) / 2;
               return (
                 <path
                   key={edge.id}
-                  d={`M${fromX},${fromY} C ${fromX},${ctrlY} ${toX},${ctrlY} ${toX},${toY}`}
+                  d={`M${fromX},${fromY} L${fromX},${midY} L${toX},${midY} L${toX},${toY}`}
                   stroke="#CBD5F5"
                   strokeWidth={2}
                   fill="none"
@@ -176,6 +180,12 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
                       <LifeIcon className="w-3 h-3" />
                       <span className="truncate">{lifeLabel}</span>
+                    </div>
+                  )}
+                  {node.person && childHints[node.person.id] && (
+                    <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 font-semibold">
+                      <ChevronDown className="w-3 h-3" />
+                      <span>Descendants</span>
                     </div>
                   )}
                 </div>
