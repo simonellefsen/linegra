@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Person, Relationship } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
 import { getAvatarForPerson } from '../../lib/avatar';
-import { Baby, Droplet, ChevronDown } from 'lucide-react';
+import { Baby, Droplet, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface PedigreeTreeProps {
   people: Person[];
@@ -18,6 +18,9 @@ interface PedigreeTreeProps {
   showPlaceholders?: boolean;
   siblingHints?: Record<string, boolean>;
   childHints?: Record<string, boolean>;
+  onExpandAncestors?: () => void;
+  onExpandDescendants?: () => void;
+  onExpandSiblings?: (personId: string) => void;
 }
 
 const horizontalSpacing = 220;
@@ -39,6 +42,9 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   showPlaceholders = true,
   siblingHints = {},
   childHints = {},
+  onExpandAncestors,
+  onExpandDescendants,
+  onExpandSiblings,
 }) => {
   const [minimapOpen, setMinimapOpen] = useState(false);
   const layout = useMemo(
@@ -70,6 +76,21 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     });
     return map;
   }, [layout, columnOffset, rowOffset]);
+  const nodeById = useMemo(() => {
+    const map = new Map<string, typeof layout.nodes[number]>();
+    layout.nodes.forEach((node) => map.set(node.id, node));
+    return map;
+  }, [layout]);
+
+  const childEdgeGroups = useMemo(() => {
+    const groups = new Map<string, typeof layout.edges>();
+    layout.edges.forEach((edge) => {
+      const arr = groups.get(edge.toId) || [];
+      arr.push(edge);
+      groups.set(edge.toId, arr);
+    });
+    return groups;
+  }, [layout]);
 
   return (
     <div className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
@@ -90,16 +111,91 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
       <div className="w-full h-full overflow-auto">
         <div style={{ width, height }} className="relative min-h-full min-w-full">
           <svg width={width} height={height} className="absolute inset-0 pointer-events-none">
-            {layout.edges.map((edge) => {
+            {Array.from(childEdgeGroups.entries()).map(([childId, edges]) => {
+              const childRect = nodeRects.get(childId);
+              if (!childRect) return null;
+              if (edges.length >= 2) {
+                const parents = edges
+                  .map((edge) => {
+                    const rect = nodeRects.get(edge.fromId);
+                    const node = nodeById.get(edge.fromId);
+                    if (!rect || !node) return null;
+                    return { rect, node, edge };
+                  })
+                  .filter(Boolean) as Array<{
+                    rect: { left: number; top: number };
+                    node: typeof layout.nodes[number];
+                    edge: typeof layout.edges[number];
+                  }>;
+                if (parents.length < 2) {
+                  // Fallback to single line if only one parent with rect.
+                  const fallbackEdge = parents[0];
+                  if (!fallbackEdge) return null;
+                  const fromX = fallbackEdge.rect.left + cardWidth / 2;
+                  const fromY = fallbackEdge.rect.top + cardHeight;
+                  const toX = childRect.left + cardWidth / 2;
+                  const toY = childRect.top;
+                  const midY = (fromY + toY) / 2;
+                  const dash = fallbackEdge.node.placeholder ? '6,5' : 'none';
+                  return (
+                    <path
+                      key={`${fallbackEdge.edge.id}-single`}
+                      d={`M${fromX},${fromY} L${fromX},${midY} L${toX},${midY} L${toX},${toY}`}
+                      stroke="#CBD5F5"
+                      strokeWidth={2}
+                      fill="none"
+                      strokeDasharray={dash}
+                    />
+                  );
+                }
+                parents.sort((a, b) => a.rect.left - b.rect.left);
+                const parentXs = parents.map((p) => p.rect.left + cardWidth / 2);
+                let unionY = Math.min(...parents.map((p) => p.rect.top + cardHeight)) + 20;
+                unionY = Math.min(unionY, childRect.top - 20);
+                const midX = (Math.min(...parentXs) + Math.max(...parentXs)) / 2;
+                return (
+                  <g key={`${childId}-union`}>
+                    {parents.map((parent, idx) => (
+                      <line
+                        key={`${childId}-parent-${idx}`}
+                        x1={parent.rect.left + cardWidth / 2}
+                        y1={parent.rect.top + cardHeight}
+                        x2={parent.rect.left + cardWidth / 2}
+                        y2={unionY}
+                        stroke="#CBD5F5"
+                        strokeWidth={2}
+                        strokeDasharray={parent.node.placeholder ? '6,5' : 'none'}
+                      />
+                    ))}
+                    <line
+                      x1={Math.min(...parentXs)}
+                      x2={Math.max(...parentXs)}
+                      y1={unionY}
+                      y2={unionY}
+                      stroke="#CBD5F5"
+                      strokeWidth={2}
+                    />
+                    <line
+                      x1={midX}
+                      x2={midX}
+                      y1={unionY}
+                      y2={childRect.top}
+                      stroke="#CBD5F5"
+                      strokeWidth={2}
+                    />
+                  </g>
+                );
+              }
+              const edge = edges[0];
+              const parentNode = nodeById.get(edge.fromId);
               const fromRect = nodeRects.get(edge.fromId);
-              const toRect = nodeRects.get(edge.toId);
-              if (!fromRect || !toRect) return null;
+              if (!fromRect || !parentNode) return null;
               const fromX = fromRect.left + cardWidth / 2;
               const fromY = fromRect.top + cardHeight;
-              const toX = toRect.left + cardWidth / 2;
-              const toY = toRect.top;
-              const dash = layout.nodes.find((n) => n.id === edge.fromId)?.placeholder ? '6,5' : 'none';
+              const toX = childRect.left + cardWidth / 2;
+              const toY = childRect.top;
               const midY = (fromY + toY) / 2;
+              const dash = parentNode.placeholder ? '6,5' : 'none';
               return (
                 <path
                   key={edge.id}
@@ -144,10 +240,31 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                 disabled={!node.person}
                 onClick={() => node.person && onPersonSelect(node.person)}
               >
-                {node.person && siblingHints[node.person.id] && (
-                  <div className="absolute -right-3 top-1/2 -translate-y-1/2 bg-white border border-slate-200 rounded-full shadow px-1 text-[10px] text-slate-500">
-                    ⇢
-                  </div>
+                {node.person && siblingHints[node.person.id] && onExpandSiblings && (
+                  <>
+                    <button
+                      type="button"
+                      className="absolute -left-4 top-1/2 -translate-y-1/2 bg-white border border-slate-200 rounded-full shadow p-1 text-slate-500 hover:bg-slate-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExpandSiblings?.(node.person!.id);
+                      }}
+                      aria-label="Show siblings"
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      className="absolute -right-4 top-1/2 -translate-y-1/2 bg-white border border-slate-200 rounded-full shadow p-1 text-slate-500 hover:bg-slate-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExpandSiblings?.(node.person!.id);
+                      }}
+                      aria-label="Show siblings"
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </>
                 )}
                 <div className="flex flex-col items-center text-center gap-2">
                   <div
@@ -189,6 +306,32 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     </div>
                   )}
                 </div>
+                {node.person && ancestorsRemaining && node.column === layout.minColumn && onExpandAncestors && (
+                  <button
+                    type="button"
+                    className="absolute left-1/2 -translate-x-1/2 -top-4 bg-white border border-slate-200 rounded-full shadow p-1 text-slate-500 hover:bg-slate-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onExpandAncestors?.();
+                    }}
+                    aria-label="Show more ancestors"
+                  >
+                    <ChevronUp className="w-3 h-3" />
+                  </button>
+                )}
+                {node.person && descendantsRemaining && node.column === layout.maxColumn && onExpandDescendants && (
+                  <button
+                    type="button"
+                    className="absolute left-1/2 -translate-x-1/2 -bottom-4 bg-white border border-slate-200 rounded-full shadow p-1 text-slate-500 hover:bg-slate-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onExpandDescendants?.();
+                    }}
+                    aria-label="Show more descendants"
+                  >
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                )}
               </button>
             );
           })}

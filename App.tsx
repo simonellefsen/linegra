@@ -27,6 +27,15 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
+const PARENTAL_REL_TYPES: Relationship['type'][] = [
+  'bio_father',
+  'bio_mother',
+  'adoptive_father',
+  'adoptive_mother',
+  'step_parent',
+  'guardian'
+];
+
 const App: React.FC = () => {
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'tree' | 'records' | 'settings' | 'profile'>('home');
@@ -413,13 +422,14 @@ useEffect(() => {
     const visibleIds = new Set(filteredPeople.map(p => p.id));
     return treeRelationships.filter(rel => visibleIds.has(rel.personId) && visibleIds.has(rel.relatedId));
   }, [treeRelationships, filteredPeople]);
+  const parentalRelationshipSet = useMemo(() => new Set<Relationship['type']>(PARENTAL_REL_TYPES), []);
 
   const focusPersonId = pedigreeFocusId ?? selectedPerson?.id ?? treePeople[0]?.id;
   const focusPerson = focusPersonId ? treePeople.find((p) => p.id === focusPersonId) ?? null : null;
 
   const pedigreeScope = useMemo(() => {
     if (!focusPersonId) {
-      return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {} };
+      return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
     }
     return computePedigreeScope(filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth);
   }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth]);
@@ -427,6 +437,15 @@ useEffect(() => {
   const pedigreeAllowsPlaceholders = !!currentUser?.isAdmin;
   const siblingHints = pedigreeScope.siblingHints || {};
   const childHints = pedigreeScope.childHints || {};
+  const handleExpandSiblings = useCallback((personId: string) => {
+    const parentLink = treeRelationships.find(
+      (rel) => rel.relatedId === personId && parentalRelationshipSet.has(rel.type)
+    );
+    if (!parentLink) return;
+    const parent = treePeople.find((p) => p.id === parentLink.personId);
+    if (!parent) return;
+    setPedigreeFocusId(parent.id);
+  }, [treeRelationships, parentalRelationshipSet, treePeople]);
 
   const [treeStatistics, setTreeStatistics] = useState<TreeStatistics | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -1116,6 +1135,13 @@ useEffect(() => {
                           descendantsRemaining={pedigreeScope.hasMoreDescendants}
                           siblingHints={siblingHints}
                           childHints={childHints}
+                          onExpandAncestors={() =>
+                            setAncestorDepth((depth) => Math.min(MAX_ANCESTOR_DEPTH, depth + 1))
+                          }
+                          onExpandDescendants={() =>
+                            setDescendantDepth((depth) => Math.min(MAX_DESCENDANT_DEPTH, depth + 1))
+                          }
+                          onExpandSiblings={handleExpandSiblings}
                         />
                       </>
                     ) : (
