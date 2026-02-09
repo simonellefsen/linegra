@@ -144,6 +144,7 @@ const mapDbTree = (row: any): FamilyTreeType => {
     themeColor: row.theme_color ?? undefined,
     metadata,
     defaultProbandId: metadata?.defaultProbandId ?? null,
+    defaultProbandLabel: metadata?.defaultProbandLabel ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastModified: row.updated_at
@@ -236,7 +237,7 @@ export const deleteFamilyTreeRecord = async (treeId: string, actor?: ImportActor
 
 export const updateTreeSettings = async (
   treeId: string,
-  payload: { isPublic?: boolean; probandId?: string | null },
+  payload: { isPublic?: boolean; probandId?: string | null; probandLabel?: string | null },
   actor?: ImportActor | null
 ): Promise<FamilyTreeType> => {
   if (!isSupabaseConfigured()) {
@@ -247,6 +248,7 @@ export const updateTreeSettings = async (
     target_tree_id: treeId,
     payload_is_public: typeof payload.isPublic === 'boolean' ? payload.isPublic : null,
     payload_proband_id: payload.probandId ?? null,
+    payload_proband_label: payload.probandLabel ?? null,
     payload_actor_id: normalizedActor.id,
     payload_actor_name: normalizedActor.name,
   });

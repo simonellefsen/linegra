@@ -52,13 +52,36 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   const confirmTarget = sortedTrees.find((t) => t.id === pendingDeleteId);
   const disableDelete = sortedTrees.length <= 1;
 
+  const extractYear = (value?: string | null) => {
+    if (!value) return null;
+    const match = value.match(/(\d{4})/);
+    return match ? match[1] : null;
+  };
+
+  const formatProbandDisplay = (tree: FamilyTreeSummary) =>
+    tree.defaultProbandLabel ||
+    tree.metadata?.defaultProbandLabel ||
+    tree.metadata?.defaultProbandName ||
+    tree.defaultProbandId ||
+    null;
+
+  const formatCandidateLabel = (candidate: Person) => {
+    const name = `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim() || candidate.id;
+    const birthYear = extractYear(candidate.birthDate);
+    const deathYear = extractYear(candidate.deathDate);
+    const vital =
+      birthYear || deathYear
+        ? ` (${birthYear ? `b. ${birthYear}` : ''}${birthYear && deathYear ? ' – ' : ''}${
+            deathYear ? `d. ${deathYear}` : ''
+          })`
+        : '';
+    return `${name}${vital}`;
+  };
+
   const beginEditSettings = (tree: FamilyTreeSummary) => {
     setEditingTreeId(tree.id);
     setEditVisibility(tree.isPublic);
-    const initialLabel =
-      tree.metadata?.defaultProbandName ||
-      tree.metadata?.defaultProbandLabel ||
-      (tree.defaultProbandId ?? '');
+    const initialLabel = formatProbandDisplay(tree) || '';
     setEditProbandId(tree.defaultProbandId ?? null);
     setEditProbandLabel(initialLabel);
     setProbandSearchTerm('');
@@ -94,7 +117,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
 
   const handleSelectProband = (candidate: Person) => {
     setEditProbandId(candidate.id);
-    const label = `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim() || candidate.id;
+    const label = formatCandidateLabel(candidate);
     setEditProbandLabel(label);
     setProbandResults([]);
   };
@@ -102,7 +125,11 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   const handleSaveSettings = async (treeId: string) => {
     setSettingsError(null);
     try {
-      await onUpdateSettings(treeId, { isPublic: editVisibility, probandId: editProbandId });
+      await onUpdateSettings(treeId, {
+        isPublic: editVisibility,
+        probandId: editProbandId,
+        probandLabel: editProbandLabel || null,
+      });
       handleCancelEdit();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update tree settings.';
@@ -307,8 +334,8 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                     <Database className="w-5 h-5 text-slate-500" />
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Default Proband</p>
-                      <p className="text-lg font-black text-slate-900">
-                        {tree.metadata?.defaultProbandName || tree.defaultProbandId || 'Not selected'}
+                      <p className="text-sm font-semibold text-slate-900">
+                        {formatProbandDisplay(tree) || 'Not selected'}
                       </p>
                     </div>
                   </div>

@@ -222,6 +222,7 @@ export interface FamilyTree {
   themeColor?: string | null;
   metadata?: Record<string, any>;
   defaultProbandId?: string | null;
+  defaultProbandLabel?: string | null;
   createdAt?: string;
   updatedAt?: string;
   lastModified?: string;

@@ -2,6 +2,7 @@ create or replace function public.admin_update_tree_settings(
   target_tree_id uuid,
   payload_is_public boolean default null,
   payload_proband_id uuid default null,
+  payload_proband_label text default null,
   payload_actor_id uuid default null,
   payload_actor_name text default 'System'
 )
@@ -25,8 +26,12 @@ begin
 
   if payload_proband_id is null then
     next_metadata := next_metadata - 'defaultProbandId';
+    next_metadata := next_metadata - 'defaultProbandLabel';
   else
     next_metadata := jsonb_set(next_metadata, '{defaultProbandId}', to_jsonb(payload_proband_id::text), true);
+    if payload_proband_label is not null then
+      next_metadata := jsonb_set(next_metadata, '{defaultProbandLabel}', to_jsonb(payload_proband_label), true);
+    end if;
   end if;
 
   update public.family_trees
@@ -47,7 +52,8 @@ begin
     target_tree_id,
     jsonb_build_object(
       'is_public', updated_tree.is_public,
-      'defaultProbandId', payload_proband_id
+      'defaultProbandId', payload_proband_id,
+      'defaultProbandLabel', payload_proband_label
     )
   );
 
