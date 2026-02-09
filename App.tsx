@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics } from './services/archive';
 import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
+import { computePedigreeScope } from './lib/pedigreeScope';
 import FamilyTree from './components/FamilyTree';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
 import PersonProfile from './components/PersonProfile';
@@ -415,6 +416,13 @@ useEffect(() => {
 
   const focusPersonId = pedigreeFocusId ?? selectedPerson?.id ?? treePeople[0]?.id;
   const focusPerson = focusPersonId ? treePeople.find((p) => p.id === focusPersonId) ?? null : null;
+
+  const pedigreeScope = useMemo(() => {
+    if (!focusPersonId) {
+      return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false };
+    }
+    return computePedigreeScope(filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth);
+  }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth]);
 
   const [treeStatistics, setTreeStatistics] = useState<TreeStatistics | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -1091,13 +1099,16 @@ useEffect(() => {
                           </div>
                         </div>
                         <PedigreeTree
-                          people={filteredPeople}
-                          relationships={filteredRelationships}
+                          people={pedigreeScope.people}
+                          relationships={pedigreeScope.relationships}
                           focusId={focusPersonId}
                           selectedPersonId={selectedPerson?.id}
                           onPersonSelect={handlePersonSelect}
                           maxAncestors={ancestorDepth}
                           maxDescendants={descendantDepth}
+                          showPivots
+                          ancestorsRemaining={pedigreeScope.hasMoreAncestors}
+                          descendantsRemaining={pedigreeScope.hasMoreDescendants}
                         />
                       </>
                     ) : (
