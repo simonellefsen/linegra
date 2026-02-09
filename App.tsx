@@ -419,12 +419,13 @@ useEffect(() => {
 
   const pedigreeScope = useMemo(() => {
     if (!focusPersonId) {
-      return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false };
+      return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {} };
     }
     return computePedigreeScope(filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth);
   }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth]);
 
   const pedigreeAllowsPlaceholders = !!currentUser?.isAdmin;
+  const siblingHints = pedigreeScope.siblingHints || {};
 
   const [treeStatistics, setTreeStatistics] = useState<TreeStatistics | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -1112,6 +1113,7 @@ useEffect(() => {
                           showPlaceholders={pedigreeAllowsPlaceholders}
                           ancestorsRemaining={pedigreeScope.hasMoreAncestors}
                           descendantsRemaining={pedigreeScope.hasMoreDescendants}
+                          siblingHints={siblingHints}
                         />
                       </>
                     ) : (

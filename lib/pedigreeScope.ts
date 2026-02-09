@@ -5,6 +5,7 @@ export interface PedigreeScopeResult {
   relationships: Relationship[];
   hasMoreAncestors: boolean;
   hasMoreDescendants: boolean;
+  siblingHints: Record<string, boolean>;
 }
 
 const PARENTAL_TYPES: RelationshipType[] = [
@@ -26,13 +27,13 @@ export const computePedigreeScope = (
   maxDescendantDepth: number
 ): PedigreeScopeResult => {
   if (!focusId || !people.length) {
-    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false };
+    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {} };
   }
 
   const peopleById = new Map<string, Person>(people.map((p) => [p.id, p]));
   const focus = peopleById.get(focusId);
   if (!focus) {
-    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false };
+    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {} };
   }
 
   const parentLinksByChild = new Map<string, Relationship[]>();
@@ -48,6 +49,7 @@ export const computePedigreeScope = (
   const allowedRelationshipIds = new Set<string>();
   let hasMoreAncestors = false;
   let hasMoreDescendants = false;
+  const siblingHints: Record<string, boolean> = {};
 
   const ancestorQueue: Array<{ id: string; depth: number }> = [{ id: focus.id, depth: 0 }];
   while (ancestorQueue.length) {
@@ -93,6 +95,16 @@ export const computePedigreeScope = (
     });
   }
 
+
+  childLinksByParent.forEach((links) => {
+    if (links.length <= 1) return;
+    links.forEach((link) => {
+      if (allowedPersonIds.has(link.relatedId)) {
+        siblingHints[link.relatedId] = true;
+      }
+    });
+  });
+
   const scopedPeople = people.filter((person) => allowedPersonIds.has(person.id));
   const scopedRelationships = relationships.filter((rel) => allowedRelationshipIds.has(rel.id));
 
@@ -101,5 +113,6 @@ export const computePedigreeScope = (
     relationships: scopedRelationships,
     hasMoreAncestors,
     hasMoreDescendants,
+    siblingHints,
   };
 };
