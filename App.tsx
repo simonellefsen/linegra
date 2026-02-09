@@ -8,7 +8,7 @@ import PedigreeTree from './components/InteractiveTree/PedigreeTree';
 import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
 import ImportExport from './components/ImportExport';
-import TreeLandingPage from './components/TreeLandingPage';
+import TreeLandingPage, { TreeStatistics } from './components/TreeLandingPage';
 import AdminTreesPanel from './components/AdminTreesPanel';
 import { getAvatarForPerson } from './lib/avatar';
 import { 
@@ -98,6 +98,13 @@ const App: React.FC = () => {
   });
   const [landingLoading, setLandingLoading] = useState(false);
   const [landingError, setLandingError] = useState<string | null>(null);
+  const parseYear = useCallback((value?: string | null) => {
+    if (!value) return null;
+    const match = value.match(/(\d{4})/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    return Number.isNaN(year) ? null : year;
+  }, []);
   const canViewPrivate = !!currentUser?.isAdmin;
   const filterVisiblePeople = useCallback(
     (list: Person[]) => (canViewPrivate ? list : list.filter((person) => !person.isPrivate)),
@@ -439,6 +446,136 @@ useEffect(() => {
 
   const focusPersonId = pedigreeFocusId ?? selectedPerson?.id ?? treePeople[0]?.id;
   const focusPerson = focusPersonId ? treePeople.find((p) => p.id === focusPersonId) ?? null : null;
+
+  const treeStatistics = useMemo<TreeStatistics | null>(() => {
+    if (!treePeople.length) return null;
+    const personLookup = new Map(treePeople.map((p) => [p.id, p]));
+    let maleCount = 0;
+    let femaleCount = 0;
+    let unknownGenderCount = 0;
+    let livingCount = 0;
+    let deceasedCount = 0;
+    let totalLifespan = 0;
+    let lifespanSamples = 0;
+    let totalLifespan16 = 0;
+    let lifespanSamples16 = 0;
+    let oldestRecord: { person: Person; year: number } | null = null;
+
+    const parentTypes = new Set([
+      'bio_father',
+      'bio_mother',
+      'adoptive_father',
+      'adoptive_mother',
+      'step_parent',
+      'guardian',
+    ]);
+    const childCounts = new Map<string, number>();
+    const marriageCounts = new Map<string, number>();
+    const centuryMap = new Map<
+      number,
+      { people: number; lifespanTotal: number; lifespanSamples: number }
+    >();
+
+    treeRelationships.forEach((rel) => {
+      if (parentTypes.has(rel.type)) {
+        childCounts.set(rel.personId, (childCounts.get(rel.personId) || 0) + 1);
+      }
+      if (rel.type === 'marriage') {
+        [rel.personId, rel.relatedId].forEach((id) => {
+          marriageCounts.set(id, (marriageCounts.get(id) || 0) + 1);
+        });
+      }
+    });
+
+    treePeople.forEach((person) => {
+      if (person.gender === 'M') maleCount += 1;
+      else if (person.gender === 'F') femaleCount += 1;
+      else unknownGenderCount += 1;
+
+      const living = typeof person.isLiving === 'boolean' ? person.isLiving : !person.deathDate;
+      if (living) livingCount += 1;
+      else deceasedCount += 1;
+
+      const birthYear = parseYear(person.birthDate);
+      const deathYear = parseYear(person.deathDate);
+      if (birthYear !== null && deathYear !== null && deathYear >= birthYear) {
+        totalLifespan += deathYear - birthYear;
+        lifespanSamples += 1;
+        if (deathYear - birthYear >= 16) {
+          totalLifespan16 += deathYear - birthYear;
+          lifespanSamples16 += 1;
+        }
+      }
+      if (birthYear !== null) {
+        if (!oldestRecord || birthYear < oldestRecord.year) {
+          oldestRecord = { person, year: birthYear };
+        }
+        const centuryStart = Math.floor(birthYear / 100) * 100;
+        const bucket =
+          centuryMap.get(centuryStart) || {
+            people: 0,
+            lifespanTotal: 0,
+            lifespanSamples: 0,
+          };
+        bucket.people += 1;
+        if (birthYear !== null && deathYear !== null && deathYear >= birthYear) {
+          bucket.lifespanTotal += deathYear - birthYear;
+          bucket.lifespanSamples += 1;
+        }
+        centuryMap.set(centuryStart, bucket);
+      }
+    });
+
+    const marriages = treeRelationships.filter((rel) => rel.type === 'marriage').length;
+    const averageLifespan = lifespanSamples ? Math.round(totalLifespan / lifespanSamples) : null;
+    const averageAgeOver16 = lifespanSamples16 ? Math.round(totalLifespan16 / lifespanSamples16) : null;
+
+    let maxChildrenId: string | null = null;
+    let maxChildrenCount = 0;
+    childCounts.forEach((count, id) => {
+      if (count > maxChildrenCount) {
+        maxChildrenCount = count;
+        maxChildrenId = id;
+      }
+    });
+
+    let maxMarriagesId: string | null = null;
+    let maxMarriagesCount = 0;
+    marriageCounts.forEach((count, id) => {
+      if (count > maxMarriagesCount) {
+        maxMarriagesCount = count;
+        maxMarriagesId = id;
+      }
+    });
+
+    const centuryStats = Array.from(centuryMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([startYear, data]) => ({
+        label: `${startYear}s`,
+        startYear,
+        people: data.people,
+        averageAge: data.lifespanSamples ? Math.round(data.lifespanTotal / data.lifespanSamples) : null,
+      }));
+
+    return {
+      totalIndividuals: treePeople.length,
+      maleCount,
+      femaleCount,
+      unknownGenderCount,
+      livingCount,
+      deceasedCount,
+      marriages,
+      averageLifespan,
+      averageAgeOver16,
+      oldestPerson: oldestRecord?.person ?? null,
+      oldestYear: oldestRecord?.year ?? null,
+      mostChildrenPerson: maxChildrenId ? personLookup.get(maxChildrenId) ?? null : null,
+      mostChildrenCount: maxChildrenCount || null,
+      mostMarriagesPerson: maxMarriagesId ? personLookup.get(maxMarriagesId) ?? null : null,
+      mostMarriagesCount: maxMarriagesCount || null,
+      centuryStats
+    };
+  }, [treePeople, treeRelationships, parseYear]);
 
   const localTreeSummaries = useMemo<FamilyTreeSummary[]>(() => {
     return trees.map((tree) => {
@@ -972,6 +1109,7 @@ useEffect(() => {
                   mediaHighlights={landingCards.randomMedia}
                   onPersonSelect={handlePersonSelect}
                   isAdmin={currentUser?.isAdmin || false}
+                  stats={treeStatistics}
                   loading={landingLoading}
                   error={landingError}
                 />

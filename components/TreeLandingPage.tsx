@@ -7,9 +7,33 @@ import {
   Clock,
   ChevronRight,
   TrendingUp,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Users,
+  Baby,
+  Heart,
+  Activity,
+  UserPlus
 } from 'lucide-react';
 import { getAvatarForPerson } from '../lib/avatar';
+
+export interface TreeStatistics {
+  totalIndividuals: number;
+  maleCount: number;
+  femaleCount: number;
+  unknownGenderCount: number;
+  livingCount: number;
+  deceasedCount: number;
+  marriages: number;
+  averageLifespan: number | null;
+  averageAgeOver16: number | null;
+  oldestPerson: Person | null;
+  oldestYear: number | null;
+  mostChildrenPerson: Person | null;
+  mostChildrenCount: number | null;
+  mostMarriagesPerson: Person | null;
+  mostMarriagesCount: number | null;
+  centuryStats: Array<{ label: string; startYear: number; people: number; averageAge: number | null }>;
+}
 
 interface TreeLandingPageProps {
   tree: FamilyTree;
@@ -19,6 +43,7 @@ interface TreeLandingPageProps {
   mediaHighlights: Person[];
   onPersonSelect: (person: Person) => void;
   isAdmin: boolean;
+  stats: TreeStatistics | null;
   loading?: boolean;
   error?: string | null;
 }
@@ -31,10 +56,12 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({
   mediaHighlights,
   onPersonSelect,
   isAdmin,
+  stats,
   loading,
   error
 }) => {
-
+  const centuryMaxPopulation =
+    stats && stats.centuryStats.length ? Math.max(...stats.centuryStats.map((bucket) => bucket.people)) : 1;
   return (
     <div className="space-y-8 pb-24">
       {/* Hero Header */}
@@ -59,12 +86,104 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({
               Explore Tree
               <ChevronRight className="w-4 h-4" />
             </button>
-            <button className="bg-slate-800 border border-slate-700 text-white px-6 py-3 rounded-2xl font-bold hover:bg-slate-700 transition-all">
-              Statistics
-            </button>
+            {stats && (
+              <div className="bg-slate-800 border border-slate-700 text-white px-6 py-3 rounded-2xl font-semibold flex flex-col sm:flex-row gap-4">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Population</p>
+                  <p className="text-xl font-serif font-bold">{stats.totalIndividuals.toLocaleString()} individuals</p>
+                  <p className="text-xs text-slate-400">
+                    ♂ {stats.maleCount} • ♀ {stats.femaleCount} • ? {stats.unknownGenderCount}
+                  </p>
+                </div>
+                <div className="flex flex-col text-sm text-slate-200 gap-2">
+                  <span className="flex items-center gap-2"><Baby className="w-4 h-4 text-emerald-400" />{stats.livingCount} living</span>
+                  <span className="flex items-center gap-2"><Heart className="w-4 h-4 text-slate-200" />{stats.deceasedCount} passed</span>
+                  <span className="flex items-center gap-2"><Users className="w-4 h-4 text-blue-300" />{stats.marriages} marriages</span>
+                  <span className="flex items-center gap-2"><Activity className="w-4 h-4 text-amber-300" />Avg lifespan {stats.averageLifespan ?? '—'}y</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {stats && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-slate-200 shadow-sm space-y-5">
+            <h3 className="flex items-center gap-2 font-serif font-bold text-xl text-slate-900">
+              <Users className="w-5 h-5 text-blue-500" /> Key Benchmarks
+            </h3>
+            <div className="space-y-4 text-sm text-slate-600">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Average Age</p>
+                  <p className="text-lg font-serif font-bold text-slate-900">{stats.averageLifespan ?? '—'} years</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Avg 16+</p>
+                  <p className="text-lg font-serif font-bold text-slate-900">{stats.averageAgeOver16 ?? '—'} years</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-slate-500"><Users className="w-4 h-4 text-slate-400" />Most Children</span>
+                {stats.mostChildrenPerson ? (
+                  <button onClick={() => onPersonSelect(stats.mostChildrenPerson!)} className="text-blue-600 text-sm font-semibold hover:underline">
+                    {stats.mostChildrenPerson.firstName} {stats.mostChildrenPerson.lastName} ({stats.mostChildrenCount} kids)
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-400 italic">No parent data</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-slate-500"><UserPlus className="w-4 h-4 text-slate-400" />Most Marriages</span>
+                {stats.mostMarriagesPerson ? (
+                  <button onClick={() => onPersonSelect(stats.mostMarriagesPerson!)} className="text-blue-600 text-sm font-semibold hover:underline">
+                    {stats.mostMarriagesPerson.firstName} {stats.mostMarriagesPerson.lastName} ({stats.mostMarriagesCount})
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-400 italic">No marriage data</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-slate-500"><Activity className="w-4 h-4 text-slate-400" />Oldest Birth Record</span>
+                {stats.oldestPerson ? (
+                  <button onClick={() => onPersonSelect(stats.oldestPerson!)} className="text-blue-600 text-sm font-semibold hover:underline">
+                    {stats.oldestPerson.firstName} {stats.oldestPerson.lastName} ({stats.oldestYear})
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-400 italic">Unknown</span>
+                )}
+              </div>
+            </div>
+          </section>
+          {stats.centuryStats.length > 0 && (
+            <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-slate-200 shadow-sm space-y-5">
+              <h3 className="flex items-center gap-2 font-serif font-bold text-xl text-slate-900">
+                <Activity className="w-5 h-5 text-emerald-500" /> Century Timeline
+              </h3>
+              <div className="space-y-4">
+                {stats.centuryStats.map((bucket) => {
+                  const width = Math.max(4, (bucket.people / centuryMaxPopulation) * 100);
+                  return (
+                    <div key={bucket.startYear}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="font-semibold text-slate-700">{bucket.label}</span>
+                        <span className="text-slate-400">{bucket.people} people</span>
+                      </div>
+                      <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-slate-900" style={{ width: `${width}%` }} />
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Avg age {bucket.averageAge ? `${bucket.averageAge}y` : '—'}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
 
       {/* Widgets Grid */}
       {error && (
@@ -73,7 +192,42 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({
         </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
-        
+        {stats && (
+          <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-slate-200 shadow-sm flex flex-col h-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="flex items-center gap-2 font-serif font-bold text-xl text-slate-900">
+                <Activity className="w-5 h-5 text-emerald-500" /> Demographic Pulse
+              </h3>
+            </div>
+            <div className="space-y-4 text-sm text-slate-600 flex-1">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-900">Oldest Birth Record</span>
+                {stats.oldestPerson ? (
+                  <button onClick={() => stats.oldestPerson && onPersonSelect(stats.oldestPerson)} className="text-blue-600 text-xs font-bold hover:underline">
+                    {stats.oldestPerson.firstName} {stats.oldestPerson.lastName} ({stats.oldestYear})
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-400 italic">Unknown</span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-center">
+                <div className="bg-slate-50 rounded-2xl p-3">
+                  <p className="text-[10px] uppercase text-slate-400 font-black tracking-[0.2em]">Average Lifespan</p>
+                  <p className="text-2xl font-serif font-bold text-slate-900">
+                    {stats.averageLifespan ? `${stats.averageLifespan}y` : '—'}
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-2xl p-3">
+                  <p className="text-[10px] uppercase text-slate-400 font-black tracking-[0.2em]">Gender Split</p>
+                  <p className="text-sm text-slate-600">
+                    ♂ {stats.maleCount} • ♀ {stats.femaleCount} • ? {stats.unknownGenderCount}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* What's New */}
         <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-slate-200 shadow-sm flex flex-col h-full">
           <div className="flex items-center justify-between mb-6">
