@@ -86,6 +86,7 @@ export const buildPedigreeLayout = (
   let placeholderCounter = 0;
   const ancestorVisited = new Set<string>();
   const descendantVisited = new Set<string>();
+  const descendantSpanCache = new Map<string, number>();
   const edgeIds = new Set<string>();
 
   const assignRow = (column: number) => {
@@ -202,7 +203,38 @@ export const buildPedigreeLayout = (
     }
   };
 
-  const descendantRowDelta = (depth: number) => Math.max(1, Math.pow(1.4, depth));
+  const computeDescendantSpan = (personId: string, depth: number, stack: Set<string> = new Set()): number => {
+    const cacheKey = `${personId}:${depth}`;
+    if (descendantSpanCache.has(cacheKey)) return descendantSpanCache.get(cacheKey)!;
+    if (depth >= maxDescendantDepth) {
+      descendantSpanCache.set(cacheKey, 1);
+      return 1;
+    }
+    if (stack.has(cacheKey)) {
+      return 1;
+    }
+    stack.add(cacheKey);
+    const childLinks = childLinksByParent.get(personId) || [];
+    const uniqueChildIds = Array.from(new Set(childLinks.map((link) => link.relatedId)));
+    if (!uniqueChildIds.length) {
+      descendantSpanCache.set(cacheKey, 1);
+      stack.delete(cacheKey);
+      return 1;
+    }
+    let total = 0;
+    uniqueChildIds.forEach((childId) => {
+      const child = peopleById.get(childId);
+      if (!child) {
+        total += 1;
+        return;
+      }
+      total += computeDescendantSpan(childId, depth + 1, stack);
+    });
+    if (total === 0) total = uniqueChildIds.length;
+    descendantSpanCache.set(cacheKey, total);
+    stack.delete(cacheKey);
+    return total;
+  };
 
   const buildDescendants = (parentId: string, column: number, depth: number) => {
     if (depth >= maxDescendantDepth) return;
@@ -211,13 +243,20 @@ export const buildPedigreeLayout = (
     if (!uniqueChildIds.length) return;
     const parentNode = nodeMap.get(parentId);
     if (!parentNode) return;
-    const delta = descendantRowDelta(depth);
-    const startRow = parentNode.row - ((uniqueChildIds.length - 1) * delta) / 2;
-    uniqueChildIds.forEach((childId, index) => {
+    const spans = uniqueChildIds.map((childId) => {
       const child = peopleById.get(childId);
+      if (!child) return 1;
+      return computeDescendantSpan(childId, depth + 1);
+    });
+    const totalSpan = spans.reduce((sum, span) => sum + span, 0) || uniqueChildIds.length;
+    let cursor = parentNode.row - totalSpan / 2;
+    uniqueChildIds.forEach((childId, index) => {
+      const span = spans[index] || 1;
+      const child = peopleById.get(childId);
+      const childRowCenter = cursor + span / 2;
+      cursor += span;
       if (!child) return;
-      const row = startRow + index * delta;
-      const childNode = createPersonNode(child, column, 'descendant', parentId, row);
+      const childNode = createPersonNode(child, column, 'descendant', parentId, childRowCenter);
       addParentEdge(parentNode, childNode);
       if (!descendantVisited.has(child.id)) {
         descendantVisited.add(child.id);
