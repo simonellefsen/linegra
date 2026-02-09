@@ -440,6 +440,11 @@ useEffect(() => {
     return computePedigreeScope(filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth);
   }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth]);
 
+  const handleFocusDefaultProband = useCallback(() => {
+    if (!treeDefaultProbandId) return;
+    setPedigreeFocusId(treeDefaultProbandId);
+  }, [treeDefaultProbandId]);
+
   const pedigreeAllowsPlaceholders = !!currentUser?.isAdmin;
   const siblingHints = pedigreeScope.siblingHints || {};
   const childHints = pedigreeScope.childHints || {};
@@ -1177,6 +1182,14 @@ useEffect(() => {
                               className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.2em]"
                             >
                               Reset
+                            </button>
+                            <button
+                              onClick={handleFocusDefaultProband}
+                              disabled={!treeDefaultProbandId}
+                              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.2em] flex items-center gap-2 disabled:opacity-40"
+                            >
+                              <Home className="w-4 h-4" />
+                              Home
                             </button>
                           </div>
                         </div>
