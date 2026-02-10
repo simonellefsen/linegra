@@ -2,7 +2,18 @@ import React, { useMemo, useState } from 'react';
 import { Person, Relationship } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
 import { getAvatarForPerson } from '../../lib/avatar';
-import { Baby, Droplet, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Home } from 'lucide-react';
+import {
+  Baby,
+  Droplet,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  Home,
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 
 interface PedigreeTreeProps {
   people: Person[];
@@ -28,6 +39,9 @@ const horizontalSpacing = 220;
 const verticalSpacing = 180;
 const cardWidth = 180;
 const cardHeight = 120;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2;
+const ZOOM_STEP = 0.15;
 
 const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   people,
@@ -49,6 +63,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   homeEnabled = false,
 }) => {
   const [minimapOpen, setMinimapOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const layout = useMemo(
     () =>
       buildPedigreeLayout(people, relationships, {
@@ -66,6 +81,8 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   const totalRows = layout.maxRow - layout.minRow + 1 || 1;
   const width = totalRows * horizontalSpacing + cardWidth;
   const height = totalGenerations * verticalSpacing + cardHeight;
+  const scaledWidth = width * zoom;
+  const scaledHeight = height * zoom;
 
   const nodeRects = useMemo(() => {
     const map = new Map<string, { left: number; top: number }>();
@@ -96,8 +113,12 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
 
   return (
     <div className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
-      <div className="w-full h-full overflow-auto">
-        <div style={{ width, height }} className="relative min-h-full min-w-full">
+      <div className="w-full h-full overflow-auto pb-20">
+        <div style={{ width: scaledWidth, height: scaledHeight }} className="relative min-h-full min-w-full">
+          <div
+            className="absolute top-0 left-0"
+            style={{ width, height, transform: `scale(${zoom})`, transformOrigin: 'top left' }}
+          >
           <svg width={width} height={height} className="absolute inset-0 pointer-events-none">
             {Array.from(childEdgeGroups.entries()).map(([childId, edges]) => {
               const childRect = nodeRects.get(childId);
@@ -323,50 +344,65 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
               </button>
             );
           })}
-
-          {minimapOpen && (
-            <div className="absolute bottom-24 right-4 bg-white/90 border border-slate-200 rounded-2xl shadow-2xl p-3 z-30">
-              <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-2">Overview</div>
-              <div className="relative w-40 h-24 bg-slate-50 rounded-xl overflow-hidden border border-slate-100">
-                {layout.nodes.map((node) => {
-                  const rect = nodeRects.get(node.id);
-                  if (!rect) return null;
-                  const miniX = (rect.left / width) * 160 + 10;
-                  const miniY = (rect.top / height) * 80 + 10;
-                  return (
-                    <span
-                      key={`mini-${node.id}`}
-                      className={`absolute w-2 h-2 rounded-sm ${node.person ? 'bg-slate-700' : 'bg-slate-300'}`}
-                      style={{ left: miniX, top: miniY }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </div>
-      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-white/85 border-t border-slate-200 backdrop-blur">
-        <button className="text-xs font-black uppercase tracking-[0.3em] text-slate-500 flex items-center gap-2">
+      {minimapOpen && (
+        <div className="absolute bottom-20 right-4 bg-white/90 border border-slate-200 rounded-2xl shadow-2xl p-3 z-30">
+          <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-2">Overview</div>
+          <div className="relative w-40 h-24 bg-slate-50 rounded-xl overflow-hidden border border-slate-100">
+            {layout.nodes.map((node) => {
+              const rect = nodeRects.get(node.id);
+              if (!rect) return null;
+              const miniX = (rect.left / width) * 160 + 10;
+              const miniY = (rect.top / height) * 80 + 10;
+              return (
+                <span
+                  key={`mini-${node.id}`}
+                  className={`absolute w-2 h-2 rounded-sm ${node.person ? 'bg-slate-700' : 'bg-slate-300'}`}
+                  style={{ left: miniX, top: miniY }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div className="absolute bottom-0 left-0 right-0 flex items-center gap-3 px-3 py-2 bg-white/90 border-t border-slate-200 backdrop-blur">
+        <button className="text-xs sm:text-sm font-black uppercase tracking-[0.2em] text-slate-600 flex items-center gap-2 px-2">
           Menu
+          <ChevronUp className="w-4 h-4" />
         </button>
-        <button
-          className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.3em] text-slate-500 flex items-center gap-2 disabled:opacity-40"
-          onClick={onFocusHome}
-          disabled={!homeEnabled || !onFocusHome}
-        >
-          <Home className="w-4 h-4" />
-          Home
-        </button>
-        <div className="flex items-center gap-2 text-slate-500">
+        <div className="ml-auto flex items-center text-slate-500 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden bg-white">
           <button
-            className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.3em]"
-            onClick={() => setMinimapOpen((prev) => !prev)}
+            className="w-11 h-11 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40"
+            onClick={onFocusHome}
+            disabled={!homeEnabled || !onFocusHome}
+            aria-label="Focus tree home person"
           >
-            {minimapOpen ? 'Hide Overview' : 'Overview'}
+            <Home className="w-5 h-5" />
           </button>
-          <button className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.3em]">
-            ⤢
+          <button
+            className="w-11 h-11 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40"
+            onClick={() => setZoom((current) => Math.min(MAX_ZOOM, Number((current + ZOOM_STEP).toFixed(2))))}
+            disabled={zoom >= MAX_ZOOM}
+            aria-label="Zoom in"
+          >
+            <ZoomIn className="w-5 h-5" />
+          </button>
+          <button
+            className="w-11 h-11 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40"
+            onClick={() => setZoom((current) => Math.max(MIN_ZOOM, Number((current - ZOOM_STEP).toFixed(2))))}
+            disabled={zoom <= MIN_ZOOM}
+            aria-label="Zoom out"
+          >
+            <ZoomOut className="w-5 h-5" />
+          </button>
+          <button
+            className={`w-11 h-11 flex items-center justify-center hover:bg-slate-50 ${minimapOpen ? 'text-slate-900' : ''}`}
+            onClick={() => setMinimapOpen((prev) => !prev)}
+            aria-label="Toggle overview"
+          >
+            <Maximize2 className="w-5 h-5" />
           </button>
         </div>
       </div>
