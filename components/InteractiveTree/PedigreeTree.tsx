@@ -3,8 +3,6 @@ import { Person, Relationship } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
 import { getAvatarForPerson } from '../../lib/avatar';
 import {
-  Baby,
-  Droplet,
   ChevronDown,
   ChevronUp,
   ChevronLeft,
@@ -47,10 +45,16 @@ interface PedigreeTreeProps {
 const horizontalSpacing = 220;
 const verticalSpacing = 180;
 const cardWidth = 180;
-const cardHeight = 120;
+const cardHeight = 152;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2;
 const ZOOM_STEP = 0.15;
+
+const extractYear = (value?: string) => {
+  if (!value) return null;
+  const match = value.match(/(\d{4})/);
+  return match ? match[1] : null;
+};
 
 const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   people,
@@ -241,20 +245,27 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             const rect = nodeRects.get(node.id);
             if (!rect) return null;
             const isSelected = node.person?.id === selectedPersonId;
-            const lifeTag =
-              node.person?.birthDate ||
-              node.person?.events?.find((ev) => /christen|baptis/i.test(ev.type || ''));
-            const LifeIcon = node.person?.birthDate ? Baby : Droplet;
-            const lifeLabel = node.person?.birthDate
-              ? node.person.birthDate
-              : lifeTag?.date ?? node.person?.deathDate ?? undefined;
+            const christeningEvent = node.person?.events?.find((ev) =>
+              /(^|\b)(chr|christen|bapt)/i.test(ev.type || '')
+            );
+            const deathOrBurialEvent = node.person?.events?.find((ev) =>
+              /(^|\b)(deat|death|buri|burial)/i.test(ev.type || '')
+            );
+            const birthYear =
+              extractYear(node.person?.birthDate) ?? extractYear(christeningEvent?.date);
+            const deathYear =
+              extractYear(node.person?.deathDate) ??
+              extractYear(node.person?.burialDate) ??
+              extractYear(deathOrBurialEvent?.date);
+            const lifeLabel =
+              birthYear && deathYear ? `${birthYear} - ${deathYear}` : birthYear || deathYear || undefined;
             const isPlaceholder = !!node.placeholder;
             const cardClasses = [
               'absolute',
               'rounded-[24px]',
               'shadow-lg',
               'px-4',
-              'py-4',
+              'py-3',
               'transition-all',
               'border',
               isPlaceholder ? 'bg-white/70 border-dashed border-slate-300 text-slate-400' : 'bg-white border-slate-200',
@@ -294,9 +305,9 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     </button>
                   </>
                 )}
-                <div className="flex flex-col items-center text-center gap-2">
+                <div className="flex h-full flex-col items-center text-center">
                   <div
-                    className={`w-16 h-16 rounded-2xl overflow-hidden ${
+                    className={`w-14 h-14 rounded-2xl overflow-hidden ${
                       node.placeholder ? 'bg-slate-100 border border-dashed border-slate-300' : ''
                     }`}
                   >
@@ -310,7 +321,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                       </div>
                     )}
                   </div>
-                  <div className="min-w-0 w-full">
+                  <div className="min-w-0 w-full mt-2">
                     {node.person ? (
                       <p className="text-sm font-bold text-slate-900 leading-5 line-clamp-2">
                         {node.person.firstName} {node.person.lastName}
@@ -321,18 +332,19 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                       </p>
                     )}
                   </div>
-                  {lifeLabel && (
-                    <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
-                      <LifeIcon className="w-3 h-3" />
-                      <span className="truncate">{lifeLabel}</span>
-                    </div>
-                  )}
-                  {node.person && childHints[node.person.id] && (
-                    <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 font-semibold">
-                      <ChevronDown className="w-3 h-3" />
-                      <span>Descendants</span>
-                    </div>
-                  )}
+                  <div className="mt-auto space-y-1">
+                    {lifeLabel && (
+                      <div className="flex items-center justify-center text-xs text-slate-500 font-medium">
+                        <span className="truncate">{lifeLabel}</span>
+                      </div>
+                    )}
+                    {node.person && childHints[node.person.id] && (
+                      <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 font-semibold">
+                        <ChevronDown className="w-3 h-3" />
+                        <span>Descendants</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {node.person && ancestorsRemaining && node.column === layout.minColumn && onExpandAncestors && (
                   <button
