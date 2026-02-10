@@ -448,9 +448,12 @@ useEffect(() => {
   }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth]);
 
   const handleFocusDefaultProband = useCallback(() => {
-    if (!treeDefaultProbandId) return;
-    setPedigreeFocusId(treeDefaultProbandId);
-  }, [treeDefaultProbandId]);
+    const targetFocusId = focusPersonId ?? treeDefaultProbandId;
+    if (!targetFocusId) return;
+    setPedigreeFocusId(targetFocusId);
+    setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
+    setDescendantDepth(0);
+  }, [focusPersonId, treeDefaultProbandId]);
 
   const pedigreeAllowsPlaceholders = !!currentUser?.isAdmin;
   const siblingHints = pedigreeScope.siblingHints || {};
@@ -1193,7 +1196,7 @@ useEffect(() => {
                           }
                           onExpandSiblings={handleExpandSiblings}
                           onFocusHome={handleFocusDefaultProband}
-                          homeEnabled={!!treeDefaultProbandId}
+                          homeEnabled={!!focusPersonId}
                           ancestorDepth={ancestorDepth}
                           descendantDepth={descendantDepth}
                           maxAncestorDepthLimit={MAX_ANCESTOR_DEPTH}

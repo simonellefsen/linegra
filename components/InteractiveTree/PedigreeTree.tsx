@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Person, Relationship } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
 import { getAvatarForPerson } from '../../lib/avatar';
@@ -85,8 +85,10 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   onIncreaseDescendants,
   onResetDepths,
 }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [minimapOpen, setMinimapOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pendingHomeRecenter, setPendingHomeRecenter] = useState(false);
   const [zoom, setZoom] = useState(1);
   const layout = useMemo(
     () =>
@@ -135,9 +137,33 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     return groups;
   }, [layout]);
 
+  useEffect(() => {
+    if (!pendingHomeRecenter || !focusId) return;
+    const container = scrollContainerRef.current;
+    const rect = nodeRects.get(focusId);
+    if (!container || !rect) return;
+    const targetLeft = rect.left * zoom + (cardWidth * zoom) / 2 - container.clientWidth / 2;
+    const targetTop = rect.top * zoom + (cardHeight * zoom) / 2 - container.clientHeight / 2;
+    container.scrollTo({
+      left: Math.max(0, targetLeft),
+      top: Math.max(0, targetTop),
+      behavior: 'smooth',
+    });
+    setPendingHomeRecenter(false);
+  }, [pendingHomeRecenter, focusId, nodeRects, zoom]);
+
+  const handleHomeClick = () => {
+    if (!homeEnabled || !onFocusHome) return;
+    setZoom(1);
+    setMenuOpen(false);
+    setMinimapOpen(false);
+    onFocusHome();
+    setPendingHomeRecenter(true);
+  };
+
   return (
     <div className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
-      <div className="w-full h-full overflow-auto pb-20">
+      <div ref={scrollContainerRef} className="w-full h-full overflow-auto pb-20">
         <div style={{ width: scaledWidth, height: scaledHeight }} className="relative min-h-full min-w-full">
           <div
             className="absolute top-0 left-0"
@@ -458,7 +484,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
         <div className="ml-auto flex items-center text-slate-500 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden bg-white">
           <button
             className="w-11 h-11 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40"
-            onClick={onFocusHome}
+            onClick={handleHomeClick}
             disabled={!homeEnabled || !onFocusHome}
             aria-label="Focus tree home person"
           >
