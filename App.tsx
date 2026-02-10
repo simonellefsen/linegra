@@ -329,7 +329,14 @@ useEffect(() => {
         const ordered = [...dbTrees].sort((a, b) => a.name.localeCompare(b.name));
         setTrees(ordered);
         if (ordered.length) {
-          const selected = ordered[0];
+          let selected = ordered[0];
+          if (typeof window !== 'undefined') {
+            const treeIdFromUrl = new URL(window.location.href).searchParams.get('tree');
+            const matchedTree = treeIdFromUrl ? ordered.find((tree) => tree.id === treeIdFromUrl) : null;
+            if (matchedTree) {
+              selected = matchedTree;
+            }
+          }
           setActiveTree(selected);
         } else {
           setActiveTree(null);
@@ -668,6 +675,17 @@ useEffect(() => {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (activeTreeId) {
+      url.searchParams.set('tree', activeTreeId);
+    } else {
+      url.searchParams.delete('tree');
+    }
+    window.history.replaceState({}, '', url);
+  }, [activeTreeId]);
+
+  useEffect(() => {
     if (!pendingPersonId) return;
     const match = treePeople.find((p) => p.id === pendingPersonId);
     if (match) {
@@ -873,6 +891,16 @@ useEffect(() => {
       console.error('Failed to import GEDCOM to Supabase', err);
     }
   };
+
+  const handleExploreTree = useCallback(async () => {
+    if (!activeTree) return;
+    if (!pedigreeFocusId && !selectedPerson && treeDefaultProbandId) {
+      setPedigreeFocusId(treeDefaultProbandId);
+    }
+    setActiveTab('tree');
+    setTreeViewReady(true);
+    await loadTreeArchive(activeTree, { silent: false });
+  }, [activeTree, loadTreeArchive, pedigreeFocusId, selectedPerson, treeDefaultProbandId]);
 
   if (!supabaseActive) {
     return (
@@ -1103,6 +1131,7 @@ useEffect(() => {
                   mostWanted={landingCards.mostWanted}
                   mediaHighlights={landingCards.randomMedia}
                   onPersonSelect={handlePersonSelect}
+                  onExploreTree={handleExploreTree}
                   isAdmin={currentUser?.isAdmin || false}
                   stats={treeStatistics}
                   loading={landingLoading || statsLoading}
@@ -1132,9 +1161,6 @@ useEffect(() => {
             {activeTab === 'tree' && (
               activeTree ? (
                 <div className="space-y-10 animate-in fade-in duration-700">
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-3xl font-serif font-bold text-slate-900">Kinship Map</h2>
-                  </div>
                   {layoutType === 'pedigree' ? (
                     treeViewReady ? (
                       <>

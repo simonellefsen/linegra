@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Person, FamilyTree } from '../types';
 import { 
   Calendar, 
@@ -12,7 +12,8 @@ import {
   Baby,
   Heart,
   Activity,
-  UserPlus
+  UserPlus,
+  SquareArrowUp
 } from 'lucide-react';
 import { getAvatarForPerson } from '../lib/avatar';
 
@@ -42,6 +43,7 @@ interface TreeLandingPageProps {
   mostWanted: Person[];
   mediaHighlights: Person[];
   onPersonSelect: (person: Person) => void;
+  onExploreTree: () => void;
   isAdmin: boolean;
   stats: TreeStatistics | null;
   loading?: boolean;
@@ -55,13 +57,44 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({
   mostWanted,
   mediaHighlights,
   onPersonSelect,
+  onExploreTree,
   isAdmin,
   stats,
   loading,
   error
 }) => {
+  const [shareFeedback, setShareFeedback] = useState('');
   const centuryMaxPopulation =
     stats && stats.centuryStats.length ? Math.max(...stats.centuryStats.map((bucket) => bucket.people)) : 1;
+  const handleShareTree = async () => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('tree', tree.id);
+    url.searchParams.delete('person');
+    const shareUrl = url.toString();
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${tree.name} | Linegra`,
+          text: `Explore the ${tree.name} family tree.`,
+          url: shareUrl,
+        });
+        setShareFeedback('Shared');
+      } else {
+        await navigator.clipboard?.writeText(shareUrl);
+        setShareFeedback('Link copied');
+      }
+    } catch {
+      try {
+        await navigator.clipboard?.writeText(shareUrl);
+        setShareFeedback('Link copied');
+      } catch {
+        setShareFeedback('Unable to share');
+      }
+    } finally {
+      window.setTimeout(() => setShareFeedback(''), 1800);
+    }
+  };
   return (
     <div className="space-y-8 pb-24">
       {/* Hero Header */}
@@ -81,29 +114,41 @@ const TreeLandingPage: React.FC<TreeLandingPageProps> = ({
           </div>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-serif font-bold mb-3">{tree.name}</h1>
           <p className="text-slate-300 text-base sm:text-lg leading-relaxed max-w-2xl">{tree.description}</p>
-          <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
-            <button className="bg-white text-slate-900 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-100 transition-all shadow-lg active:scale-95">
+          <div className="mt-6 flex items-center gap-3 sm:gap-4">
+            <button
+              onClick={onExploreTree}
+              className="bg-white text-slate-900 px-6 py-3 rounded-2xl font-bold flex-1 flex items-center justify-center gap-2 hover:bg-slate-100 transition-all shadow-lg active:scale-95"
+            >
               Explore Tree
               <ChevronRight className="w-4 h-4" />
             </button>
-            {stats && (
-              <div className="bg-slate-800 border border-slate-700 text-white px-6 py-3 rounded-2xl font-semibold flex flex-col sm:flex-row gap-4">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Population</p>
-                  <p className="text-xl font-serif font-bold">{stats.totalIndividuals.toLocaleString()} individuals</p>
-                  <p className="text-xs text-slate-400">
-                    ♂ {stats.maleCount} • ♀ {stats.femaleCount} • ? {stats.unknownGenderCount}
-                  </p>
-                </div>
-                <div className="flex flex-col text-sm text-slate-200 gap-2">
-                  <span className="flex items-center gap-2"><Baby className="w-4 h-4 text-emerald-400" />{stats.livingCount} living</span>
-                  <span className="flex items-center gap-2"><Heart className="w-4 h-4 text-slate-200" />{stats.deceasedCount} passed</span>
-                  <span className="flex items-center gap-2"><Users className="w-4 h-4 text-blue-300" />{stats.marriages} marriages</span>
-                  <span className="flex items-center gap-2"><Activity className="w-4 h-4 text-amber-300" />Avg lifespan {stats.averageLifespan ?? '—'}y</span>
-                </div>
-              </div>
-            )}
+            <button
+              onClick={handleShareTree}
+              className="w-12 h-12 shrink-0 rounded-2xl border border-white/30 bg-white/15 text-white flex items-center justify-center hover:bg-white/25 transition-all"
+              aria-label="Share tree"
+              title="Share tree"
+            >
+              <SquareArrowUp className="w-5 h-5" />
+            </button>
           </div>
+          {shareFeedback && <p className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-300">{shareFeedback}</p>}
+          {stats && (
+            <div className="mt-6 bg-slate-800 border border-slate-700 text-white px-6 py-3 rounded-2xl font-semibold flex flex-col sm:flex-row gap-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Population</p>
+                <p className="text-xl font-serif font-bold">{stats.totalIndividuals.toLocaleString()} individuals</p>
+                <p className="text-xs text-slate-400">
+                  ♂ {stats.maleCount} • ♀ {stats.femaleCount} • ? {stats.unknownGenderCount}
+                </p>
+              </div>
+              <div className="flex flex-col text-sm text-slate-200 gap-2">
+                <span className="flex items-center gap-2"><Baby className="w-4 h-4 text-emerald-400" />{stats.livingCount} living</span>
+                <span className="flex items-center gap-2"><Heart className="w-4 h-4 text-slate-200" />{stats.deceasedCount} passed</span>
+                <span className="flex items-center gap-2"><Users className="w-4 h-4 text-blue-300" />{stats.marriages} marriages</span>
+                <span className="flex items-center gap-2"><Activity className="w-4 h-4 text-amber-300" />Avg lifespan {stats.averageLifespan ?? '—'}y</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

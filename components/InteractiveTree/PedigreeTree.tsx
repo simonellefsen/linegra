@@ -46,6 +46,7 @@ const horizontalSpacing = 220;
 const verticalSpacing = 180;
 const cardWidth = 180;
 const cardHeight = 152;
+const TOP_CANVAS_PADDING = 28;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2;
 const ZOOM_STEP = 0.15;
@@ -103,7 +104,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   const totalGenerations = layout.maxColumn - layout.minColumn + 1 || 1;
   const totalRows = layout.maxRow - layout.minRow + 1 || 1;
   const width = totalRows * horizontalSpacing + cardWidth;
-  const height = totalGenerations * verticalSpacing + cardHeight;
+  const height = totalGenerations * verticalSpacing + cardHeight + TOP_CANVAS_PADDING;
   const scaledWidth = width * zoom;
   const scaledHeight = height * zoom;
 
@@ -113,7 +114,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
       const depthIndex = node.column + columnOffset;
       const left =
         (node.row + rowOffset) * horizontalSpacing + horizontalSpacing / 2 - cardWidth / 2;
-      const top = depthIndex * verticalSpacing;
+      const top = depthIndex * verticalSpacing + TOP_CANVAS_PADDING;
       map.set(node.id, { left, top });
     });
     return map;
