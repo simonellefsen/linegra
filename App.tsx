@@ -1145,45 +1145,6 @@ useEffect(() => {
                               {focusPerson ? `${focusPerson.firstName} ${focusPerson.lastName}` : 'Select a person'}
                             </p>
                           </div>
-                          <div className="flex flex-wrap gap-2 ml-auto">
-                            <button
-                              onClick={() => setAncestorDepth((d) => Math.max(1, d - 1))}
-                              disabled={ancestorDepth <= 1}
-                              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.2em] disabled:opacity-40"
-                            >
-                              − Ancestors
-                            </button>
-                            <button
-                              onClick={() => setAncestorDepth((d) => Math.min(MAX_ANCESTOR_DEPTH, d + 1))}
-                              className="px-3 py-2 rounded-2xl bg-slate-900 text-white text-xs font-bold uppercase tracking-[0.2em] disabled:opacity-40"
-                              disabled={ancestorDepth >= MAX_ANCESTOR_DEPTH}
-                            >
-                              + Ancestors
-                            </button>
-                            <button
-                              onClick={() => setDescendantDepth((d) => Math.max(0, d - 1))}
-                              disabled={descendantDepth <= 0}
-                              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.2em] disabled:opacity-40"
-                            >
-                              − Desc
-                            </button>
-                            <button
-                              onClick={() => setDescendantDepth((d) => Math.min(MAX_DESCENDANT_DEPTH, d + 1))}
-                              disabled={descendantDepth >= MAX_DESCENDANT_DEPTH}
-                              className="px-3 py-2 rounded-2xl bg-slate-900 text-white text-xs font-bold uppercase tracking-[0.2em] disabled:opacity-40"
-                            >
-                              + Desc
-                            </button>
-                            <button
-                              onClick={() => {
-                                setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
-                                setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
-                              }}
-                              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.2em]"
-                            >
-                              Reset
-                            </button>
-                          </div>
                         </div>
                         <PedigreeTree
                           people={pedigreeScope.people}
@@ -1207,6 +1168,22 @@ useEffect(() => {
                           onExpandSiblings={handleExpandSiblings}
                           onFocusHome={handleFocusDefaultProband}
                           homeEnabled={!!treeDefaultProbandId}
+                          ancestorDepth={ancestorDepth}
+                          descendantDepth={descendantDepth}
+                          maxAncestorDepthLimit={MAX_ANCESTOR_DEPTH}
+                          maxDescendantDepthLimit={MAX_DESCENDANT_DEPTH}
+                          onDecreaseAncestors={() => setAncestorDepth((d) => Math.max(1, d - 1))}
+                          onIncreaseAncestors={() =>
+                            setAncestorDepth((d) => Math.min(MAX_ANCESTOR_DEPTH, d + 1))
+                          }
+                          onDecreaseDescendants={() => setDescendantDepth((d) => Math.max(0, d - 1))}
+                          onIncreaseDescendants={() =>
+                            setDescendantDepth((d) => Math.min(MAX_DESCENDANT_DEPTH, d + 1))
+                          }
+                          onResetDepths={() => {
+                            setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
+                            setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
+                          }}
                         />
                       </>
                     ) : (

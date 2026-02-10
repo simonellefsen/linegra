@@ -33,6 +33,15 @@ interface PedigreeTreeProps {
   onExpandSiblings?: (personId: string) => void;
   onFocusHome?: () => void;
   homeEnabled?: boolean;
+  ancestorDepth?: number;
+  descendantDepth?: number;
+  maxAncestorDepthLimit?: number;
+  maxDescendantDepthLimit?: number;
+  onDecreaseAncestors?: () => void;
+  onIncreaseAncestors?: () => void;
+  onDecreaseDescendants?: () => void;
+  onIncreaseDescendants?: () => void;
+  onResetDepths?: () => void;
 }
 
 const horizontalSpacing = 220;
@@ -61,8 +70,18 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   onExpandSiblings,
   onFocusHome,
   homeEnabled = false,
+  ancestorDepth = 1,
+  descendantDepth = 0,
+  maxAncestorDepthLimit = 8,
+  maxDescendantDepthLimit = 4,
+  onDecreaseAncestors,
+  onIncreaseAncestors,
+  onDecreaseDescendants,
+  onIncreaseDescendants,
+  onResetDepths,
 }) => {
   const [minimapOpen, setMinimapOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const layout = useMemo(
     () =>
@@ -367,10 +386,61 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
           </div>
         </div>
       )}
-      <div className="absolute bottom-0 left-0 right-0 flex items-center gap-3 px-3 py-2 bg-white/90 border-t border-slate-200 backdrop-blur">
-        <button className="text-xs sm:text-sm font-black uppercase tracking-[0.2em] text-slate-600 flex items-center gap-2 px-2">
+      {menuOpen && (
+        <div className="fixed md:absolute left-3 md:left-4 bottom-16 md:bottom-20 z-[60] bg-white/95 border border-slate-200 rounded-2xl shadow-2xl p-3 w-[220px]">
+          <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">Tree Controls</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onDecreaseAncestors?.()}
+              disabled={!onDecreaseAncestors || ancestorDepth <= 1}
+              className="px-2 py-2 rounded-xl border border-slate-200 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600 disabled:opacity-40"
+            >
+              - Anc
+            </button>
+            <button
+              type="button"
+              onClick={() => onIncreaseAncestors?.()}
+              disabled={!onIncreaseAncestors || ancestorDepth >= maxAncestorDepthLimit}
+              className="px-2 py-2 rounded-xl border border-slate-200 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600 disabled:opacity-40"
+            >
+              + Anc
+            </button>
+            <button
+              type="button"
+              onClick={() => onDecreaseDescendants?.()}
+              disabled={!onDecreaseDescendants || descendantDepth <= 0}
+              className="px-2 py-2 rounded-xl border border-slate-200 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600 disabled:opacity-40"
+            >
+              - Desc
+            </button>
+            <button
+              type="button"
+              onClick={() => onIncreaseDescendants?.()}
+              disabled={!onIncreaseDescendants || descendantDepth >= maxDescendantDepthLimit}
+              className="px-2 py-2 rounded-xl border border-slate-200 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600 disabled:opacity-40"
+            >
+              + Desc
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => onResetDepths?.()}
+            disabled={!onResetDepths}
+            className="mt-2 w-full px-2 py-2 rounded-xl border border-slate-200 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600 disabled:opacity-40"
+          >
+            Reset
+          </button>
+        </div>
+      )}
+      <div className="fixed md:absolute bottom-0 left-0 right-0 md:left-0 md:right-0 z-50 md:z-20 flex items-center gap-3 px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] bg-white/90 border-t border-slate-200 backdrop-blur">
+        <button
+          type="button"
+          className="text-xs sm:text-sm font-black uppercase tracking-[0.2em] text-slate-600 flex items-center gap-2 px-2"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
           Menu
-          <ChevronUp className="w-4 h-4" />
+          {menuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
         </button>
         <div className="ml-auto flex items-center text-slate-500 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden bg-white">
           <button
