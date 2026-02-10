@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Person, Relationship } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
 import { getAvatarForPerson } from '../../lib/avatar';
-import { Baby, Droplet, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Baby, Droplet, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Home } from 'lucide-react';
 
 interface PedigreeTreeProps {
   people: Person[];
@@ -20,6 +20,8 @@ interface PedigreeTreeProps {
   onExpandAncestors?: () => void;
   onExpandDescendants?: () => void;
   onExpandSiblings?: (personId: string) => void;
+  onFocusHome?: () => void;
+  homeEnabled?: boolean;
 }
 
 const horizontalSpacing = 220;
@@ -43,6 +45,8 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   onExpandAncestors,
   onExpandDescendants,
   onExpandSiblings,
+  onFocusHome,
+  homeEnabled = false,
 }) => {
   const [minimapOpen, setMinimapOpen] = useState(false);
   const layout = useMemo(
@@ -345,6 +349,14 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
       <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-white/85 border-t border-slate-200 backdrop-blur">
         <button className="text-xs font-black uppercase tracking-[0.3em] text-slate-500 flex items-center gap-2">
           Menu
+        </button>
+        <button
+          className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.3em] text-slate-500 flex items-center gap-2 disabled:opacity-40"
+          onClick={onFocusHome}
+          disabled={!homeEnabled || !onFocusHome}
+        >
+          <Home className="w-4 h-4" />
+          Home
         </button>
         <div className="flex items-center gap-2 text-slate-500">
           <button

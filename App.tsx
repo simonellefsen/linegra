@@ -16,7 +16,7 @@ import {
   GitBranch, 
   Search, 
   ChevronDown, 
-  Home, 
+  Home,
   Database,
   User as UserIcon,
   Loader2,
@@ -1183,14 +1183,6 @@ useEffect(() => {
                             >
                               Reset
                             </button>
-                            <button
-                              onClick={handleFocusDefaultProband}
-                              disabled={!treeDefaultProbandId}
-                              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold uppercase tracking-[0.2em] flex items-center gap-2 disabled:opacity-40"
-                            >
-                              <Home className="w-4 h-4" />
-                              Home
-                            </button>
                           </div>
                         </div>
                         <PedigreeTree
@@ -1213,6 +1205,8 @@ useEffect(() => {
                             setDescendantDepth((depth) => Math.min(MAX_DESCENDANT_DEPTH, depth + 1))
                           }
                           onExpandSiblings={handleExpandSiblings}
+                          onFocusHome={handleFocusDefaultProband}
+                          homeEnabled={!!treeDefaultProbandId}
                         />
                       </>
                     ) : (
