@@ -43,7 +43,7 @@ export interface MediaItem {
   linkedEventLabel?: string;
 }
 
-export type DNATestType = 'Autosomal' | 'Y-DNA' | 'mtDNA' | 'X-DNA' | 'Other';
+export type DNATestType = 'Autosomal' | 'Shared Autosomal' | 'Y-DNA' | 'mtDNA' | 'X-DNA' | 'Other';
 export type DNAVendor = 'FamilyTreeDNA' | 'AncestryDNA' | '23andMe' | 'MyHeritage' | 'LivingDNA' | 'Other';
 
 export interface DNARawDataSummary {
@@ -61,6 +61,28 @@ export interface DNARawDataRowPreview {
   chromosome: string;
   position: string;
   result: string;
+}
+
+export interface DNASharedSegmentSummary {
+  source: 'FTDNA_SHARED_AUTOSOMAL_SEGMENTS_CSV';
+  fileName: string;
+  personName: string;
+  matchName: string;
+  segmentCount: number;
+  totalCentimorgans: number;
+  largestSegmentCentimorgans: number;
+  totalSnps: number;
+  importedAt: string;
+}
+
+export interface DNASharedSegmentRowPreview {
+  chromosome: string;
+  startLocation: number;
+  endLocation: number;
+  startRsid: string;
+  endRsid: string;
+  centimorgans: number;
+  snps: number;
 }
 
 export interface DNATest {
@@ -81,6 +103,9 @@ export interface DNATest {
   notes?: string;
   rawDataSummary?: DNARawDataSummary;
   rawDataPreview?: DNARawDataRowPreview[];
+  sharedMatchName?: string;
+  sharedSegmentSummary?: DNASharedSegmentSummary;
+  sharedSegmentsPreview?: DNASharedSegmentRowPreview[];
 }
 
 export interface DNAMatchInfo {

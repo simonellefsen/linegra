@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Lock, Trash2, Dna, Upload, FileText } from 'lucide-react';
 import { DNATest } from '../../types';
 import { DNA_VENDORS, DNA_TEST_TYPES } from './constants';
-import { parseFtdnaAutosomalCsv } from '../../lib/dnaRawParser';
+import { parseFtdnaAutosomalCsv, parseFtdnaSharedSegmentsCsv } from '../../lib/dnaRawParser';
 
 interface DNATabProps {
   dnaTests: DNATest[];
@@ -31,33 +31,48 @@ const DNATabInner: React.FC<DNATabProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importTargetId, setImportTargetId] = useState<string | null>(null);
+  const [importMode, setImportMode] = useState<'autosomal_raw' | 'shared_segments' | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  const handleOpenImport = (testId: string) => {
+  const handleOpenImport = (testId: string, mode: 'autosomal_raw' | 'shared_segments') => {
     setImportError(null);
     setImportTargetId(testId);
+    setImportMode(mode);
     fileInputRef.current?.click();
   };
 
   const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     const targetId = importTargetId;
+    const mode = importMode;
     e.target.value = '';
-    if (!file || !targetId) return;
+    if (!file || !targetId || !mode) return;
     try {
       const text = await file.text();
-      const { summary, preview } = parseFtdnaAutosomalCsv(text, file.name);
-      onUpdateTest(targetId, {
-        vendor: 'FamilyTreeDNA',
-        type: 'Autosomal',
-        rawDataSummary: summary,
-        rawDataPreview: preview
-      });
+      if (mode === 'autosomal_raw') {
+        const { summary, preview } = parseFtdnaAutosomalCsv(text, file.name);
+        onUpdateTest(targetId, {
+          vendor: 'FamilyTreeDNA',
+          type: 'Autosomal',
+          rawDataSummary: summary,
+          rawDataPreview: preview
+        });
+      } else {
+        const { summary, preview } = parseFtdnaSharedSegmentsCsv(text, file.name);
+        onUpdateTest(targetId, {
+          vendor: 'FamilyTreeDNA',
+          type: 'Shared Autosomal',
+          sharedMatchName: summary.matchName,
+          sharedSegmentSummary: summary,
+          sharedSegmentsPreview: preview
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not parse DNA CSV file.';
       setImportError(message);
     } finally {
       setImportTargetId(null);
+      setImportMode(null);
     }
   };
 
@@ -138,11 +153,11 @@ const DNATabInner: React.FC<DNATabProps> = ({
                 <div className="space-y-3">
                   <button
                     type="button"
-                    onClick={() => handleOpenImport(test.id)}
+                    onClick={() => handleOpenImport(test.id, 'autosomal_raw')}
                     className="px-4 py-2 rounded-2xl border border-white/20 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 hover:bg-white/10"
                   >
                     <Upload className="w-4 h-4" />
-                    Import FTDNA CSV
+                    Import FTDNA Raw CSV
                   </button>
                   {test.rawDataSummary && (
                     <div className="p-4 bg-white/5 border border-white/10 rounded-3xl text-xs text-white/80 space-y-1">
@@ -154,6 +169,31 @@ const DNATabInner: React.FC<DNATabProps> = ({
                         {test.rawDataSummary.markersTotal.toLocaleString()} markers •{' '}
                         {test.rawDataSummary.calledMarkers.toLocaleString()} called •{' '}
                         {test.rawDataSummary.noCallMarkers.toLocaleString()} no-calls
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {test.type === 'Shared Autosomal' && (
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenImport(test.id, 'shared_segments')}
+                    className="px-4 py-2 rounded-2xl border border-white/20 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 hover:bg-white/10"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Import FTDNA Shared CSV
+                  </button>
+                  {test.sharedSegmentSummary && (
+                    <div className="p-4 bg-white/5 border border-white/10 rounded-3xl text-xs text-white/80 space-y-1">
+                      <p className="font-bold text-white flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-300" />
+                        {test.sharedSegmentSummary.fileName}
+                      </p>
+                      <p>Match: {test.sharedSegmentSummary.matchName}</p>
+                      <p>
+                        {test.sharedSegmentSummary.segmentCount} segments • {test.sharedSegmentSummary.totalCentimorgans.toFixed(1)} cM total •{' '}
+                        {test.sharedSegmentSummary.largestSegmentCentimorgans.toFixed(1)} cM largest
                       </p>
                     </div>
                   )}

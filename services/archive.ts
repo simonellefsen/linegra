@@ -184,7 +184,10 @@ const mapDbDnaTest = (row: any): DNATest => {
     codingRegion: metadata.codingRegion || undefined,
     mostDistantAncestorId: metadata.mostDistantAncestorId || undefined,
     rawDataSummary: metadata.rawDataSummary || undefined,
-    rawDataPreview: metadata.rawDataPreview || undefined
+    rawDataPreview: metadata.rawDataPreview || undefined,
+    sharedMatchName: metadata.sharedMatchName || undefined,
+    sharedSegmentSummary: metadata.sharedSegmentSummary || undefined,
+    sharedSegmentsPreview: metadata.sharedSegmentsPreview || undefined
   };
 };
 
@@ -566,6 +569,9 @@ export const updatePersonProfile = async (
     mostDistantAncestorId: test.mostDistantAncestorId || null,
     rawDataSummary: test.rawDataSummary || null,
     rawDataPreview: test.rawDataPreview || null,
+    sharedMatchName: test.sharedMatchName || null,
+    sharedSegmentSummary: test.sharedSegmentSummary || null,
+    sharedSegmentsPreview: test.sharedSegmentsPreview || null,
     haplogroup: test.haplogroup || null,
     isPrivate: !!test.isPrivate,
     notes: test.notes || null,
@@ -578,7 +584,10 @@ export const updatePersonProfile = async (
       codingRegion: test.codingRegion || null,
       mostDistantAncestorId: test.mostDistantAncestorId || null,
       rawDataSummary: test.rawDataSummary || null,
-      rawDataPreview: test.rawDataPreview || null
+      rawDataPreview: test.rawDataPreview || null,
+      sharedMatchName: test.sharedMatchName || null,
+      sharedSegmentSummary: test.sharedSegmentSummary || null,
+      sharedSegmentsPreview: test.sharedSegmentsPreview || null
     }
   }));
 

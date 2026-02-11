@@ -73,6 +73,6 @@ export const NOTE_TYPES: NoteType[] = ['Generic', 'To-do', 'Research Note', 'Dis
 
 export const DNA_VENDORS: DNAVendor[] = ['FamilyTreeDNA', 'AncestryDNA', '23andMe', 'MyHeritage', 'LivingDNA', 'Other'];
 
-export const DNA_TEST_TYPES: DNATestType[] = ['Autosomal', 'Y-DNA', 'mtDNA', 'X-DNA', 'Other'];
+export const DNA_TEST_TYPES: DNATestType[] = ['Autosomal', 'Shared Autosomal', 'Y-DNA', 'mtDNA', 'X-DNA', 'Other'];
 
 export const PARENT_LINK_TYPES = ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'step_parent', 'guardian'];
