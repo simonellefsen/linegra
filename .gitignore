@@ -29,3 +29,6 @@ yarn-error.log*
 
 # Gedcom
 *.ged
+
+# DNA csv
+*.csv

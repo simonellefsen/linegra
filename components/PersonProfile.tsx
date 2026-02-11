@@ -532,7 +532,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         profile: buildProfilePayload(),
         events: eventsPayload(),
         notes: notesPayload(),
-        sources: sourcesPayload()
+        sources: sourcesPayload(),
+        dnaTests
       });
       const refreshed = await fetchPersonDetails(person.id);
       onPersonUpdated?.(refreshed);
@@ -711,7 +712,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
 
   const handleAddDNATest = () => {
     const newTest: DNATest = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateUuid(),
       type: 'Autosomal',
       vendor: 'AncestryDNA',
       isPrivate: false,

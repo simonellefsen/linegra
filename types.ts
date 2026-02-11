@@ -46,6 +46,23 @@ export interface MediaItem {
 export type DNATestType = 'Autosomal' | 'Y-DNA' | 'mtDNA' | 'X-DNA' | 'Other';
 export type DNAVendor = 'FamilyTreeDNA' | 'AncestryDNA' | '23andMe' | 'MyHeritage' | 'LivingDNA' | 'Other';
 
+export interface DNARawDataSummary {
+  source: 'FTDNA_AUTOSOMAL_CSV';
+  fileName: string;
+  markersTotal: number;
+  calledMarkers: number;
+  noCallMarkers: number;
+  chromosomeCount: number;
+  importedAt: string;
+}
+
+export interface DNARawDataRowPreview {
+  rsid: string;
+  chromosome: string;
+  position: string;
+  result: string;
+}
+
 export interface DNATest {
   id: string;
   type: DNATestType;
@@ -62,6 +79,8 @@ export interface DNATest {
   codingRegion?: string;
   mostDistantAncestorId?: string;
   notes?: string;
+  rawDataSummary?: DNARawDataSummary;
+  rawDataPreview?: DNARawDataRowPreview[];
 }
 
 export interface DNAMatchInfo {

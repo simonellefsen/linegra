@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence } from '../types';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, DNATest, DNATestType, DNAVendor } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -157,6 +157,35 @@ const mapBasicPeople = (rows: any[] = []) => {
   const eventMap: Record<string, PersonEvent[]> = {};
   const citationMap: Record<string, Citation[]> = {};
   return rows.map((row) => mapDbPerson(row, noteMap, sourceMap, eventMap, citationMap));
+};
+
+const mapDbDnaTest = (row: any): DNATest => {
+  const metadata = (row.metadata || {}) as Record<string, any>;
+  return {
+    id: row.id,
+    type: row.test_type as DNATestType,
+    vendor: row.vendor as DNAVendor,
+    testDate:
+      row.test_date ||
+      metadata.testDate ||
+      undefined,
+    matchDate:
+      row.match_date ||
+      metadata.matchDate ||
+      undefined,
+    isPrivate: !!row.is_private,
+    haplogroup: row.haplogroup || undefined,
+    notes: row.notes || undefined,
+    testNumber: metadata.testNumber || undefined,
+    isConfirmed: typeof metadata.isConfirmed === 'boolean' ? metadata.isConfirmed : undefined,
+    hvr1: metadata.hvr1 || undefined,
+    hvr2: metadata.hvr2 || undefined,
+    extraMutations: metadata.extraMutations || undefined,
+    codingRegion: metadata.codingRegion || undefined,
+    mostDistantAncestorId: metadata.mostDistantAncestorId || undefined,
+    rawDataSummary: metadata.rawDataSummary || undefined,
+    rawDataPreview: metadata.rawDataPreview || undefined
+  };
 };
 
 export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
@@ -496,6 +525,7 @@ export interface UpdatePersonProfilePayload {
   events?: any[];
   notes?: any[];
   sources?: any[];
+  dnaTests?: DNATest[];
 }
 
 export const updatePersonProfile = async (
@@ -520,6 +550,36 @@ export const updatePersonProfile = async (
     payload_sources: payload.sources ?? []
   });
   if (error) throw new Error(error.message);
+
+  const dnaTestsPayload = (payload.dnaTests || []).map((test) => ({
+    id: test.id,
+    type: test.type,
+    vendor: test.vendor,
+    testDate: test.testDate || null,
+    matchDate: test.matchDate || null,
+    haplogroup: test.haplogroup || null,
+    isPrivate: !!test.isPrivate,
+    notes: test.notes || null,
+    metadata: {
+      testNumber: test.testNumber || null,
+      isConfirmed: typeof test.isConfirmed === 'boolean' ? test.isConfirmed : null,
+      hvr1: test.hvr1 || null,
+      hvr2: test.hvr2 || null,
+      extraMutations: test.extraMutations || null,
+      codingRegion: test.codingRegion || null,
+      mostDistantAncestorId: test.mostDistantAncestorId || null,
+      rawDataSummary: test.rawDataSummary || null,
+      rawDataPreview: test.rawDataPreview || null
+    }
+  }));
+
+  const { error: dnaError } = await supabase.rpc('admin_upsert_person_dna_tests', {
+    target_person_id: personId,
+    payload_actor_id: normalizedActor.id,
+    payload_actor_name: payload.actorName ?? normalizedActor.name,
+    payload_dna_tests: dnaTestsPayload
+  });
+  if (dnaError) throw new Error(dnaError.message);
   return data;
 };
 
@@ -682,15 +742,17 @@ export const fetchPersonDetails = async (personId: string): Promise<Person> => {
     throw new Error(error?.message || 'Person not found');
   }
 
-  const [noteRows, eventRows, citationRows] = await Promise.all([
+  const [noteRows, eventRows, citationRows, dnaRows] = await Promise.all([
     supabase.from('notes').select('*').eq('person_id', personId),
     supabase.from('person_events').select('*').eq('person_id', personId),
-    supabase.from('citations').select('*').eq('person_id', personId)
+    supabase.from('citations').select('*').eq('person_id', personId),
+    supabase.from('dna_tests').select('*').eq('person_id', personId)
   ]);
 
   if (noteRows.error) throw new Error(noteRows.error.message);
   if (eventRows.error) throw new Error(eventRows.error.message);
   if (citationRows.error) throw new Error(citationRows.error.message);
+  if (dnaRows.error) throw new Error(dnaRows.error.message);
 
   const noteMap: Record<string, Note[]> = {};
   const eventMap: Record<string, PersonEvent[]> = {};
@@ -768,7 +830,11 @@ export const fetchPersonDetails = async (personId: string): Promise<Person> => {
   }
 
   const person = mapDbPerson(personRow, noteMap, sourceMap, eventMap, citationMap);
-  return { ...person, detailsLoaded: true };
+  return {
+    ...person,
+    dnaTests: (dnaRows.data || []).map(mapDbDnaTest),
+    detailsLoaded: true
+  };
 };
 
 export const fetchFamilyLayoutAudits = async (treeId: string, limit = 10, offset = 0): Promise<{ audits: FamilyLayoutAudit[]; total: number }> => {
