@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Home,
   Maximize2,
+  Plus,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -308,6 +309,12 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             const rect = nodeRects.get(node.id);
             if (!rect) return null;
             const isSelected = node.person?.id === selectedPersonId;
+            const placeholderLabel =
+              node.placeholder === 'father'
+                ? 'Add father'
+                : node.placeholder === 'mother'
+                ? 'Add mother'
+                : 'Add parent';
             const christeningEvent = node.person?.events?.find((ev) =>
               /(^|\b)(chr|christen|bapt)/i.test(ev.type || '')
             );
@@ -377,10 +384,10 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     {node.person ? (
                       <img src={getAvatarForPerson(node.person)} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-slate-400">
-                        Add
-                        <br />
-                        {node.placeholder === 'father' ? 'Father' : node.placeholder === 'mother' ? 'Mother' : 'Parent'}
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center">
+                          <Plus className="w-6 h-6" />
+                        </span>
                       </div>
                     )}
                   </div>
@@ -390,8 +397,8 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                         {node.person.firstName} {node.person.lastName}
                       </p>
                     ) : (
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                        {node.placeholder === 'father' ? 'Add Father' : 'Add Mother'}
+                      <p className="text-sm font-semibold text-slate-500">
+                        {placeholderLabel}
                       </p>
                     )}
                   </div>

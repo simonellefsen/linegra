@@ -225,13 +225,6 @@ export const buildPedigreeLayout = (
       });
     });
 
-    if (!parentEntries.length && allowPlaceholders) {
-      parentEntries.push({
-        placeholder: 'unknown',
-        span: 1,
-      });
-    }
-
     const hasFather = parentEntries.some((entry) => entry.isFather);
     const hasMother = parentEntries.some((entry) => entry.isMother);
 
