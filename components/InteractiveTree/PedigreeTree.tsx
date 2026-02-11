@@ -50,6 +50,7 @@ const TOP_CANVAS_PADDING = 28;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2;
 const ZOOM_STEP = 0.15;
+const MIN_ROW_GAP = 1;
 
 const extractYear = (value?: string) => {
   if (!value) return null;
@@ -101,10 +102,44 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     [people, relationships, focusId, maxAncestors, maxDescendants, showPlaceholders]
   );
 
+  const packedRowByNodeId = useMemo(() => {
+    const byColumn = new Map<number, typeof layout.nodes>();
+    layout.nodes.forEach((node) => {
+      const list = byColumn.get(node.column) || [];
+      list.push(node);
+      byColumn.set(node.column, list);
+    });
+
+    const packed = new Map<string, number>();
+    byColumn.forEach((nodesInColumn) => {
+      const sorted = [...nodesInColumn].sort((a, b) => {
+        if (a.row !== b.row) return a.row - b.row;
+        // Keep real people closer to their computed row and push placeholders outward first.
+        if (!!a.placeholder === !!b.placeholder) return 0;
+        return a.placeholder ? 1 : -1;
+      });
+
+      let lastRow = Number.NEGATIVE_INFINITY;
+      sorted.forEach((node) => {
+        let nextRow = node.row;
+        if (nextRow - lastRow < MIN_ROW_GAP) {
+          nextRow = lastRow + MIN_ROW_GAP;
+        }
+        packed.set(node.id, nextRow);
+        lastRow = nextRow;
+      });
+    });
+
+    return packed;
+  }, [layout]);
+
+  const packedRows = useMemo(() => Array.from(packedRowByNodeId.values()), [packedRowByNodeId]);
   const columnOffset = -layout.minColumn;
-  const rowOffset = -layout.minRow;
+  const minPackedRow = packedRows.length ? Math.min(...packedRows) : layout.minRow;
+  const maxPackedRow = packedRows.length ? Math.max(...packedRows) : layout.maxRow;
+  const rowOffset = -minPackedRow;
   const totalGenerations = layout.maxColumn - layout.minColumn + 1 || 1;
-  const totalRows = layout.maxRow - layout.minRow + 1 || 1;
+  const totalRows = maxPackedRow - minPackedRow + 1 || 1;
   const width = totalRows * horizontalSpacing + cardWidth;
   const height = totalGenerations * verticalSpacing + cardHeight + TOP_CANVAS_PADDING;
   const scaledWidth = width * zoom;
@@ -114,13 +149,14 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     const map = new Map<string, { left: number; top: number }>();
     layout.nodes.forEach((node) => {
       const depthIndex = node.column + columnOffset;
+      const packedRow = packedRowByNodeId.get(node.id) ?? node.row;
       const left =
-        (node.row + rowOffset) * horizontalSpacing + horizontalSpacing / 2 - cardWidth / 2;
+        (packedRow + rowOffset) * horizontalSpacing + horizontalSpacing / 2 - cardWidth / 2;
       const top = depthIndex * verticalSpacing + TOP_CANVAS_PADDING;
       map.set(node.id, { left, top });
     });
     return map;
-  }, [layout, columnOffset, rowOffset]);
+  }, [layout, columnOffset, rowOffset, packedRowByNodeId]);
   const nodeById = useMemo(() => {
     const map = new Map<string, typeof layout.nodes[number]>();
     layout.nodes.forEach((node) => map.set(node.id, node));
