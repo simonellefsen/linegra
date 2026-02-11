@@ -535,7 +535,7 @@ useEffect(() => {
     });
   }, [trees, allPeople, allRelationships]);
 
-  const adminTreeData = adminTrees.length ? adminTrees : localTreeSummaries;
+  const adminTreeData = supabaseActive && currentUser?.isAdmin ? adminTrees : localTreeSummaries;
 
   const fetchSearchPage = useCallback(
     async (page = 0, append = false) => {
@@ -743,26 +743,34 @@ useEffect(() => {
       setDeletingTreeId(treeId);
       try {
         await deleteFamilyTreeRecord(treeId, currentUser);
-        const updatedTrees = await ensureTrees();
-        if (!updatedTrees.length) {
-          setTrees([]);
+        const localRemaining = [...trees.filter((tree) => tree.id !== treeId)].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
+        setTrees(localRemaining);
+        setAdminTrees((prev) => prev.filter((tree) => tree.id !== treeId));
+
+        if (!localRemaining.length) {
           setActiveTree(null);
           setAllPeople([]);
           setAllRelationships([]);
           setGraphTreeId(null);
-          await fetchAdminTreeStats();
-          return;
+        } else {
+          const activeStillExists = activeTree ? localRemaining.find((tree) => tree.id === activeTree.id) : null;
+          setActiveTree(activeStillExists || localRemaining[0]);
+          setAllPeople([]);
+          setAllRelationships([]);
+          setGraphTreeId(null);
         }
+
+        const updatedTrees = await ensureTrees();
         const ordered = [...updatedTrees].sort((a, b) => a.name.localeCompare(b.name));
         setTrees(ordered);
-        let nextActive = activeTree ? ordered.find((t) => t.id === activeTree.id) : ordered[0];
-        if (!nextActive) {
-          nextActive = ordered[0];
+        if (!ordered.length) {
+          setActiveTree(null);
+        } else {
+          const activeStillExists = activeTree ? ordered.find((tree) => tree.id === activeTree.id) : null;
+          setActiveTree(activeStillExists || ordered[0]);
         }
-        setActiveTree(nextActive);
-        setAllPeople([]);
-        setAllRelationships([]);
-        setGraphTreeId(null);
         await fetchAdminTreeStats();
       } catch (err) {
         console.error('Failed to delete tree', err);
@@ -771,7 +779,7 @@ useEffect(() => {
         setDeletingTreeId(null);
       }
     },
-    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats]
+    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats, trees]
   );
 
   const handleAdminUpdateTreeSettings = useCallback(

@@ -66,7 +66,6 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   }, [trees]);
 
   const confirmTarget = sortedTrees.find((t) => t.id === pendingDeleteId);
-  const disableDelete = sortedTrees.length <= 1;
 
   const extractYear = (value?: string | null) => {
     if (!value) return null;
@@ -355,11 +354,11 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                     <button
                       onClick={() => setPendingDeleteId(tree.id)}
                       className={`px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 ${
-                        disableDelete || deletingTreeId === tree.id
+                        deletingTreeId === tree.id
                           ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                           : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
                       }`}
-                      disabled={disableDelete || deletingTreeId === tree.id}
+                      disabled={deletingTreeId === tree.id}
                     >
                       <Trash2 className="w-4 h-4" />
                       Delete
