@@ -249,6 +249,8 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                 let unionY = Math.min(...parents.map((p) => p.rect.top + cardHeight)) + 20;
                 unionY = Math.min(unionY, childRect.top - 20);
                 const midX = (Math.min(...parentXs) + Math.max(...parentXs)) / 2;
+                const toX = childRect.left + cardWidth / 2;
+                const childJoinY = Math.max(unionY + 12, childRect.top - 18);
                 return (
                   <g key={`${childId}-union`}>
                     {parents.map((parent, idx) => (
@@ -275,6 +277,22 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                       x1={midX}
                       x2={midX}
                       y1={unionY}
+                      y2={childJoinY}
+                      stroke="#CBD5F5"
+                      strokeWidth={2}
+                    />
+                    <line
+                      x1={midX}
+                      x2={toX}
+                      y1={childJoinY}
+                      y2={childJoinY}
+                      stroke="#CBD5F5"
+                      strokeWidth={2}
+                    />
+                    <line
+                      x1={toX}
+                      x2={toX}
+                      y1={childJoinY}
                       y2={childRect.top}
                       stroke="#CBD5F5"
                       strokeWidth={2}
