@@ -1023,15 +1023,23 @@ export const updatePersonProfile = async (
   let dnaMatchesPayload: DnaMatchPayloadItem[] = [];
   let nameRows: NameLookupRow[] = [];
   let focusFullName = '';
+  let focusMaidenFullName = '';
+  const looksLikeFocusName = (name: string | null | undefined) => {
+    const raw = typeof name === 'string' ? name : '';
+    if (!raw) return false;
+    const candidates = [focusFullName, focusMaidenFullName].filter(Boolean);
+    return candidates.some((candidate) => scoreNameMatch(candidate, raw) >= 60);
+  };
   if (payload.dnaTests?.length) {
     const { data: targetPersonRow, error: targetPersonError } = await supabase
       .from('persons')
-      .select('id, tree_id, first_name, last_name')
+      .select('id, tree_id, first_name, last_name, maiden_name')
       .eq('id', personId)
       .maybeSingle();
     if (targetPersonError) throw new Error(targetPersonError.message);
     if (targetPersonRow?.tree_id) {
       focusFullName = buildFullName(targetPersonRow.first_name, targetPersonRow.last_name);
+      focusMaidenFullName = buildFullName(targetPersonRow.first_name, targetPersonRow.maiden_name);
       const { data: peopleNameRows, error: peopleNameError } = await supabase
         .from('persons')
         .select('id, first_name, last_name, maiden_name')
@@ -1068,10 +1076,18 @@ export const updatePersonProfile = async (
   const dnaTestsPayload = (payload.dnaTests || []).map((test) => {
     const lineage = sharedLineageByTestId.get(test.id);
     const summary = test.sharedSegmentSummary;
-    const summaryPersonId = summary ? resolvePersonIdByName(summary.personName, nameRows) : null;
-    const summaryMatchId = summary ? resolvePersonIdByName(summary.matchName, nameRows) : null;
-    const summaryPersonLooksLikeFocus = !!summary && scoreNameMatch(focusFullName, summary.personName) >= 60;
-    const summaryMatchLooksLikeFocus = !!summary && scoreNameMatch(focusFullName, summary.matchName) >= 60;
+    const summaryPersonLooksLikeFocus = !!summary && looksLikeFocusName(summary.personName);
+    const summaryMatchLooksLikeFocus = !!summary && looksLikeFocusName(summary.matchName);
+    const summaryPersonId = summaryPersonLooksLikeFocus
+      ? personId
+      : summary
+      ? resolvePersonIdByName(summary.personName, nameRows)
+      : null;
+    const summaryMatchId = summaryMatchLooksLikeFocus
+      ? personId
+      : summary
+      ? resolvePersonIdByName(summary.matchName, nameRows)
+      : null;
     let sharedPersonId =
       (test.sharedPersonId && UUID_REGEX.test(test.sharedPersonId) ? test.sharedPersonId : null) ||
       summaryPersonId ||
