@@ -5,6 +5,7 @@ import {
   listAutosomalPeopleInTree,
   listSharedMatchesForAutosomalPerson,
   resolveSharedMatchLineage,
+  resolveSharedTestLineage,
 } from '../services/archive';
 
 interface AdminDnaPanelProps {
@@ -101,7 +102,20 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor }) => {
     setResolvingMatchId(matchId);
     setError(null);
     try {
-      const resolution = await resolveSharedMatchLineage(treeId, selectedPersonId, matchId, actor);
+      const match = matches.find((item) => item.id === matchId);
+      if (!match) {
+        throw new Error('Selected DNA match is no longer available.');
+      }
+      const resolution =
+        match.source === 'dna_match'
+          ? await resolveSharedMatchLineage(treeId, selectedPersonId, match.dnaMatchId || match.id, actor)
+          : await resolveSharedTestLineage(
+              treeId,
+              selectedPersonId,
+              match.dnaTestId || match.id.replace(/^test:/, ''),
+              match.counterpartPersonId,
+              actor
+            );
       setResolutionByMatchId((prev) => ({ ...prev, [matchId]: resolution }));
       await loadMatches();
     } catch (err) {

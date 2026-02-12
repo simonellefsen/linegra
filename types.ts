@@ -121,6 +121,9 @@ export interface DNAAutosomalCandidate {
 
 export interface DNASharedMatchRecord {
   id: string;
+  source: 'dna_match' | 'dna_test';
+  dnaMatchId?: string;
+  dnaTestId?: string;
   ownerPersonId: string;
   ownerPersonName: string;
   counterpartPersonId: string;

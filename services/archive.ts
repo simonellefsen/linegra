@@ -82,6 +82,16 @@ interface DnaMatchPayloadItem {
   path_relationship_ids: string[];
 }
 
+interface SharedSegmentSummaryLike {
+  personName: string;
+  matchName: string;
+  segmentCount: number;
+  totalCentimorgans: number;
+  largestSegmentCentimorgans: number;
+  fileName?: string;
+  importedAt?: string;
+}
+
 const normalizeName = (value?: string | null) =>
   (value || '')
     .normalize('NFD')
@@ -222,6 +232,71 @@ const traversalLabel = (
     return 'partner of';
   }
   return 'linked to';
+};
+
+const buildFullName = (firstName?: string | null, lastName?: string | null) =>
+  `${firstName || ''} ${lastName || ''}`.trim();
+
+const summaryFromDnaTestMetadata = (metadata: Record<string, unknown>): SharedSegmentSummaryLike | null => {
+  const summaryRaw = asRecord(metadata.sharedSegmentSummary ?? metadata.shared_segment_summary);
+  const personName = typeof summaryRaw.personName === 'string'
+    ? summaryRaw.personName
+    : typeof summaryRaw.person_name === 'string'
+    ? summaryRaw.person_name
+    : '';
+  const matchName = typeof summaryRaw.matchName === 'string'
+    ? summaryRaw.matchName
+    : typeof summaryRaw.match_name === 'string'
+    ? summaryRaw.match_name
+    : '';
+  const segmentCount = toNumberOrNull(summaryRaw.segmentCount ?? summaryRaw.segment_count);
+  const totalCentimorgans = toNumberOrNull(summaryRaw.totalCentimorgans ?? summaryRaw.total_centimorgans);
+  const largestSegmentCentimorgans = toNumberOrNull(
+    summaryRaw.largestSegmentCentimorgans ?? summaryRaw.largest_segment_centimorgans
+  );
+  if (!personName && !matchName) return null;
+  if (segmentCount == null || totalCentimorgans == null || largestSegmentCentimorgans == null) return null;
+  return {
+    personName,
+    matchName,
+    segmentCount,
+    totalCentimorgans,
+    largestSegmentCentimorgans,
+    fileName: typeof summaryRaw.fileName === 'string'
+      ? summaryRaw.fileName
+      : typeof summaryRaw.file_name === 'string'
+      ? summaryRaw.file_name
+      : undefined,
+    importedAt: typeof summaryRaw.importedAt === 'string'
+      ? summaryRaw.importedAt
+      : typeof summaryRaw.imported_at === 'string'
+      ? summaryRaw.imported_at
+      : undefined,
+  };
+};
+
+const inferCounterpartForFocus = (
+  focusPersonId: string,
+  ownerPersonId: string,
+  summary: SharedSegmentSummaryLike,
+  nameRows: NameLookupRow[],
+  focusFullName: string
+) => {
+  const personNameId = resolvePersonIdByName(summary.personName, nameRows);
+  const matchNameId = resolvePersonIdByName(summary.matchName, nameRows);
+  if (ownerPersonId === focusPersonId) {
+    if (personNameId && personNameId !== focusPersonId) return personNameId;
+    if (matchNameId && matchNameId !== focusPersonId) return matchNameId;
+  } else {
+    if (personNameId === focusPersonId && matchNameId && matchNameId !== focusPersonId) return matchNameId;
+    if (matchNameId === focusPersonId && personNameId && personNameId !== focusPersonId) return personNameId;
+    if (personNameId === focusPersonId || matchNameId === focusPersonId) return ownerPersonId;
+    const normalizedFocus = normalizeName(focusFullName);
+    const personNameLooksLikeFocus = normalizeName(summary.personName).includes(normalizedFocus);
+    const matchNameLooksLikeFocus = normalizeName(summary.matchName).includes(normalizedFocus);
+    if (personNameLooksLikeFocus || matchNameLooksLikeFocus) return ownerPersonId;
+  }
+  return null;
 };
 
 const findRelationshipPath = (
@@ -1143,6 +1218,39 @@ export const listSharedMatchesForAutosomalPerson = async (
     throw new Error('Supabase credentials are missing.');
   }
 
+  const peopleRows = await fetchPagedRows<any>(async (from, to) => {
+    const { data, error } = await supabase
+      .from('persons')
+      .select('id, tree_id, first_name, last_name')
+      .eq('tree_id', treeId)
+      .order('last_name', { ascending: true })
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+  const personById = new Map<string, any>();
+  peopleRows.forEach((row) => personById.set(row.id, row));
+  if (!personById.has(focusPersonId)) return [];
+
+  const nameRows: NameLookupRow[] = peopleRows.map((row) => ({
+    id: row.id,
+    first_name: row.first_name || '',
+    last_name: row.last_name || '',
+    maiden_name: null
+  }));
+  const focusFullName = buildFullName(
+    personById.get(focusPersonId)?.first_name,
+    personById.get(focusPersonId)?.last_name
+  );
+
+  const { data: relationshipRows, error: relationshipError } = await supabase
+    .from('relationships')
+    .select('id, person_id, related_id, type')
+    .eq('tree_id', treeId)
+    .in('type', Array.from(DNA_PATH_RELATIONSHIP_TYPES));
+  if (relationshipError) throw new Error(relationshipError.message);
+  const typedRelationships = (relationshipRows || []) as RelationshipLookupRow[];
+
   const { data: matchRows, error: matchError } = await supabase
     .from('dna_matches')
     .select('id, person_id, matched_person_id, shared_cm, segments, longest_segment, confidence, metadata, created_at')
@@ -1150,72 +1258,114 @@ export const listSharedMatchesForAutosomalPerson = async (
     .order('shared_cm', { ascending: false });
   if (matchError) throw new Error(matchError.message);
 
-  const rows = (matchRows || []).filter((row: any) => row.person_id && row.matched_person_id);
-  if (!rows.length) return [];
+  const results: DNASharedMatchRecord[] = [];
+  const existingTestIds = new Set<string>();
+  const existingPairs = new Set<string>();
 
-  const involvedIds = Array.from(
-    new Set(
-      rows.flatMap((row: any) => [row.person_id, row.matched_person_id]).filter((id: string | null) => !!id)
-    )
-  );
+  (matchRows || []).forEach((row: any) => {
+    if (!row.person_id || !row.matched_person_id) return;
+    const owner = personById.get(row.person_id);
+    const counterpartId = row.person_id === focusPersonId ? row.matched_person_id : row.person_id;
+    const counterpart = personById.get(counterpartId);
+    if (!owner || !counterpart) return;
+    const metadata = asRecord(row.metadata);
+    const pathPersonIds = ensureStringArray(metadata.path_person_ids);
+    const pathRelationshipIds = ensureStringArray(metadata.path_relationship_ids);
+    const pathFound = pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
+    const sharedCM = toNumberOrNull(row.shared_cm);
+    const segments = toNumberOrNull(row.segments);
+    const longestSegment = toNumberOrNull(row.longest_segment);
+    const predictionLabel = relationshipPredictionLabel(sharedCM, segments);
+    const pathFitsPrediction = pathFound ? supportsRelationshipHops(sharedCM, pathRelationshipIds.length) : false;
+    const dnaTestId = typeof metadata.test_id === 'string' ? metadata.test_id : undefined;
+    if (dnaTestId) existingTestIds.add(dnaTestId);
+    existingPairs.add([focusPersonId, counterpartId].sort().join(':'));
+    results.push({
+      id: row.id,
+      source: 'dna_match',
+      dnaMatchId: row.id,
+      dnaTestId,
+      ownerPersonId: row.person_id,
+      ownerPersonName: toDisplayName(owner),
+      counterpartPersonId: counterpartId,
+      counterpartPersonName: toDisplayName(counterpart),
+      sharedCM,
+      segments,
+      longestSegment,
+      confidence: row.confidence ?? null,
+      predictionLabel,
+      pathFound,
+      pathFitsPrediction,
+      pathPersonIds,
+      pathRelationshipIds,
+      fileName: typeof metadata.file_name === 'string' ? metadata.file_name : undefined,
+      importedAt: typeof metadata.imported_at === 'string' ? metadata.imported_at : undefined
+    });
+  });
 
-  const { data: peopleRows, error: peopleError } = await supabase
-    .from('persons')
-    .select('id, tree_id, first_name, last_name')
-    .in('id', involvedIds);
-  if (peopleError) throw new Error(peopleError.message);
+  const personIds = peopleRows.map((row) => row.id);
+  const sharedTests: any[] = [];
+  for (let i = 0; i < personIds.length; i += 500) {
+    const batchIds = personIds.slice(i, i + 500);
+    const { data, error } = await supabase
+      .from('dna_tests')
+      .select('id, person_id, metadata')
+      .eq('test_type', 'Shared Autosomal')
+      .in('person_id', batchIds);
+    if (error) throw new Error(error.message);
+    sharedTests.push(...(data || []));
+  }
 
-  const personById = new Map<string, any>();
-  (peopleRows || [])
-    .filter((row: any) => row.tree_id === treeId)
-    .forEach((row: any) => personById.set(row.id, row));
+  sharedTests.forEach((testRow) => {
+    if (!testRow?.id || !testRow?.person_id) return;
+    if (existingTestIds.has(testRow.id)) return;
+    const metadata = asRecord(testRow.metadata);
+    const summary = summaryFromDnaTestMetadata(metadata);
+    if (!summary) return;
+    const counterpartPersonId = inferCounterpartForFocus(
+      focusPersonId,
+      testRow.person_id,
+      summary,
+      nameRows,
+      focusFullName
+    );
+    if (!counterpartPersonId || counterpartPersonId === focusPersonId) return;
+    if (!personById.has(counterpartPersonId)) return;
+    const pairKey = [focusPersonId, counterpartPersonId].sort().join(':');
+    if (existingPairs.has(pairKey)) return;
 
-  const mapped = rows
-    .map((row: any) => {
-      const owner = personById.get(row.person_id);
-      const matched = personById.get(row.matched_person_id);
-      if (!owner || !matched) return null;
-      const counterpartId = row.person_id === focusPersonId ? row.matched_person_id : row.person_id;
-      const counterpart = personById.get(counterpartId);
-      if (!counterpart) return null;
-      const metadata = asRecord(row.metadata);
-      const pathPersonIds = ensureStringArray(metadata.path_person_ids);
-      const pathRelationshipIds = ensureStringArray(metadata.path_relationship_ids);
-      const pathFound = pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
-      const sharedCM = toNumberOrNull(row.shared_cm);
-      const segments = toNumberOrNull(row.segments);
-      const longestSegment = toNumberOrNull(row.longest_segment);
-      const predictionLabel = relationshipPredictionLabel(
-        sharedCM,
-        segments
-      );
-      const pathFitsPrediction = pathFound
-        ? supportsRelationshipHops(sharedCM, pathRelationshipIds.length)
-        : false;
+    const path = findRelationshipPath(focusPersonId, counterpartPersonId, typedRelationships);
+    const pathPersonIds = path?.pathPersonIds || [];
+    const pathRelationshipIds = path?.pathRelationshipIds || [];
+    const pathFound = pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
+    const predictionLabel = relationshipPredictionLabel(summary.totalCentimorgans, summary.segmentCount);
+    const pathFitsPrediction = pathFound
+      ? supportsRelationshipHops(summary.totalCentimorgans, pathRelationshipIds.length)
+      : false;
 
-      return {
-        id: row.id,
-        ownerPersonId: row.person_id,
-        ownerPersonName: toDisplayName(owner),
-        counterpartPersonId: counterpartId,
-        counterpartPersonName: toDisplayName(counterpart),
-        sharedCM,
-        segments,
-        longestSegment,
-        confidence: row.confidence ?? null,
-        predictionLabel,
-        pathFound,
-        pathFitsPrediction,
-        pathPersonIds,
-        pathRelationshipIds,
-        fileName: typeof metadata.file_name === 'string' ? metadata.file_name : undefined,
-        importedAt: typeof metadata.imported_at === 'string' ? metadata.imported_at : undefined,
-        testId: typeof metadata.test_id === 'string' ? metadata.test_id : undefined
-      } as DNASharedMatchRecord;
-    })
-    .filter((item): item is DNASharedMatchRecord => !!item);
+    results.push({
+      id: `test:${testRow.id}`,
+      source: 'dna_test',
+      dnaTestId: testRow.id,
+      ownerPersonId: testRow.person_id,
+      ownerPersonName: toDisplayName(personById.get(testRow.person_id)),
+      counterpartPersonId,
+      counterpartPersonName: toDisplayName(personById.get(counterpartPersonId)),
+      sharedCM: summary.totalCentimorgans,
+      segments: summary.segmentCount,
+      longestSegment: summary.largestSegmentCentimorgans,
+      confidence: deriveMatchConfidence(summary.totalCentimorgans, summary.segmentCount),
+      predictionLabel,
+      pathFound,
+      pathFitsPrediction,
+      pathPersonIds,
+      pathRelationshipIds,
+      fileName: summary.fileName,
+      importedAt: summary.importedAt
+    });
+  });
 
-  return mapped.sort((a, b) => (b.sharedCM ?? 0) - (a.sharedCM ?? 0));
+  return results.sort((a, b) => (b.sharedCM ?? 0) - (a.sharedCM ?? 0));
 };
 
 const updateRelationshipDnaSupport = async (
@@ -1388,6 +1538,160 @@ export const resolveSharedMatchLineage = async (
 
   return {
     matchId: dnaMatchId,
+    counterpartPersonId,
+    pathFound,
+    pathFitsPrediction,
+    pathPersonIds,
+    pathRelationshipIds,
+    pathLabel,
+    predictionLabel
+  };
+};
+
+export const resolveSharedTestLineage = async (
+  treeId: string,
+  focusPersonId: string,
+  dnaTestId: string,
+  counterpartPersonId: string,
+  actor?: ImportActor | null
+): Promise<DnaLineageResolution> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+
+  const { data: dnaTestRow, error: testError } = await supabase
+    .from('dna_tests')
+    .select('id, person_id, metadata')
+    .eq('id', dnaTestId)
+    .maybeSingle();
+  if (testError) throw new Error(testError.message);
+  if (!dnaTestRow) throw new Error('DNA test not found.');
+
+  const testMetadata = asRecord(dnaTestRow.metadata);
+  const summary = summaryFromDnaTestMetadata(testMetadata);
+  if (!summary) throw new Error('Shared autosomal summary is missing on this DNA test.');
+
+  const { data: relationshipRows, error: relationshipError } = await supabase
+    .from('relationships')
+    .select('id, tree_id, person_id, related_id, type')
+    .eq('tree_id', treeId)
+    .in('type', Array.from(DNA_PATH_RELATIONSHIP_TYPES));
+  if (relationshipError) throw new Error(relationshipError.message);
+
+  const typedRows = (relationshipRows || []) as RelationshipLookupRow[];
+  const path = findRelationshipPath(focusPersonId, counterpartPersonId, typedRows);
+  const pathPersonIds = path?.pathPersonIds || [];
+  const pathRelationshipIds = path?.pathRelationshipIds || [];
+  const pathFound = pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
+  const predictionLabel = relationshipPredictionLabel(summary.totalCentimorgans, summary.segmentCount);
+  const pathFitsPrediction = pathFound
+    ? supportsRelationshipHops(summary.totalCentimorgans, pathRelationshipIds.length)
+    : false;
+
+  const { data: existingMatch, error: existingMatchError } = await supabase
+    .from('dna_matches')
+    .select('id, metadata')
+    .eq('person_id', focusPersonId)
+    .eq('matched_person_id', counterpartPersonId)
+    .contains('metadata', { test_id: dnaTestId })
+    .maybeSingle();
+  if (existingMatchError) throw new Error(existingMatchError.message);
+
+  const normalizedActor = normalizeActor(actor);
+  const matchMetadataBase = {
+    ...testMetadata,
+    source: 'FTDNA_SHARED_AUTOSOMAL_SEGMENTS_CSV',
+    test_id: dnaTestId,
+    person_name: summary.personName,
+    match_name: summary.matchName,
+    file_name: summary.fileName ?? null,
+    segment_count: summary.segmentCount,
+    total_centimorgans: summary.totalCentimorgans,
+    largest_segment_centimorgans: summary.largestSegmentCentimorgans,
+    path_found: pathFound,
+    path_fits_prediction: pathFitsPrediction,
+    path_person_ids: pathPersonIds,
+    path_relationship_ids: pathRelationshipIds,
+    resolved_at: new Date().toISOString(),
+    resolved_by: normalizedActor.name
+  };
+
+  let matchId = existingMatch?.id as string | undefined;
+  if (matchId) {
+    const previousPathRelationshipIds = ensureStringArray(asRecord(existingMatch.metadata).path_relationship_ids);
+    await updateRelationshipDnaSupport(previousPathRelationshipIds, focusPersonId, matchId, 'remove');
+    const { error: updateMatchError } = await supabase
+      .from('dna_matches')
+      .update({
+        shared_cm: summary.totalCentimorgans,
+        segments: summary.segmentCount,
+        longest_segment: summary.largestSegmentCentimorgans,
+        confidence: deriveMatchConfidence(summary.totalCentimorgans, summary.segmentCount),
+        metadata: matchMetadataBase
+      })
+      .eq('id', matchId);
+    if (updateMatchError) throw new Error(updateMatchError.message);
+  } else {
+    const { data: insertMatch, error: insertMatchError } = await supabase
+      .from('dna_matches')
+      .insert({
+        person_id: focusPersonId,
+        matched_person_id: counterpartPersonId,
+        shared_cm: summary.totalCentimorgans,
+        segments: summary.segmentCount,
+        longest_segment: summary.largestSegmentCentimorgans,
+        confidence: deriveMatchConfidence(summary.totalCentimorgans, summary.segmentCount),
+        metadata: matchMetadataBase
+      })
+      .select('id')
+      .single();
+    if (insertMatchError) throw new Error(insertMatchError.message);
+    matchId = insertMatch.id;
+  }
+
+  if (!matchId) throw new Error('Could not persist DNA match record.');
+  if (pathFound && pathFitsPrediction) {
+    await updateRelationshipDnaSupport(pathRelationshipIds, focusPersonId, matchId, 'add');
+  }
+
+  const { error: testUpdateError } = await supabase
+    .from('dna_tests')
+    .update({
+      metadata: {
+        ...testMetadata,
+        sharedMatchPersonId: counterpartPersonId,
+        sharedPathPersonIds: pathPersonIds,
+        sharedPathRelationshipIds: pathRelationshipIds
+      }
+    })
+    .eq('id', dnaTestId);
+  if (testUpdateError) throw new Error(testUpdateError.message);
+
+  const pathNames = new Map<string, string>();
+  if (pathPersonIds.length) {
+    const { data: personRows, error: personError } = await supabase
+      .from('persons')
+      .select('id, first_name, last_name')
+      .in('id', pathPersonIds);
+    if (personError) throw new Error(personError.message);
+    (personRows || []).forEach((row: any) => pathNames.set(row.id, toDisplayName(row)));
+  }
+  const relationshipById = new Map<string, RelationshipLookupRow>();
+  typedRows.forEach((row) => relationshipById.set(row.id, row));
+  const pathLabel = pathPersonIds.length
+    ? pathPersonIds
+        .map((personId, index) => {
+          const name = pathNames.get(personId) || personId;
+          if (index === pathPersonIds.length - 1) return name;
+          const nextPersonId = pathPersonIds[index + 1];
+          const relationshipId = pathRelationshipIds[index];
+          return `${name} -> ${traversalLabel(relationshipById.get(relationshipId), personId, nextPersonId)}`;
+        })
+        .join(' ')
+    : 'No lineage path found';
+
+  return {
+    matchId,
     counterpartPersonId,
     pathFound,
     pathFitsPrediction,
