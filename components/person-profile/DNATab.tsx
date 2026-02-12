@@ -5,6 +5,8 @@ import { DNA_VENDORS, DNA_TEST_TYPES } from './constants';
 import { parseAutosomalCsv, parseSharedSegmentsCsv } from '../../lib/dnaRawParser';
 
 interface DNATabProps {
+  personId: string;
+  personNameCandidates: string[];
   dnaTests: DNATest[];
   canAccessDNA: boolean;
   onAddTest: () => void;
@@ -12,8 +14,10 @@ interface DNATabProps {
   onRemoveTest: (id: string) => void;
 }
 
-const DNATab: React.FC<DNATabProps> = ({ dnaTests, canAccessDNA, onAddTest, onUpdateTest, onRemoveTest }) => (
+const DNATab: React.FC<DNATabProps> = ({ personId, personNameCandidates, dnaTests, canAccessDNA, onAddTest, onUpdateTest, onRemoveTest }) => (
   <DNATabInner
+    personId={personId}
+    personNameCandidates={personNameCandidates}
     dnaTests={dnaTests}
     canAccessDNA={canAccessDNA}
     onAddTest={onAddTest}
@@ -23,6 +27,8 @@ const DNATab: React.FC<DNATabProps> = ({ dnaTests, canAccessDNA, onAddTest, onUp
 );
 
 const DNATabInner: React.FC<DNATabProps> = ({
+  personId,
+  personNameCandidates,
   dnaTests,
   canAccessDNA,
   onAddTest,
@@ -33,6 +39,28 @@ const DNATabInner: React.FC<DNATabProps> = ({
   const [importTargetId, setImportTargetId] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<'autosomal_raw' | 'shared_segments' | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+
+  const normalizeName = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\s-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+  const nameLooksLikeProfile = (candidate: string) => {
+    const normalizedCandidate = normalizeName(candidate);
+    if (!normalizedCandidate) return false;
+    return personNameCandidates.some((name) => {
+      const normalizedProfileName = normalizeName(name);
+      return !!normalizedProfileName && (
+        normalizedCandidate === normalizedProfileName ||
+        normalizedCandidate.includes(normalizedProfileName) ||
+        normalizedProfileName.includes(normalizedCandidate)
+      );
+    });
+  };
 
   const handleOpenImport = (testId: string, mode: 'autosomal_raw' | 'shared_segments') => {
     setImportError(null);
@@ -58,9 +86,13 @@ const DNATabInner: React.FC<DNATabProps> = ({
         });
       } else {
         const { summary, preview } = parseSharedSegmentsCsv(text, file.name);
+        const summaryPersonMatchesProfile = nameLooksLikeProfile(summary.personName);
+        const summaryMatchMatchesProfile = nameLooksLikeProfile(summary.matchName);
         onUpdateTest(targetId, {
           type: 'Shared Autosomal',
+          sharedPersonId: summaryPersonMatchesProfile ? personId : undefined,
           sharedMatchName: summary.matchName,
+          sharedMatchPersonId: summaryMatchMatchesProfile ? personId : undefined,
           sharedSegmentSummary: summary,
           sharedSegmentsPreview: preview
         });

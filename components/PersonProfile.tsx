@@ -1021,6 +1021,13 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
 
         {activeSection === 'dna' && (
           <DNATab
+            personId={person.id}
+            personNameCandidates={[
+              [firstName, lastName].filter(Boolean).join(' ').trim(),
+              [firstName, maidenName].filter(Boolean).join(' ').trim(),
+              [person.firstName, person.lastName].filter(Boolean).join(' ').trim(),
+              [person.firstName, person.maidenName].filter(Boolean).join(' ').trim(),
+            ].filter(Boolean)}
             dnaTests={dnaTests}
             canAccessDNA={canAccessDNA}
             onAddTest={handleAddDNATest}
