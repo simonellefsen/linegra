@@ -292,8 +292,12 @@ const inferCounterpartForFocus = (
     if (matchNameId === focusPersonId && personNameId && personNameId !== focusPersonId) return personNameId;
     if (personNameId === focusPersonId || matchNameId === focusPersonId) return ownerPersonId;
     const normalizedFocus = normalizeName(focusFullName);
-    const personNameLooksLikeFocus = normalizeName(summary.personName).includes(normalizedFocus);
-    const matchNameLooksLikeFocus = normalizeName(summary.matchName).includes(normalizedFocus);
+    const normalizedPersonName = normalizeName(summary.personName);
+    const normalizedMatchName = normalizeName(summary.matchName);
+    const personNameLooksLikeFocus =
+      normalizedPersonName.includes(normalizedFocus) || normalizedFocus.includes(normalizedPersonName);
+    const matchNameLooksLikeFocus =
+      normalizedMatchName.includes(normalizedFocus) || normalizedFocus.includes(normalizedMatchName);
     if (personNameLooksLikeFocus || matchNameLooksLikeFocus) return ownerPersonId;
   }
   return null;
@@ -1342,6 +1346,22 @@ export const listSharedMatchesForAutosomalPerson = async (
     }
 
     const summary = summaryFromDnaTestMetadata(metadata);
+    const normalizedFocus = normalizeName(focusFullName);
+    const normalizedPersonName = normalizeName(summary?.personName);
+    const normalizedMatchName = normalizeName(summary?.matchName);
+    const focusNamedInSummary = !!normalizedFocus && (
+      normalizedPersonName.includes(normalizedFocus) ||
+      normalizedFocus.includes(normalizedPersonName) ||
+      normalizedMatchName.includes(normalizedFocus) ||
+      normalizedFocus.includes(normalizedMatchName)
+    );
+    if (!counterpartPersonId && focusNamedInSummary && testRow.person_id !== focusPersonId) {
+      if (explicitMatchPersonId && explicitMatchPersonId !== focusPersonId) {
+        counterpartPersonId = explicitMatchPersonId;
+      } else {
+        counterpartPersonId = testRow.person_id;
+      }
+    }
     if (!counterpartPersonId && summary) {
       counterpartPersonId = inferCounterpartForFocus(
         focusPersonId,
