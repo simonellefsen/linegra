@@ -1051,7 +1051,7 @@ export const updatePersonProfile = async (
       const { data: autosomalRows, error: autosomalError } = await supabase
         .from('dna_tests')
         .select('person_id')
-        .eq('type', 'Autosomal');
+        .eq('test_type', 'Autosomal');
       if (autosomalError) throw new Error(autosomalError.message);
       const autosomalOwners = new Set<string>();
       (autosomalRows || []).forEach((row: any) => {
