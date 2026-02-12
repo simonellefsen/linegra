@@ -299,6 +299,17 @@ const inferCounterpartForFocus = (
   return null;
 };
 
+const readSharedMatchPersonId = (metadata: Record<string, unknown>): string | null => {
+  const direct =
+    typeof metadata.sharedMatchPersonId === 'string'
+      ? metadata.sharedMatchPersonId
+      : typeof metadata.shared_match_person_id === 'string'
+      ? metadata.shared_match_person_id
+      : null;
+  if (!direct || !UUID_REGEX.test(direct)) return null;
+  return direct;
+};
+
 const findRelationshipPath = (
   fromPersonId: string,
   toPersonId: string,
@@ -1320,15 +1331,27 @@ export const listSharedMatchesForAutosomalPerson = async (
     if (!testRow?.id || !testRow?.person_id) return;
     if (existingTestIds.has(testRow.id)) return;
     const metadata = asRecord(testRow.metadata);
+    const explicitMatchPersonId = readSharedMatchPersonId(metadata);
+    let counterpartPersonId: string | null = null;
+    if (explicitMatchPersonId) {
+      if (testRow.person_id === focusPersonId && explicitMatchPersonId !== focusPersonId) {
+        counterpartPersonId = explicitMatchPersonId;
+      } else if (explicitMatchPersonId === focusPersonId && testRow.person_id !== focusPersonId) {
+        counterpartPersonId = testRow.person_id;
+      }
+    }
+
     const summary = summaryFromDnaTestMetadata(metadata);
-    if (!summary) return;
-    const counterpartPersonId = inferCounterpartForFocus(
-      focusPersonId,
-      testRow.person_id,
-      summary,
-      nameRows,
-      focusFullName
-    );
+    if (!counterpartPersonId && summary) {
+      counterpartPersonId = inferCounterpartForFocus(
+        focusPersonId,
+        testRow.person_id,
+        summary,
+        nameRows,
+        focusFullName
+      );
+    }
+    if (!summary || !counterpartPersonId) return;
     if (!counterpartPersonId || counterpartPersonId === focusPersonId) return;
     if (!personById.has(counterpartPersonId)) return;
     const pairKey = [focusPersonId, counterpartPersonId].sort().join(':');
