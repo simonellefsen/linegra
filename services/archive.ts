@@ -302,13 +302,8 @@ const inferCounterpartForFocus = (
     if (personNameId === focusPersonId && matchNameId && matchNameId !== focusPersonId) return matchNameId;
     if (matchNameId === focusPersonId && personNameId && personNameId !== focusPersonId) return personNameId;
     if (personNameId === focusPersonId || matchNameId === focusPersonId) return ownerPersonId;
-    const normalizedFocus = normalizeName(focusFullName);
-    const normalizedPersonName = normalizeName(summary.personName);
-    const normalizedMatchName = normalizeName(summary.matchName);
-    const personNameLooksLikeFocus =
-      normalizedPersonName.includes(normalizedFocus) || normalizedFocus.includes(normalizedPersonName);
-    const matchNameLooksLikeFocus =
-      normalizedMatchName.includes(normalizedFocus) || normalizedFocus.includes(normalizedMatchName);
+    const personNameLooksLikeFocus = scoreNameMatch(focusFullName, summary.personName) >= 60;
+    const matchNameLooksLikeFocus = scoreNameMatch(focusFullName, summary.matchName) >= 60;
     if (personNameLooksLikeFocus || matchNameLooksLikeFocus) return ownerPersonId;
   }
   return null;
@@ -1401,15 +1396,10 @@ export const listSharedMatchesForAutosomalPerson = async (
     }
 
     const summary = summaryFromDnaTestMetadata(metadata);
-    const normalizedFocus = normalizeName(focusFullName);
-    const normalizedPersonName = normalizeName(summary?.personName);
-    const normalizedMatchName = normalizeName(summary?.matchName);
-    const focusNamedInSummary = !!normalizedFocus && (
-      normalizedPersonName.includes(normalizedFocus) ||
-      normalizedFocus.includes(normalizedPersonName) ||
-      normalizedMatchName.includes(normalizedFocus) ||
-      normalizedFocus.includes(normalizedMatchName)
-    );
+    const focusNamedInSummary =
+      !!summary &&
+      (scoreNameMatch(focusFullName, summary.personName) >= 60 ||
+        scoreNameMatch(focusFullName, summary.matchName) >= 60);
     // If the CSV summary names the selected focus person and this test belongs to someone else,
     // that owner is the counterpart regardless of a stale/mismapped sharedMatchPersonId.
     if (!counterpartPersonId && focusNamedInSummary && ownerPersonId !== focusPersonId) {
