@@ -7,6 +7,7 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
+  Dna,
   Home,
   Maximize2,
   Plus,
@@ -57,6 +58,27 @@ const extractYear = (value?: string) => {
   if (!value) return null;
   const match = value.match(/(\d{4})/);
   return match ? match[1] : null;
+};
+
+const getDnaSupportMatchIds = (metadata?: Record<string, unknown>) => {
+  if (!metadata || typeof metadata !== 'object') return [];
+  const byPerson = (metadata as Record<string, unknown>).dna_support_by_person;
+  if (!byPerson || typeof byPerson !== 'object' || Array.isArray(byPerson)) return [];
+  const ids = new Set<string>();
+  Object.values(byPerson as Record<string, unknown>).forEach((entry) => {
+    if (Array.isArray(entry)) {
+      entry.forEach((matchId) => {
+        if (typeof matchId === 'string' && matchId) ids.add(matchId);
+      });
+      return;
+    }
+    if (entry && typeof entry === 'object' && Array.isArray((entry as Record<string, unknown>).match_ids)) {
+      ((entry as Record<string, unknown>).match_ids as unknown[]).forEach((matchId) => {
+        if (typeof matchId === 'string' && matchId) ids.add(matchId);
+      });
+    }
+  });
+  return Array.from(ids);
 };
 
 const PedigreeTree: React.FC<PedigreeTreeProps> = ({
@@ -173,6 +195,23 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     });
     return groups;
   }, [layout]);
+
+  const dnaSupportByPersonId = useMemo(() => {
+    const supportMap = new Map<string, Set<string>>();
+    relationships.forEach((relationship) => {
+      const matchIds = getDnaSupportMatchIds(
+        relationship.metadata as Record<string, unknown> | undefined
+      );
+      if (!matchIds.length) return;
+      [relationship.personId, relationship.relatedId].forEach((personId) => {
+        if (!personId) return;
+        const existing = supportMap.get(personId) || new Set<string>();
+        matchIds.forEach((matchId) => existing.add(matchId));
+        supportMap.set(personId, existing);
+      });
+    });
+    return supportMap;
+  }, [relationships]);
 
   useEffect(() => {
     if (!pendingHomeRecenter || !focusId) return;
@@ -348,6 +387,9 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             const lifeLabel =
               birthYear && deathYear ? `${birthYear} - ${deathYear}` : birthYear || deathYear || undefined;
             const isPlaceholder = !!node.placeholder;
+            const dnaSupportCount = node.person
+              ? dnaSupportByPersonId.get(node.person.id)?.size ?? 0
+              : 0;
             const cardClasses = [
               'absolute',
               'rounded-[24px]',
@@ -394,6 +436,12 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                   </>
                 )}
                 <div className="flex h-full flex-col items-center text-center">
+                  {node.person && dnaSupportCount > 0 && (
+                    <div className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5">
+                      <Dna className="w-3 h-3" />
+                      <span className="text-[9px] font-black leading-none">{dnaSupportCount}</span>
+                    </div>
+                  )}
                   <div
                     className={`w-14 h-14 rounded-2xl overflow-hidden ${
                       node.placeholder ? 'bg-slate-100 border border-dashed border-slate-300' : ''

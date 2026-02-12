@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, DNATest, DNATestType, DNAVendor } from '../types';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, DNATest, DNATestType, DNAVendor } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -44,6 +44,257 @@ const chunkedInsert = async <T>(table: string, rows: T[], chunkSize = 500) => {
     const { error } = await supabase.from(table).insert(slice as any);
     if (error) throw new Error(error.message);
   }
+};
+
+const DNA_PATH_RELATIONSHIP_TYPES = new Set<RelationshipType>([
+  'bio_father',
+  'bio_mother',
+  'adoptive_father',
+  'adoptive_mother',
+  'guardian',
+  'step_parent',
+  'child',
+]);
+
+interface NameLookupRow {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  maiden_name: string | null;
+}
+
+interface RelationshipLookupRow {
+  id: string;
+  person_id: string;
+  related_id: string;
+}
+
+interface DnaMatchPayloadItem {
+  matched_person_id: string;
+  shared_cm: number;
+  segments: number;
+  longest_segment: number | null;
+  confidence: 'High' | 'Medium' | 'Low';
+  metadata: Record<string, unknown>;
+  path_person_ids: string[];
+  path_relationship_ids: string[];
+}
+
+const normalizeName = (value?: string | null) =>
+  (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+const tokenizeName = (value?: string | null) =>
+  normalizeName(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+const scoreNameMatch = (inputName: string, candidateName: string) => {
+  const normalizedInput = normalizeName(inputName);
+  const normalizedCandidate = normalizeName(candidateName);
+  if (!normalizedInput || !normalizedCandidate) return 0;
+  if (normalizedInput === normalizedCandidate) return 1000;
+  if (normalizedCandidate.includes(normalizedInput) || normalizedInput.includes(normalizedCandidate)) {
+    return 700;
+  }
+  const inputTokens = tokenizeName(normalizedInput);
+  const candidateTokens = tokenizeName(normalizedCandidate);
+  if (!inputTokens.length || !candidateTokens.length) return 0;
+  const candidateSet = new Set(candidateTokens);
+  let overlap = 0;
+  inputTokens.forEach((token) => {
+    if (candidateSet.has(token)) overlap += 1;
+  });
+  if (!overlap) return 0;
+  let score = overlap * 40;
+  if (candidateTokens[0] === inputTokens[0]) score += 15;
+  if (candidateTokens[candidateTokens.length - 1] === inputTokens[inputTokens.length - 1]) score += 30;
+  if (candidateTokens.length === inputTokens.length) score += 10;
+  return score;
+};
+
+const resolvePersonIdByName = (
+  rawName: string | null | undefined,
+  candidates: NameLookupRow[],
+  excludedPersonId?: string
+) => {
+  const input = normalizeName(rawName);
+  if (!input) return null;
+
+  const ranked = candidates
+    .filter((candidate) => !(excludedPersonId && candidate.id === excludedPersonId))
+    .map((candidate) => {
+      const displayName = `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim();
+      const maidenName = `${candidate.first_name || ''} ${candidate.maiden_name || ''}`.trim();
+      return {
+        id: candidate.id,
+        score: Math.max(scoreNameMatch(input, displayName), scoreNameMatch(input, maidenName)),
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const best = ranked[0];
+  const secondBest = ranked[1];
+  if (!best || best.score < 60) return null;
+  if (secondBest && best.score - secondBest.score < 5) return null;
+  return best.id;
+};
+
+const deriveMatchConfidence = (sharedCM: number, segments: number): 'High' | 'Medium' | 'Low' => {
+  if (sharedCM >= 90 || segments >= 6) return 'High';
+  if (sharedCM >= 40 || segments >= 3) return 'Medium';
+  return 'Low';
+};
+
+const findRelationshipPath = (
+  fromPersonId: string,
+  toPersonId: string,
+  relationshipRows: RelationshipLookupRow[]
+) => {
+  if (fromPersonId === toPersonId) {
+    return { pathPersonIds: [fromPersonId], pathRelationshipIds: [] };
+  }
+
+  const adjacency = new Map<string, Array<{ nextPersonId: string; relationshipId: string }>>();
+  relationshipRows.forEach((rel) => {
+    const fromLinks = adjacency.get(rel.person_id) || [];
+    fromLinks.push({ nextPersonId: rel.related_id, relationshipId: rel.id });
+    adjacency.set(rel.person_id, fromLinks);
+
+    const toLinks = adjacency.get(rel.related_id) || [];
+    toLinks.push({ nextPersonId: rel.person_id, relationshipId: rel.id });
+    adjacency.set(rel.related_id, toLinks);
+  });
+
+  const queue: string[] = [fromPersonId];
+  const visited = new Set<string>([fromPersonId]);
+  const previous = new Map<string, { previousPersonId: string; relationshipId: string }>();
+
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (current === toPersonId) break;
+    const edges = adjacency.get(current) || [];
+    edges.forEach((edge) => {
+      if (visited.has(edge.nextPersonId)) return;
+      visited.add(edge.nextPersonId);
+      previous.set(edge.nextPersonId, {
+        previousPersonId: current,
+        relationshipId: edge.relationshipId,
+      });
+      queue.push(edge.nextPersonId);
+    });
+  }
+
+  if (!visited.has(toPersonId)) return null;
+
+  const pathPersonIds: string[] = [toPersonId];
+  const pathRelationshipIds: string[] = [];
+  let cursor = toPersonId;
+  while (cursor !== fromPersonId) {
+    const step = previous.get(cursor);
+    if (!step) return null;
+    pathRelationshipIds.push(step.relationshipId);
+    pathPersonIds.push(step.previousPersonId);
+    cursor = step.previousPersonId;
+  }
+  pathPersonIds.reverse();
+  pathRelationshipIds.reverse();
+  return { pathPersonIds, pathRelationshipIds };
+};
+
+const buildDnaMatchPayload = async (targetPersonId: string, dnaTests: DNATest[]): Promise<DnaMatchPayloadItem[]> => {
+  const sharedTests = dnaTests.filter(
+    (test) => test.type === 'Shared Autosomal' && (test.sharedSegmentSummary || test.sharedMatchName)
+  );
+  if (!sharedTests.length) return [];
+
+  const { data: personRow, error: personError } = await supabase
+    .from('persons')
+    .select('id, tree_id')
+    .eq('id', targetPersonId)
+    .maybeSingle();
+  if (personError) throw new Error(personError.message);
+  if (!personRow?.tree_id) return [];
+
+  const [peopleResponse, relationshipResponse] = await Promise.all([
+    supabase
+      .from('persons')
+      .select('id, first_name, last_name, maiden_name')
+      .eq('tree_id', personRow.tree_id),
+    supabase
+      .from('relationships')
+      .select('id, person_id, related_id, type')
+      .eq('tree_id', personRow.tree_id)
+      .in('type', Array.from(DNA_PATH_RELATIONSHIP_TYPES))
+  ]);
+
+  if (peopleResponse.error) throw new Error(peopleResponse.error.message);
+  if (relationshipResponse.error) throw new Error(relationshipResponse.error.message);
+
+  const nameRows = (peopleResponse.data || []) as NameLookupRow[];
+  const relationshipRows = (relationshipResponse.data || [])
+    .filter((row) => !!row.id && !!row.person_id && !!row.related_id) as RelationshipLookupRow[];
+
+  const payloadItems: DnaMatchPayloadItem[] = [];
+
+  sharedTests.forEach((test) => {
+    const summary = test.sharedSegmentSummary;
+    const importedPersonName = summary?.personName || null;
+    const importedMatchName = summary?.matchName || test.sharedMatchName || null;
+    const importedPersonId = resolvePersonIdByName(importedPersonName, nameRows);
+    const importedMatchId = resolvePersonIdByName(importedMatchName, nameRows);
+
+    let matchedPersonId: string | null = null;
+    if (test.sharedMatchPersonId && UUID_REGEX.test(test.sharedMatchPersonId)) {
+      matchedPersonId = test.sharedMatchPersonId;
+    } else if (importedPersonId === targetPersonId && importedMatchId) {
+      matchedPersonId = importedMatchId;
+    } else if (importedMatchId === targetPersonId && importedPersonId && importedPersonId !== targetPersonId) {
+      matchedPersonId = importedPersonId;
+    } else if (importedMatchId) {
+      matchedPersonId = importedMatchId;
+    } else if (importedPersonId && importedPersonId !== targetPersonId) {
+      matchedPersonId = importedPersonId;
+    }
+
+    if (!matchedPersonId || matchedPersonId === targetPersonId) return;
+
+    const path = findRelationshipPath(targetPersonId, matchedPersonId, relationshipRows);
+    const pathPersonIds = path?.pathPersonIds || [targetPersonId, matchedPersonId];
+    const pathRelationshipIds = path?.pathRelationshipIds || [];
+
+    const sharedCM = summary?.totalCentimorgans ?? 0;
+    const segments = summary?.segmentCount ?? 0;
+    const longestSegment = summary?.largestSegmentCentimorgans ?? null;
+    payloadItems.push({
+      matched_person_id: matchedPersonId,
+      shared_cm: sharedCM,
+      segments,
+      longest_segment: longestSegment,
+      confidence: deriveMatchConfidence(sharedCM, segments),
+      path_person_ids: pathPersonIds,
+      path_relationship_ids: pathRelationshipIds,
+      metadata: {
+        source: 'FTDNA_SHARED_AUTOSOMAL_SEGMENTS_CSV',
+        test_id: test.id,
+        match_name: summary?.matchName || test.sharedMatchName || null,
+        person_name: summary?.personName || null,
+        file_name: summary?.fileName || null,
+        segment_count: summary?.segmentCount ?? null,
+        total_centimorgans: summary?.totalCentimorgans ?? null,
+        largest_segment_centimorgans: summary?.largestSegmentCentimorgans ?? null,
+        path_found: !!path,
+      },
+    });
+  });
+
+  return payloadItems;
 };
 
 const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
@@ -186,8 +437,11 @@ const mapDbDnaTest = (row: any): DNATest => {
     rawDataSummary: metadata.rawDataSummary || undefined,
     rawDataPreview: metadata.rawDataPreview || undefined,
     sharedMatchName: metadata.sharedMatchName || undefined,
+    sharedMatchPersonId: metadata.sharedMatchPersonId || undefined,
     sharedSegmentSummary: metadata.sharedSegmentSummary || undefined,
-    sharedSegmentsPreview: metadata.sharedSegmentsPreview || undefined
+    sharedSegmentsPreview: metadata.sharedSegmentsPreview || undefined,
+    sharedPathPersonIds: metadata.sharedPathPersonIds || undefined,
+    sharedPathRelationshipIds: metadata.sharedPathRelationshipIds || undefined,
   };
 };
 
@@ -570,8 +824,11 @@ export const updatePersonProfile = async (
     rawDataSummary: test.rawDataSummary || null,
     rawDataPreview: test.rawDataPreview || null,
     sharedMatchName: test.sharedMatchName || null,
+    sharedMatchPersonId: test.sharedMatchPersonId || null,
     sharedSegmentSummary: test.sharedSegmentSummary || null,
     sharedSegmentsPreview: test.sharedSegmentsPreview || null,
+    sharedPathPersonIds: test.sharedPathPersonIds || null,
+    sharedPathRelationshipIds: test.sharedPathRelationshipIds || null,
     haplogroup: test.haplogroup || null,
     isPrivate: !!test.isPrivate,
     notes: test.notes || null,
@@ -586,16 +843,29 @@ export const updatePersonProfile = async (
       rawDataSummary: test.rawDataSummary || null,
       rawDataPreview: test.rawDataPreview || null,
       sharedMatchName: test.sharedMatchName || null,
+      sharedMatchPersonId: test.sharedMatchPersonId || null,
       sharedSegmentSummary: test.sharedSegmentSummary || null,
-      sharedSegmentsPreview: test.sharedSegmentsPreview || null
+      sharedSegmentsPreview: test.sharedSegmentsPreview || null,
+      sharedPathPersonIds: test.sharedPathPersonIds || null,
+      sharedPathRelationshipIds: test.sharedPathRelationshipIds || null
     }
   }));
+
+  let dnaMatchesPayload: DnaMatchPayloadItem[] = [];
+  if (payload.dnaTests?.length) {
+    try {
+      dnaMatchesPayload = await buildDnaMatchPayload(personId, payload.dnaTests);
+    } catch (err) {
+      console.warn('Could not derive DNA match lineage paths', err);
+    }
+  }
 
   const { error: dnaError } = await supabase.rpc('admin_upsert_person_dna_tests', {
     target_person_id: personId,
     payload_actor_id: normalizedActor.id,
     payload_actor_name: payload.actorName ?? normalizedActor.name,
-    payload_dna_tests: dnaTestsPayload
+    payload_dna_tests: dnaTestsPayload,
+    payload_dna_matches: dnaMatchesPayload
   });
   if (dnaError) throw new Error(dnaError.message);
   return data;

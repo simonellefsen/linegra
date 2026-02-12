@@ -104,8 +104,11 @@ export interface DNATest {
   rawDataSummary?: DNARawDataSummary;
   rawDataPreview?: DNARawDataRowPreview[];
   sharedMatchName?: string;
+  sharedMatchPersonId?: string;
   sharedSegmentSummary?: DNASharedSegmentSummary;
   sharedSegmentsPreview?: DNASharedSegmentRowPreview[];
+  sharedPathPersonIds?: string[];
+  sharedPathRelationshipIds?: string[];
 }
 
 export interface DNAMatchInfo {
