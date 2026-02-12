@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Lock, Trash2, Dna, Upload, FileText } from 'lucide-react';
 import { DNATest } from '../../types';
 import { DNA_VENDORS, DNA_TEST_TYPES } from './constants';
@@ -61,6 +61,23 @@ const DNATabInner: React.FC<DNATabProps> = ({
       );
     });
   };
+
+  useEffect(() => {
+    const handleResolved = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        dnaTestId?: string | null;
+        pathPersonIds?: string[];
+        pathRelationshipIds?: string[];
+      }>).detail;
+      if (!detail?.dnaTestId) return;
+      onUpdateTest(detail.dnaTestId, {
+        sharedPathPersonIds: detail.pathPersonIds || [],
+        sharedPathRelationshipIds: detail.pathRelationshipIds || [],
+      });
+    };
+    window.addEventListener('linegra:dna-lineage-resolved', handleResolved);
+    return () => window.removeEventListener('linegra:dna-lineage-resolved', handleResolved);
+  }, [onUpdateTest]);
 
   const handleOpenImport = (testId: string, mode: 'autosomal_raw' | 'shared_segments') => {
     setImportError(null);

@@ -32,6 +32,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [resolvingMatchId, setResolvingMatchId] = useState<string | null>(null);
   const [resolutionByMatchId, setResolutionByMatchId] = useState<Record<string, DnaLineageResolution>>({});
+  const [expandedPathByMatchId, setExpandedPathByMatchId] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
   const filteredCandidates = useMemo(() => {
@@ -85,6 +86,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
 
   useEffect(() => {
     setResolutionByMatchId({});
+    setExpandedPathByMatchId({});
     setMatches([]);
     if (!treeId) {
       setCandidates([]);
@@ -118,6 +120,16 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
               actor
             );
       setResolutionByMatchId((prev) => ({ ...prev, [matchId]: resolution }));
+      setExpandedPathByMatchId((prev) => ({ ...prev, [matchId]: true }));
+      window.dispatchEvent(
+        new CustomEvent('linegra:dna-lineage-resolved', {
+          detail: {
+            dnaTestId: match.dnaTestId || null,
+            pathPersonIds: resolution.pathPersonIds,
+            pathRelationshipIds: resolution.pathRelationshipIds,
+          },
+        })
+      );
       await loadMatches();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not resolve lineage path.');
@@ -212,6 +224,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
                 <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
                   {matches.map((match) => {
                     const resolution = resolutionByMatchId[match.id];
+                    const isPathExpanded = !!expandedPathByMatchId[match.id];
                     const pathText = resolution?.pathLabel
                       ? resolution.pathLabel
                       : match.pathFound
@@ -311,11 +324,27 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
                                 : 'Path found, review cM mismatch'
                               : 'No lineage path linked'}
                           </span>
-                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 border border-blue-200 bg-blue-50 text-blue-700">
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!resolution && match.pathFound && !resolvingMatchId) {
+                                await handleResolveLineage(match.id);
+                                return;
+                              }
+                              setExpandedPathByMatchId((prev) => ({ ...prev, [match.id]: !prev[match.id] }));
+                            }}
+                            className="inline-flex items-center gap-1 rounded-full px-2 py-1 border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                          >
                             <Sparkles className="w-3.5 h-3.5" />
                             {pathText}
-                          </span>
+                          </button>
                         </div>
+                        {isPathExpanded && resolution?.pathLabel && (
+                          <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                            {resolution.pathLabel}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
