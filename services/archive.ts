@@ -1410,14 +1410,10 @@ export const listSharedMatchesForAutosomalPerson = async (
       normalizedMatchName.includes(normalizedFocus) ||
       normalizedFocus.includes(normalizedMatchName)
     );
+    // If the CSV summary names the selected focus person and this test belongs to someone else,
+    // that owner is the counterpart regardless of a stale/mismapped sharedMatchPersonId.
     if (!counterpartPersonId && focusNamedInSummary && ownerPersonId !== focusPersonId) {
-      if (explicitMatchPersonId && explicitMatchPersonId !== focusPersonId) {
-        counterpartPersonId = explicitMatchPersonId;
-      } else if (rpcCounterpartId && rpcCounterpartId !== focusPersonId) {
-        counterpartPersonId = rpcCounterpartId;
-      } else {
-        counterpartPersonId = ownerPersonId;
-      }
+      counterpartPersonId = ownerPersonId;
     }
     if (!counterpartPersonId && summary) {
       counterpartPersonId = inferCounterpartForFocus(
