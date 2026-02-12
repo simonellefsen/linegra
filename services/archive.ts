@@ -808,7 +808,39 @@ export const updatePersonProfile = async (
   });
   if (error) throw new Error(error.message);
 
-  const dnaTestsPayload = (payload.dnaTests || []).map((test) => ({
+  let dnaMatchesPayload: DnaMatchPayloadItem[] = [];
+  if (payload.dnaTests?.length) {
+    try {
+      dnaMatchesPayload = await buildDnaMatchPayload(personId, payload.dnaTests);
+    } catch (err) {
+      console.warn('Could not derive DNA match lineage paths', err);
+    }
+  }
+
+  const sharedLineageByTestId = new Map<
+    string,
+    { matchedPersonId: string; pathPersonIds: string[]; pathRelationshipIds: string[] }
+  >();
+  dnaMatchesPayload.forEach((item) => {
+    const sourceTestId =
+      item.metadata && typeof item.metadata.test_id === 'string'
+        ? (item.metadata.test_id as string)
+        : null;
+    if (!sourceTestId || sharedLineageByTestId.has(sourceTestId)) return;
+    sharedLineageByTestId.set(sourceTestId, {
+      matchedPersonId: item.matched_person_id,
+      pathPersonIds: item.path_person_ids || [],
+      pathRelationshipIds: item.path_relationship_ids || [],
+    });
+  });
+
+  const dnaTestsPayload = (payload.dnaTests || []).map((test) => {
+    const lineage = sharedLineageByTestId.get(test.id);
+    const sharedMatchPersonId = lineage?.matchedPersonId || test.sharedMatchPersonId || null;
+    const sharedPathPersonIds = lineage?.pathPersonIds || test.sharedPathPersonIds || null;
+    const sharedPathRelationshipIds =
+      lineage?.pathRelationshipIds || test.sharedPathRelationshipIds || null;
+    return {
     id: test.id,
     type: test.type,
     vendor: test.vendor,
@@ -824,11 +856,11 @@ export const updatePersonProfile = async (
     rawDataSummary: test.rawDataSummary || null,
     rawDataPreview: test.rawDataPreview || null,
     sharedMatchName: test.sharedMatchName || null,
-    sharedMatchPersonId: test.sharedMatchPersonId || null,
+    sharedMatchPersonId,
     sharedSegmentSummary: test.sharedSegmentSummary || null,
     sharedSegmentsPreview: test.sharedSegmentsPreview || null,
-    sharedPathPersonIds: test.sharedPathPersonIds || null,
-    sharedPathRelationshipIds: test.sharedPathRelationshipIds || null,
+    sharedPathPersonIds,
+    sharedPathRelationshipIds,
     haplogroup: test.haplogroup || null,
     isPrivate: !!test.isPrivate,
     notes: test.notes || null,
@@ -843,22 +875,14 @@ export const updatePersonProfile = async (
       rawDataSummary: test.rawDataSummary || null,
       rawDataPreview: test.rawDataPreview || null,
       sharedMatchName: test.sharedMatchName || null,
-      sharedMatchPersonId: test.sharedMatchPersonId || null,
+      sharedMatchPersonId,
       sharedSegmentSummary: test.sharedSegmentSummary || null,
       sharedSegmentsPreview: test.sharedSegmentsPreview || null,
-      sharedPathPersonIds: test.sharedPathPersonIds || null,
-      sharedPathRelationshipIds: test.sharedPathRelationshipIds || null
+      sharedPathPersonIds,
+      sharedPathRelationshipIds
     }
-  }));
-
-  let dnaMatchesPayload: DnaMatchPayloadItem[] = [];
-  if (payload.dnaTests?.length) {
-    try {
-      dnaMatchesPayload = await buildDnaMatchPayload(personId, payload.dnaTests);
-    } catch (err) {
-      console.warn('Could not derive DNA match lineage paths', err);
-    }
-  }
+  };
+  });
 
   const { error: dnaError } = await supabase.rpc('admin_upsert_person_dna_tests', {
     target_person_id: personId,

@@ -648,6 +648,11 @@ useEffect(() => {
     );
   }, []);
 
+  const handleRefreshTreeGraph = useCallback(async () => {
+    if (!activeTree || !supabaseActive) return;
+    await loadTreeArchive(activeTree, { silent: true, force: true });
+  }, [activeTree, supabaseActive, loadTreeArchive]);
+
   const handleAdminLogin = (username: string) => {
     const adminUser: User = {
       id: `admin-${username}`,
@@ -1394,6 +1399,7 @@ useEffect(() => {
               onPersistFamilyLayout={handlePersistFamilyLayout}
               onPersonUpdated={handlePersonPatched}
               onOpenTreeFromProfile={handleOpenTreeFromProfile}
+              onRefreshTreeGraph={handleRefreshTreeGraph}
             />
           )}
         </div>

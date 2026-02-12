@@ -195,6 +195,17 @@ const DNATabInner: React.FC<DNATabProps> = ({
                         {test.sharedSegmentSummary.segmentCount} segments • {test.sharedSegmentSummary.totalCentimorgans.toFixed(1)} cM total •{' '}
                         {test.sharedSegmentSummary.largestSegmentCentimorgans.toFixed(1)} cM largest
                       </p>
+                      {test.sharedPathRelationshipIds && test.sharedPathRelationshipIds.length > 0 ? (
+                        <p className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                          <Dna className="w-3.5 h-3.5" />
+                          Lineage path verified ({test.sharedPathRelationshipIds.length} relationship links).
+                        </p>
+                      ) : (
+                        <p className="inline-flex items-center gap-2 rounded-xl border border-amber-300/40 bg-amber-400/10 px-2 py-1 text-amber-100">
+                          <Dna className="w-3.5 h-3.5" />
+                          Shared match saved, but no lineage path is linked in the tree yet.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

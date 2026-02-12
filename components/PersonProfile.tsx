@@ -105,11 +105,21 @@ interface PersonProfileProps {
   onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
   onPersonUpdated?: (person: Person) => void;
   onOpenTreeFromProfile?: (person: Person) => void;
+  onRefreshTreeGraph?: () => Promise<void> | void;
 }
 
 type ProfileSection = 'vital' | 'story' | 'family' | 'sources' | 'media' | 'dna' | 'notes';
 
-const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onClose, onNavigateToPerson, onPersistFamilyLayout, onPersonUpdated, onOpenTreeFromProfile }) => {
+const PersonProfile: React.FC<PersonProfileProps> = ({
+  person,
+  currentUser,
+  onClose,
+  onNavigateToPerson,
+  onPersistFamilyLayout,
+  onPersonUpdated,
+  onOpenTreeFromProfile,
+  onRefreshTreeGraph,
+}) => {
   const [activeSection, setActiveSection] = useState<ProfileSection>('vital');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -535,6 +545,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({ person, currentUser, onCl
         sources: sourcesPayload(),
         dnaTests
       });
+      await onRefreshTreeGraph?.();
       const refreshed = await fetchPersonDetails(person.id);
       onPersonUpdated?.(refreshed);
       setBaselineSnapshot(buildSnapshotFromPerson(refreshed));
