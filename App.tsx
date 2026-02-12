@@ -11,6 +11,7 @@ import AuthModal from './components/AuthModal';
 import ImportExport from './components/ImportExport';
 import TreeLandingPage, { TreeStatistics } from './components/TreeLandingPage';
 import AdminTreesPanel from './components/AdminTreesPanel';
+import AdminDnaPanel from './components/AdminDnaPanel';
 import { getAvatarForPerson } from './lib/avatar';
 import { 
   GitBranch, 
@@ -61,7 +62,7 @@ const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
-  const [adminSection, setAdminSection] = useState<'database' | 'trees' | 'gedcom'>('gedcom');
+  const [adminSection, setAdminSection] = useState<'database' | 'trees' | 'gedcom' | 'dna'>('gedcom');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [adminTrees, setAdminTrees] = useState<FamilyTreeSummary[]>([]);
   const [adminTreesLoading, setAdminTreesLoading] = useState(false);
@@ -1270,7 +1271,7 @@ useEffect(() => {
             {activeTab === 'records' && currentUser?.isAdmin && (
               <div className="space-y-8 max-w-6xl mx-auto py-6">
                 <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-4 flex items-center gap-3">
-                  {(['database','trees','gedcom'] as const).map((tab) => (
+                  {(['database','trees','gedcom','dna'] as const).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setAdminSection(tab)}
@@ -1281,6 +1282,7 @@ useEffect(() => {
                       {tab === 'database' && 'Database'}
                       {tab === 'trees' && 'Trees'}
                       {tab === 'gedcom' && 'GEDCOM'}
+                      {tab === 'dna' && 'DNA'}
                     </button>
                   ))}
                 </div>
@@ -1384,6 +1386,12 @@ useEffect(() => {
                     onImport={handleImport} 
                     activeTreeName={activeTree?.name}
                     showGedcomSection
+                  />
+                )}
+                {adminSection === 'dna' && (
+                  <AdminDnaPanel
+                    treeId={activeTree?.id || null}
+                    actor={{ id: currentUser?.id, name: currentUser?.name }}
                   />
                 )}
               </div>

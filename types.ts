@@ -111,6 +111,45 @@ export interface DNATest {
   sharedPathRelationshipIds?: string[];
 }
 
+export interface DNAAutosomalCandidate {
+  personId: string;
+  name: string;
+  birthYear?: string | null;
+  deathYear?: string | null;
+  autosomalTestCount: number;
+}
+
+export interface DNASharedMatchRecord {
+  id: string;
+  ownerPersonId: string;
+  ownerPersonName: string;
+  counterpartPersonId: string;
+  counterpartPersonName: string;
+  sharedCM: number | null;
+  segments: number | null;
+  longestSegment: number | null;
+  confidence: 'High' | 'Medium' | 'Low' | null;
+  predictionLabel: string;
+  pathFound: boolean;
+  pathFitsPrediction: boolean;
+  pathPersonIds: string[];
+  pathRelationshipIds: string[];
+  fileName?: string;
+  importedAt?: string;
+  testId?: string;
+}
+
+export interface DnaLineageResolution {
+  matchId: string;
+  counterpartPersonId: string;
+  pathFound: boolean;
+  pathFitsPrediction: boolean;
+  pathPersonIds: string[];
+  pathRelationshipIds: string[];
+  pathLabel: string;
+  predictionLabel: string;
+}
+
 export interface DNAMatchInfo {
   sharedCM: number;
   segments: number;
