@@ -28,6 +28,9 @@ export default defineConfig(({ mode }) => {
       acc[`import.meta.env.${key}`] = JSON.stringify(value);
       return acc;
     }, {});
+    const buildId = runtimeEnv.VERCEL_GIT_COMMIT_SHA
+      ? runtimeEnv.VERCEL_GIT_COMMIT_SHA.slice(0, 8)
+      : `local-${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}`;
     return {
       server: {
         port: 3000,
@@ -36,7 +39,8 @@ export default defineConfig(({ mode }) => {
       plugins: [react()],
       define: {
         ...definedEnv,
-        'process.env.API_KEY': JSON.stringify(runtimeEnv.GEMINI_API_KEY ?? runtimeEnv.VITE_GEMINI_API_KEY ?? '')
+        'process.env.API_KEY': JSON.stringify(runtimeEnv.GEMINI_API_KEY ?? runtimeEnv.VITE_GEMINI_API_KEY ?? ''),
+        __BUILD_STAMP__: JSON.stringify(buildId)
       },
       resolve: {
         alias: {

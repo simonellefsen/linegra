@@ -25,7 +25,8 @@ export default [
       },
       globals: {
         ...globals.browser,
-        ...globals.es2024
+        ...globals.es2024,
+        __BUILD_STAMP__: 'readonly'
       }
     },
     plugins: {

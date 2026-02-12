@@ -44,6 +44,7 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   
   const supabaseActive = isSupabaseConfigured();
+  const buildStamp = __BUILD_STAMP__;
 
   // Tree State
   const [trees, setTrees] = useState<FamilyTreeType[]>([]);
@@ -1569,6 +1570,9 @@ useEffect(() => {
       )}
 
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={handleAdminLogin} />
+      <div className="fixed left-2 bottom-2 z-[70] pointer-events-none rounded-md border border-slate-300/80 bg-white/85 px-2 py-1 text-[10px] font-mono text-slate-500 shadow-sm backdrop-blur">
+        build {buildStamp}
+      </div>
     </div>
   );
 };
