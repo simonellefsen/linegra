@@ -401,6 +401,20 @@ const findRelationshipPath = (
   return { pathPersonIds, pathRelationshipIds };
 };
 
+const fetchDnaPathRelationships = async (treeId: string): Promise<RelationshipLookupRow[]> => {
+  const rows = await fetchPagedRows<any>(async (from, to) => {
+    const { data, error } = await supabase
+      .from('relationships')
+      .select('id, person_id, related_id, type')
+      .eq('tree_id', treeId)
+      .in('type', Array.from(DNA_PATH_RELATIONSHIP_TYPES))
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+  return rows.filter((row) => !!row.id && !!row.person_id && !!row.related_id) as RelationshipLookupRow[];
+};
+
 const buildDnaMatchPayload = async (targetPersonId: string, dnaTests: DNATest[]): Promise<DnaMatchPayloadItem[]> => {
   const sharedTests = dnaTests.filter(
     (test) => test.type === 'Shared Autosomal' && (test.sharedSegmentSummary || test.sharedMatchName)
@@ -415,24 +429,18 @@ const buildDnaMatchPayload = async (targetPersonId: string, dnaTests: DNATest[])
   if (personError) throw new Error(personError.message);
   if (!personRow?.tree_id) return [];
 
-  const [peopleResponse, relationshipResponse] = await Promise.all([
+  const [peopleResponse, typedRows] = await Promise.all([
     supabase
       .from('persons')
       .select('id, first_name, last_name, maiden_name')
       .eq('tree_id', personRow.tree_id),
-    supabase
-      .from('relationships')
-      .select('id, person_id, related_id, type')
-      .eq('tree_id', personRow.tree_id)
-      .in('type', Array.from(DNA_PATH_RELATIONSHIP_TYPES))
+    fetchDnaPathRelationships(personRow.tree_id)
   ]);
 
   if (peopleResponse.error) throw new Error(peopleResponse.error.message);
-  if (relationshipResponse.error) throw new Error(relationshipResponse.error.message);
 
   const nameRows = (peopleResponse.data || []) as NameLookupRow[];
-  const relationshipRows = (relationshipResponse.data || [])
-    .filter((row) => !!row.id && !!row.person_id && !!row.related_id) as RelationshipLookupRow[];
+  const relationshipRows = typedRows;
 
   const payloadItems: DnaMatchPayloadItem[] = [];
 
@@ -1367,13 +1375,7 @@ export const listSharedMatchesForAutosomalPerson = async (
     personById.get(focusPersonId)?.last_name
   );
 
-  const { data: relationshipRows, error: relationshipError } = await supabase
-    .from('relationships')
-    .select('id, person_id, related_id, type')
-    .eq('tree_id', treeId)
-    .in('type', Array.from(DNA_PATH_RELATIONSHIP_TYPES));
-  if (relationshipError) throw new Error(relationshipError.message);
-  const typedRelationships = (relationshipRows || []) as RelationshipLookupRow[];
+  const typedRelationships = await fetchDnaPathRelationships(treeId);
 
   const { data: matchRows, error: matchError } = await supabase
     .from('dna_matches')
@@ -1649,14 +1651,7 @@ export const resolveSharedMatchLineage = async (
   const matchMetadata = asRecord(matchRow.metadata);
   const previousPathRelationshipIds = ensureStringArray(matchMetadata.path_relationship_ids);
 
-  const { data: relationshipRows, error: relationshipError } = await supabase
-    .from('relationships')
-    .select('id, tree_id, person_id, related_id, type')
-    .eq('tree_id', treeId)
-    .in('type', Array.from(DNA_PATH_RELATIONSHIP_TYPES));
-  if (relationshipError) throw new Error(relationshipError.message);
-
-  const typedRows = (relationshipRows || []) as RelationshipLookupRow[];
+  const typedRows = await fetchDnaPathRelationships(treeId);
   const path = findRelationshipPath(focusPersonId, counterpartPersonId, typedRows);
   const pathPersonIds = path?.pathPersonIds || [];
   const pathRelationshipIds = path?.pathRelationshipIds || [];
@@ -1780,14 +1775,7 @@ export const resolveSharedTestLineage = async (
   const summary = summaryFromDnaTestMetadata(testMetadata);
   if (!summary) throw new Error('Shared autosomal summary is missing on this DNA test.');
 
-  const { data: relationshipRows, error: relationshipError } = await supabase
-    .from('relationships')
-    .select('id, tree_id, person_id, related_id, type')
-    .eq('tree_id', treeId)
-    .in('type', Array.from(DNA_PATH_RELATIONSHIP_TYPES));
-  if (relationshipError) throw new Error(relationshipError.message);
-
-  const typedRows = (relationshipRows || []) as RelationshipLookupRow[];
+  const typedRows = await fetchDnaPathRelationships(treeId);
   const path = findRelationshipPath(focusPersonId, counterpartPersonId, typedRows);
   const pathPersonIds = path?.pathPersonIds || [];
   const pathRelationshipIds = path?.pathRelationshipIds || [];
