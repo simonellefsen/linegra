@@ -103,6 +103,7 @@ export interface DNATest {
   notes?: string;
   rawDataSummary?: DNARawDataSummary;
   rawDataPreview?: DNARawDataRowPreview[];
+  sharedPersonId?: string;
   sharedMatchName?: string;
   sharedMatchPersonId?: string;
   sharedSegmentSummary?: DNASharedSegmentSummary;

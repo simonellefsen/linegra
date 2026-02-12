@@ -142,8 +142,8 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor }) => {
         {!treeId ? (
           <p className="text-sm text-slate-500">Select an active tree first.</p>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,360px),1fr] gap-6">
-            <div className="space-y-4">
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(340px,1fr),360px] gap-5 items-start">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Search person</label>
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50">
@@ -156,37 +156,39 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor }) => {
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Autosomal tester</label>
-                <select
-                  value={selectedPersonId}
-                  onChange={(e) => setSelectedPersonId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-700"
-                  disabled={loadingCandidates || filteredCandidates.length === 0}
-                >
-                  {loadingCandidates ? (
-                    <option value="">Loading…</option>
-                  ) : filteredCandidates.length === 0 ? (
-                    <option value="">No autosomal test persons found</option>
-                  ) : (
-                    filteredCandidates.map((candidate) => (
-                      <option key={candidate.personId} value={candidate.personId}>
-                        {candidate.name} ({formatVitals(candidate.birthYear, candidate.deathYear)})
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-              {selectedCandidate && (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Selected</p>
-                  <p className="font-bold text-slate-900">{selectedCandidate.name}</p>
-                  <p className="text-xs text-slate-500">{formatVitals(selectedCandidate.birthYear, selectedCandidate.deathYear)}</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Autosomal tests: <span className="font-bold text-slate-700">{selectedCandidate.autosomalTestCount}</span>
-                  </p>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Autosomal tester</label>
+                  <select
+                    value={selectedPersonId}
+                    onChange={(e) => setSelectedPersonId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-700"
+                    disabled={loadingCandidates || filteredCandidates.length === 0}
+                  >
+                    {loadingCandidates ? (
+                      <option value="">Loading…</option>
+                    ) : filteredCandidates.length === 0 ? (
+                      <option value="">No autosomal test persons found</option>
+                    ) : (
+                      filteredCandidates.map((candidate) => (
+                        <option key={candidate.personId} value={candidate.personId}>
+                          {candidate.name} ({formatVitals(candidate.birthYear, candidate.deathYear)})
+                        </option>
+                      ))
+                    )}
+                  </select>
                 </div>
-              )}
+                {selectedCandidate && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Selected</p>
+                    <p className="font-bold text-slate-900">{selectedCandidate.name}</p>
+                    <p className="text-xs text-slate-500">{formatVitals(selectedCandidate.birthYear, selectedCandidate.deathYear)}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Autosomal tests: <span className="font-bold text-slate-700">{selectedCandidate.autosomalTestCount}</span>
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between">

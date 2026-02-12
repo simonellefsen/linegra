@@ -97,6 +97,8 @@ interface SharedAutosomalAdminRow {
   owner_person_id: string;
   owner_first_name: string | null;
   owner_last_name: string | null;
+  shared_person_id: string | null;
+  shared_match_person_id: string | null;
   counterpart_person_id: string | null;
   counterpart_first_name: string | null;
   counterpart_last_name: string | null;
@@ -315,6 +317,17 @@ const readSharedMatchPersonId = (metadata: Record<string, unknown>): string | nu
       ? metadata.sharedMatchPersonId
       : typeof metadata.shared_match_person_id === 'string'
       ? metadata.shared_match_person_id
+      : null;
+  if (!direct || !UUID_REGEX.test(direct)) return null;
+  return direct;
+};
+
+const readSharedPersonId = (metadata: Record<string, unknown>): string | null => {
+  const direct =
+    typeof metadata.sharedPersonId === 'string'
+      ? metadata.sharedPersonId
+      : typeof metadata.shared_person_id === 'string'
+      ? metadata.shared_person_id
       : null;
   if (!direct || !UUID_REGEX.test(direct)) return null;
   return direct;
@@ -590,6 +603,14 @@ const mapBasicPeople = (rows: any[] = []) => {
 
 const mapDbDnaTest = (row: any): DNATest => {
   const metadata = (row.metadata || {}) as Record<string, any>;
+  const sharedPersonId =
+    typeof row.shared_person_id === 'string'
+      ? row.shared_person_id
+      : metadata.sharedPersonId || metadata.shared_person_id || undefined;
+  const sharedMatchPersonId =
+    typeof row.shared_match_person_id === 'string'
+      ? row.shared_match_person_id
+      : metadata.sharedMatchPersonId || metadata.shared_match_person_id || undefined;
   return {
     id: row.id,
     type: row.test_type as DNATestType,
@@ -614,8 +635,9 @@ const mapDbDnaTest = (row: any): DNATest => {
     mostDistantAncestorId: metadata.mostDistantAncestorId || undefined,
     rawDataSummary: metadata.rawDataSummary || undefined,
     rawDataPreview: metadata.rawDataPreview || undefined,
+    sharedPersonId,
     sharedMatchName: metadata.sharedMatchName || undefined,
-    sharedMatchPersonId: metadata.sharedMatchPersonId || undefined,
+    sharedMatchPersonId,
     sharedSegmentSummary: metadata.sharedSegmentSummary || undefined,
     sharedSegmentsPreview: metadata.sharedSegmentsPreview || undefined,
     sharedPathPersonIds: metadata.sharedPathPersonIds || undefined,
@@ -987,6 +1009,25 @@ export const updatePersonProfile = async (
   if (error) throw new Error(error.message);
 
   let dnaMatchesPayload: DnaMatchPayloadItem[] = [];
+  let nameRows: NameLookupRow[] = [];
+  let focusFullName = '';
+  if (payload.dnaTests?.length) {
+    const { data: targetPersonRow, error: targetPersonError } = await supabase
+      .from('persons')
+      .select('id, tree_id, first_name, last_name')
+      .eq('id', personId)
+      .maybeSingle();
+    if (targetPersonError) throw new Error(targetPersonError.message);
+    if (targetPersonRow?.tree_id) {
+      focusFullName = buildFullName(targetPersonRow.first_name, targetPersonRow.last_name);
+      const { data: peopleNameRows, error: peopleNameError } = await supabase
+        .from('persons')
+        .select('id, first_name, last_name, maiden_name')
+        .eq('tree_id', targetPersonRow.tree_id);
+      if (peopleNameError) throw new Error(peopleNameError.message);
+      nameRows = (peopleNameRows || []) as NameLookupRow[];
+    }
+  }
   if (payload.dnaTests?.length) {
     try {
       dnaMatchesPayload = await buildDnaMatchPayload(personId, payload.dnaTests);
@@ -1014,7 +1055,29 @@ export const updatePersonProfile = async (
 
   const dnaTestsPayload = (payload.dnaTests || []).map((test) => {
     const lineage = sharedLineageByTestId.get(test.id);
-    const sharedMatchPersonId = lineage?.matchedPersonId || test.sharedMatchPersonId || null;
+    const summary = test.sharedSegmentSummary;
+    const summaryPersonId = summary ? resolvePersonIdByName(summary.personName, nameRows) : null;
+    const summaryMatchId = summary ? resolvePersonIdByName(summary.matchName, nameRows) : null;
+    const summaryPersonLooksLikeFocus = !!summary && scoreNameMatch(focusFullName, summary.personName) >= 60;
+    const summaryMatchLooksLikeFocus = !!summary && scoreNameMatch(focusFullName, summary.matchName) >= 60;
+    let sharedPersonId =
+      (test.sharedPersonId && UUID_REGEX.test(test.sharedPersonId) ? test.sharedPersonId : null) ||
+      summaryPersonId ||
+      (summaryPersonLooksLikeFocus ? personId : null);
+    let sharedMatchPersonId =
+      lineage?.matchedPersonId ||
+      (test.sharedMatchPersonId && UUID_REGEX.test(test.sharedMatchPersonId) ? test.sharedMatchPersonId : null) ||
+      summaryMatchId ||
+      (summaryMatchLooksLikeFocus ? personId : null);
+    if (sharedPersonId && sharedMatchPersonId && sharedPersonId === sharedMatchPersonId) {
+      if (summaryPersonLooksLikeFocus && summaryMatchId && summaryMatchId !== personId) {
+        sharedPersonId = personId;
+        sharedMatchPersonId = summaryMatchId;
+      } else if (summaryMatchLooksLikeFocus && summaryPersonId && summaryPersonId !== personId) {
+        sharedPersonId = summaryPersonId;
+        sharedMatchPersonId = personId;
+      }
+    }
     const sharedPathPersonIds = lineage?.pathPersonIds || test.sharedPathPersonIds || null;
     const sharedPathRelationshipIds =
       lineage?.pathRelationshipIds || test.sharedPathRelationshipIds || null;
@@ -1033,6 +1096,7 @@ export const updatePersonProfile = async (
     mostDistantAncestorId: test.mostDistantAncestorId || null,
     rawDataSummary: test.rawDataSummary || null,
     rawDataPreview: test.rawDataPreview || null,
+    sharedPersonId,
     sharedMatchName: test.sharedMatchName || null,
     sharedMatchPersonId,
     sharedSegmentSummary: test.sharedSegmentSummary || null,
@@ -1052,6 +1116,7 @@ export const updatePersonProfile = async (
       mostDistantAncestorId: test.mostDistantAncestorId || null,
       rawDataSummary: test.rawDataSummary || null,
       rawDataPreview: test.rawDataPreview || null,
+      sharedPersonId,
       sharedMatchName: test.sharedMatchName || null,
       sharedMatchPersonId,
       sharedSegmentSummary: test.sharedSegmentSummary || null,
@@ -1070,6 +1135,32 @@ export const updatePersonProfile = async (
     payload_dna_matches: dnaMatchesPayload
   });
   if (dnaError) throw new Error(dnaError.message);
+
+  const sharedIdRows = dnaTestsPayload.filter(
+    (test) =>
+      test.type === 'Shared Autosomal' &&
+      typeof test.id === 'string' &&
+      UUID_REGEX.test(test.id) &&
+      ((typeof test.sharedPersonId === 'string' && UUID_REGEX.test(test.sharedPersonId)) ||
+        (typeof test.sharedMatchPersonId === 'string' && UUID_REGEX.test(test.sharedMatchPersonId)))
+  );
+  for (const test of sharedIdRows) {
+    const { error: sharedIdError } = await supabase
+      .from('dna_tests')
+      .update({
+        shared_person_id:
+          typeof test.sharedPersonId === 'string' && UUID_REGEX.test(test.sharedPersonId)
+            ? test.sharedPersonId
+            : null,
+        shared_match_person_id:
+          typeof test.sharedMatchPersonId === 'string' && UUID_REGEX.test(test.sharedMatchPersonId)
+            ? test.sharedMatchPersonId
+            : null,
+      })
+      .eq('id', test.id)
+      .eq('person_id', personId);
+    if (sharedIdError) throw new Error(sharedIdError.message);
+  }
   return data;
 };
 
@@ -1347,7 +1438,7 @@ export const listSharedMatchesForAutosomalPerson = async (
       const batchIds = personIds.slice(i, i + 500);
       const { data, error } = await supabase
         .from('dna_tests')
-        .select('id, person_id, metadata')
+        .select('id, person_id, shared_person_id, shared_match_person_id, metadata')
         .eq('test_type', 'Shared Autosomal')
         .in('person_id', batchIds);
       if (error) throw new Error(error.message);
@@ -1361,6 +1452,15 @@ export const listSharedMatchesForAutosomalPerson = async (
     if (!testId || !ownerPersonId) return;
     if (existingTestIds.has(testId)) return;
     const metadata = asRecord(testRow.metadata);
+    const sharedPersonIdFromRow =
+      typeof testRow.shared_person_id === 'string' && UUID_REGEX.test(testRow.shared_person_id)
+        ? testRow.shared_person_id
+        : null;
+    const sharedMatchPersonIdFromRow =
+      typeof testRow.shared_match_person_id === 'string' && UUID_REGEX.test(testRow.shared_match_person_id)
+        ? testRow.shared_match_person_id
+        : null;
+    const explicitSharedPersonId = readSharedPersonId(metadata);
     const ownerPersonRow =
       personById.get(ownerPersonId) ||
       ({
@@ -1380,14 +1480,23 @@ export const listSharedMatchesForAutosomalPerson = async (
           } as any)
         : null;
     let counterpartPersonId: string | null = null;
-    if (rpcCounterpartId) {
+    const sharedPersonId = sharedPersonIdFromRow || explicitSharedPersonId;
+    const sharedMatchPersonId = sharedMatchPersonIdFromRow || explicitMatchPersonId;
+    if (sharedPersonId && sharedMatchPersonId) {
+      if (sharedPersonId === focusPersonId && sharedMatchPersonId !== focusPersonId) {
+        counterpartPersonId = sharedMatchPersonId;
+      } else if (sharedMatchPersonId === focusPersonId && sharedPersonId !== focusPersonId) {
+        counterpartPersonId = sharedPersonId;
+      }
+    }
+    if (!counterpartPersonId && rpcCounterpartId) {
       if (ownerPersonId === focusPersonId && rpcCounterpartId !== focusPersonId) {
         counterpartPersonId = rpcCounterpartId;
       } else if (rpcCounterpartId === focusPersonId && ownerPersonId !== focusPersonId) {
         counterpartPersonId = ownerPersonId;
       }
     }
-    if (explicitMatchPersonId) {
+    if (!counterpartPersonId && explicitMatchPersonId) {
       if (ownerPersonId === focusPersonId && explicitMatchPersonId !== focusPersonId) {
         counterpartPersonId = explicitMatchPersonId;
       } else if (explicitMatchPersonId === focusPersonId && ownerPersonId !== focusPersonId) {
@@ -1594,8 +1703,11 @@ export const resolveSharedMatchLineage = async (
       const { error: testUpdateError } = await supabase
         .from('dna_tests')
         .update({
+          shared_person_id: focusPersonId,
+          shared_match_person_id: counterpartPersonId,
           metadata: {
             ...dnaTestMetadata,
+            sharedPersonId: focusPersonId,
             sharedMatchPersonId: counterpartPersonId,
             sharedPathPersonIds: pathPersonIds,
             sharedPathRelationshipIds: pathRelationshipIds
@@ -1752,8 +1864,11 @@ export const resolveSharedTestLineage = async (
   const { error: testUpdateError } = await supabase
     .from('dna_tests')
     .update({
+      shared_person_id: focusPersonId,
+      shared_match_person_id: counterpartPersonId,
       metadata: {
         ...testMetadata,
+        sharedPersonId: focusPersonId,
         sharedMatchPersonId: counterpartPersonId,
         sharedPathPersonIds: pathPersonIds,
         sharedPathRelationshipIds: pathRelationshipIds
