@@ -6,7 +6,7 @@ This repository supports agentic development workflows (Codex, CI bots, etc.). U
 
 1. **Read `README.md`** for environment setup, login credentials, and run instructions.  
 2. **Skim `docs/CONTENT_MAP.md`** to jump directly to feature-specific files.  
-3. **Check `docs/AI_SETUP.md` & `docs/SUPABASE_SETUP.md`** for API keys, Supabase CLI linking, and migration workflows.  
+3. **Check `docs/AI_SETUP.md`, `docs/SUPABASE_SETUP.md`, and `docs/DNA_SETUP.md`** for API keys, Supabase CLI linking, migration workflows, and DNA lineage operations.  
 4. **Review open issues / user context** (AGENTS.md instructions, latest conversation) so you understand priorities.
 
 ## 2. Coding Workflow Expectations
@@ -22,10 +22,11 @@ This repository supports agentic development workflows (Codex, CI bots, etc.). U
 | --- | --- |
 | **App shell / entry** | `index.tsx`, `App.tsx`, `services/*` |
 | **Person profile tabs** | `components/person-profile/*` (VitalTab, FamilyTab, etc.) |
-| **Admin panels** | `components/AdminTreesPanel.tsx`, `components/ImportExport.tsx`, `components/TreeLandingPage.tsx` |
-| **GEDCOM ingest / parsing** | `lib/gedcom/*`, `services/import.ts` |
+| **Admin panels** | `components/admin/*`, `components/AdminTreesPanel.tsx`, `components/AdminDnaPanel.tsx`, `components/ImportExport.tsx` |
+| **GEDCOM ingest / parsing** | `lib/gedcom/*`, `components/ImportExport.tsx`, `services/archive.ts` |
+| **DNA ingest / lineage** | `components/person-profile/DNATab.tsx`, `components/AdminDnaPanel.tsx`, `lib/dnaRawParser.ts`, `services/archive.ts` |
 | **Supabase schema** | `supabase/migrations/*.sql`, `supabase/seed/*` |
-| **Docs overview** | `docs/CONTENT_MAP.md`, `docs/AI_SETUP.md`, `docs/SUPABASE_SETUP.md`, `docs/CICD.md` |
+| **Docs overview** | `docs/CONTENT_MAP.md`, `docs/AI_SETUP.md`, `docs/SUPABASE_SETUP.md`, `docs/DNA_SETUP.md`, `docs/CICD.md` |
 
 > When adding new subsystems (skills, automations, etc.), update both `docs/CONTENT_MAP.md` and this guide so future agents know exactly where to start.
 

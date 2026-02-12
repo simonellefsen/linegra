@@ -1,73 +1,140 @@
-# Linegra - Next-Generation Genealogy Platform Specification
+# Linegra Product + Technical Specification
 
 ## 1. Overview
-Linegra is a modern, high-performance web application designed to replace legacy genealogy software with a "Modern Archive" aesthetic. It emphasizes interactive storytelling, genetic genealogy integration, and AI-assisted data entry.
 
-## 2. Technical Stack
-- **Frontend Framework**: React 19 (via esm.sh)
-- **Styling**: Tailwind CSS
-- **Visualization**: D3.js for interactive kinship maps
-- **Icons**: Lucide React
-- **Backend/Auth**: Supabase (PostgreSQL + GoTrue)
-- **Artificial Intelligence**: Google Gemini API (@google/genai)
-  - **gemini-3-flash-preview**: Powering narrative generation and location parsing.
+Linegra is a modern genealogy archive focused on:
 
-## 3. Core Features
+- fast, public-first browsing
+- administrator-controlled editing and curation
+- robust GEDCOM import/export
+- DNA-informed lineage verification
 
-### 3.1. Interactive Kinship Engine (FamilyTree.tsx)
-- **Force-Directed Graph**: Uses D3.js to render complex family relationships.
-- **DNA Visualization**: Verified genetic paths are highlighted with pulsing blue gradients.
-- **Confidence Layer**: Relationship links are styled based on researcher confidence (Confirmed, Probable, Assumed, Speculative). 
-- **Adaptive UI**: Responsive zoom levels with an overlay showing current zoom and legend.
+The product is designed to stay responsive on large trees and to keep all
+authoritative data in Supabase.
 
-### 3.2. Person Archive (PersonProfile.tsx)
-- **Tabbed UI Architecture**: Data is organized into clean, focused tabs (Vital, Family, Story, Sources, Media, DNA, Notes) for improved cognitive focus.
-- **Identity Management**: Identity section features a signature blue fingerprint icon and supports multiple alternate names (nicknames, aliases, anglicized names).
-- **Death Record Nuance**: Enhanced Vital tab allows capturing both the *Place of Death* (e.g., a specific hospital or ship at sea) and the *Residence at Death* (legal home address), providing a more complete historical context.
-- **Multi-Event Life Chronology**: Support for multiple instances of the same event type (e.g., multiple Residence records, various Military Service stints, different Education levels).
-- **Granular Citation Management**: Each life event features a direct "Citations" link to create specific source records proving that individual event, rather than just general profile proof.
-- **Relationship Assessment**: Family tab allows researchers to label links with quality assessments, serving as a metadata layer for the tree engine.
+## 2. Stack
 
-### 3.3. Smart Data Entry (Input Components)
-- **Fluent Dates**: Handles genealogical nuances like "Circa", "Abt", and date ranges.
-- **AI Place Parser**: Uses Gemini to convert unstructured strings into structured data (City, Parish, County, etc.) and provides historical context.
+- Frontend: React + TypeScript + Vite
+- Styling: Tailwind CSS
+- Icons: Lucide React
+- Data/API: Supabase PostgREST + RPC + RLS
+- AI utilities: OpenRouter (`nvidia/nemotron-nano-12b-v2-vl:free` by default)
 
-### 3.4. Research Dashboard (TreeLandingPage.tsx)
-- **Dynamic Widgets**:
-  - **What's New**: Real-time feed of recent archive updates.
-  - **Anniversaries**: Automatic calendar detection for family birthdays.
-  - **Most Wanted**: Identifies profiles missing critical data to guide research.
-  - **Random Media**: Grayscale-to-color interactive media highlights.
+## 3. Core Experience
 
-### 3.5. Advanced Interoperability (ImportExport.tsx)
-- **Enhanced GEDCOM Support**: Robust ingestion of standard `.ged` files (v5.5.1) including INDI, FAM, MARR, and CHIL tags to automatically reconstruct complex family structures and vital records.
+### 3.1 App shell and tree selection
+- The app boots only when `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are configured.
+- Active tree is selected from the left dropdown.
+- Public users can browse public trees; admin users can create/manage trees.
 
-### 3.6. Pedigree Tree (Interactive Tree v2)
-- **Pedigree-first layout**: Replace the force-directed kinship map with a person-centric, horizontal pedigree similar to Ancestry’s mobile app. Generations render as columns (ancestors to the left, descendants to the right) with consistent spacing and curved connectors.
-- **Scalability**: Only render ±4 generations from the focused person at a time; behind the scenes the data loader fetches additional ancestors/descendants lazily as the user pans or re-centers. Target support for 10k+ individuals without freezing the UI.
-- **Tiles**: Each node is a card containing avatar silhouette (gender-aware), name, life span, confidence badge, and quick actions (view profile, link/unlink, share). Unknown parents show “Add Father/Mother” placeholders with dashed outlines.
-- **Navigation**: Supports drag/pan, scroll wheel zoom (desktop), pinch zoom (touch), and keyboard shortcuts (arrow keys to jump generations). Re-centering buttons allow jumping back to the focused person or root tree.
-- **Permissions**: Editing affordances (add parent, unlink, drag reorder) only appear for authenticated administrators, matching the Family tab’s rules.
-- **Fallback**: Legacy kinship map stays accessible behind a feature toggle until the pedigree tree reaches parity.
+### 3.2 Portal (landing)
+- Active tree card + “Explore Tree” entry into interactive pedigree.
+- Public stats and benchmark cards (population, sex split, lifespan, etc.).
+- Highlights modules:
+  - What’s New
+  - This Month
+  - Most Wanted
+  - Random Media
 
-### 3.6. Access Control & Editing Permissions
-- **Read-first policy**: Anonymous and logged-out visitors may browse archives, but all destructive actions (unlinking or reordering family relationships, editing confidence, creating/deleting trees, GEDCOM import/export, Supabase “nuke”) require an authenticated user with the appropriate administrator role.
-- **UI gating**: When `currentUser.isAdmin` is false, editing affordances must visually degrade (buttons hidden/disabled, drag handles inert) so accidental changes cannot occur. The Family tab, for example, only enables drag-and-drop or unlink buttons when the viewer is authorized.
-- **Spec requirement**: Any new feature that mutates archival data must check permissions server-side (via RLS/RPC) and client-side before presenting controls.
+### 3.3 Interactive tree
+- Primary tree surface is pedigree-style (incremental load, not full-force graph).
+- Node cards support:
+  - profile open
+  - ancestor/descendant expansion cues
+  - DNA support badge counts
+- Admin-only affordances:
+  - add missing father/mother placeholders
+  - editing actions tied to permissions
 
-### 3.7. Performance & Responsiveness
-- **Snappy-first UX**: The UI must remain responsive even on trees with 10k+ individuals. Avoid bulk hydration; every surface (landing widgets, search, PersonProfile, pedigree tree) should fetch the smallest slice of data required for the current view.
-- **Lazy Queries**: Use paged Supabase requests or RPCs that summarize results server-side. Expensive operations (relationships graph, GEDCOM imports, admin audits) should run on demand and display explicit progress indicators so the reader never stares at a frozen screen.
-- **Optimistic Interactions**: Edits should surface immediately in the UI while background saves checkpoint through transactional RPCs. When network churn occurs, fall back gracefully with inline status badges (e.g., “Saving…”, “Retry”) so the researcher can keep browsing without reloads.
+### 3.4 Person profile (modal/panel)
+- Tabbed architecture:
+  - Vital
+  - Family
+  - Story
+  - Sources
+  - Media
+  - DNA
+  - Notes
+- Save-on-change workflow with dirty-state protection.
+- Public users cannot mutate profile fields.
+- `Living` and `Private` flags govern visibility and access.
 
-## 4. Visual Identity
-- **Color Palette**: Deep Slate (#0f172a), crisp whites, and accent Blue-500 for genetic and identity data. 
-- **Confidence Coding**: 
-  - Emerald (Confirmed)
-  - Blue (Probable)
-  - Indigo (Assumed/Working)
-  - Amber (Speculative)
-- **Typography**:
-  - **Serif**: 'Playfair Display' for names and historical narratives.
-  - **Sans**: 'Inter' for data-heavy fields and administrative UI.
-- **Design Tokens**: Large border radii (40px/32px), heavy tracking (0.25em) on uppercase labels, and subtle backdrop blurs on headers.
+### 3.5 Administrator workspace
+- Sub-panels:
+  - Database
+  - Trees
+  - GEDCOM
+  - DNA
+- Database panel includes controlled “NUKE” reset flow.
+- Trees panel includes create/edit/delete, visibility, default proband metadata.
+- GEDCOM panel handles import/export with parse warnings.
+- DNA panel supports autosomal match review and lineage-path resolution.
+
+## 4. Data model (high-level)
+
+Key entities:
+
+- `family_trees`
+- `persons`
+- `relationships`
+- `person_events`
+- `sources`, `citations`, `notes`, `media_*`
+- `dna_tests`, `dna_matches`
+- `audit_logs`
+
+Core rules:
+
+- UUIDs are authoritative identifiers across entities.
+- RLS is enabled for public tables and enforced through `can_read_tree` / `can_write_tree`-style checks.
+- Writes are logged (directly or via RPC-triggered audit behavior).
+
+## 5. GEDCOM requirements
+
+Import must remain tolerant while preserving fidelity:
+
+- support standard individual/family/event records
+- capture ignored/unsupported tags in import warnings
+- preserve source + citation context where available
+- bind imported records to the selected tree
+
+## 6. DNA requirements
+
+### 6.1 Supported ingestion
+- Autosomal raw CSV import
+- Shared segment CSV import:
+  - MyHeritage shared segments
+  - FTDNA segment-comparison format
+
+### 6.2 Shared-match linking
+- UUID-first linking using `shared_person_id` and `shared_match_person_id`.
+- Metadata UUID fallback for legacy rows.
+- Name-based fallback only for historical/legacy imports without IDs.
+
+### 6.3 Lineage resolution
+- Admin DNA panel resolves shortest plausible lineage paths.
+- Result stores:
+  - path person ids
+  - path relationship ids
+  - cM compatibility outcome
+- Relationship metadata is updated with DNA support markers.
+- Resolved status must be visible in both admin DNA panel and profile DNA tab.
+
+## 7. Performance requirements
+
+- Snappy UI is a product requirement.
+- Avoid full-tree hydration for default views.
+- Use paged/targeted queries and RPC summaries.
+- Expensive workflows (imports, lineage resolution, bulk maintenance) must show explicit progress/status feedback.
+
+## 8. Security + permissions
+
+- Anonymous browsing: read-only.
+- Mutating actions require authenticated admin permissions.
+- Private profiles are hidden from public search/profile views.
+- RLS policies must not silently allow unrestricted writes in public schema tables.
+
+## 9. Operational requirements
+
+- Build gate: `npm run lint && npm run typecheck && npm run build`
+- Schema changes require Supabase migrations in `supabase/migrations`.
+- Docs must be updated with behavior changes (`README.md`, `docs/CONTENT_MAP.md`, feature-specific docs).

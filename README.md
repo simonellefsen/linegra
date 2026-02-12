@@ -21,6 +21,20 @@ This repo contains everything you need to run Linegra locally or deploy it to Ve
 
 > ⚠️ Linegra no longer ships with mock archives or an in-app Supabase connection form. You must provide valid `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` values (as described in `docs/SUPABASE_SETUP.md`) before the UI will load.
 
+## DNA Workflows
+
+The DNA workflow (Autosomal + Shared Autosomal imports, lineage resolution, and admin review) is documented in:
+
+- [`docs/DNA_SETUP.md`](docs/DNA_SETUP.md)
+
+This includes supported CSV formats (MyHeritage and FTDNA segment comparison), how shared matches are linked, and how the Administrator DNA panel resolves lineage paths.
+
+## Specification & Navigation
+
+- Product/technical specification: [`SPEC.md`](SPEC.md)
+- Agent/developer entrypoint: [`AGENT.md`](AGENT.md)
+- Feature-to-file map: [`docs/CONTENT_MAP.md`](docs/CONTENT_MAP.md)
+
 ## Super Administrator Login
 
 Linegra currently ships with a single local super administrator account. Use the header

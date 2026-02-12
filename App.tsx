@@ -8,12 +8,16 @@ import FamilyTree from './components/FamilyTree';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
 import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
-import ImportExport from './components/ImportExport';
 import TreeLandingPage, { TreeStatistics } from './components/TreeLandingPage';
 import AdminTreesPanel from './components/AdminTreesPanel';
 import AdminDnaPanel from './components/AdminDnaPanel';
+import AdminSectionTabs, { AdminSection } from './components/admin/AdminSectionTabs';
+import AdminDatabasePanel from './components/admin/AdminDatabasePanel';
+import AdminGedcomPanel from './components/admin/AdminGedcomPanel';
+import AdminNukeModal from './components/admin/AdminNukeModal';
 import { getAvatarForPerson } from './lib/avatar';
 import { 
+  AlertTriangle,
   GitBranch, 
   Search, 
   ChevronDown, 
@@ -21,7 +25,6 @@ import {
   Database,
   User as UserIcon,
   Loader2,
-  AlertTriangle,
   Menu,
   X,
   SlidersHorizontal
@@ -63,7 +66,7 @@ const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
-  const [adminSection, setAdminSection] = useState<'database' | 'trees' | 'gedcom' | 'dna'>('gedcom');
+  const [adminSection, setAdminSection] = useState<AdminSection>('gedcom');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [adminTrees, setAdminTrees] = useState<FamilyTreeSummary[]>([]);
   const [adminTreesLoading, setAdminTreesLoading] = useState(false);
@@ -1285,100 +1288,16 @@ useEffect(() => {
             )}
             {activeTab === 'records' && currentUser?.isAdmin && (
               <div className="space-y-8 max-w-6xl mx-auto py-6">
-                <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-4 flex items-center gap-3">
-                  {(['database','trees','gedcom','dna'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setAdminSection(tab)}
-                      className={`px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] ${
-                        adminSection === tab ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
-                      }`}
-                    >
-                      {tab === 'database' && 'Database'}
-                      {tab === 'trees' && 'Trees'}
-                      {tab === 'gedcom' && 'GEDCOM'}
-                      {tab === 'dna' && 'DNA'}
-                    </button>
-                  ))}
-                </div>
+                <AdminSectionTabs section={adminSection} onChange={setAdminSection} />
                 {adminSection === 'database' && (
-                  <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 text-slate-600 space-y-6">
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Database Panel</p>
-                        <h3 className="text-2xl font-serif font-bold text-slate-900 mb-2">Reset & Maintenance</h3>
-                        <p className="text-sm text-slate-500 max-w-2xl">
-                          Wipe every person, relationship, media record, and audit trail stored in Supabase. This is intended for
-                          staging environments when you need to re-import large GEDCOM datasets from scratch. Production archives
-                          should never run this action during active research sessions.
-                        </p>
-                      </div>
-                      <div className="border border-rose-100 bg-rose-50/70 rounded-[28px] p-6 flex flex-col gap-4">
-                        <div className="flex items-center gap-3 text-rose-600">
-                          <AlertTriangle className="w-6 h-6" />
-                          <div>
-                            <p className="text-[11px] font-black uppercase tracking-[0.3em]">Destructive Operation</p>
-                            <h4 className="text-lg font-serif font-bold text-slate-900">Nuke Supabase Database</h4>
-                          </div>
-                        </div>
-                        <p className="text-sm text-rose-700">
-                          This permanently removes all family trees, GEDCOM imports, media, notes, sources, audit logs, and places. A fresh
-                          seed tree will need to be created afterward. The action cannot be undone.
-                        </p>
-                        <div className="flex flex-wrap gap-4">
-                          <button
-                            onClick={() => setShowNukeModal(true)}
-                            className="px-6 py-3 rounded-2xl bg-rose-600 text-white text-xs font-black uppercase tracking-[0.3em] hover:bg-rose-700 transition-all disabled:opacity-60"
-                            disabled={!supabaseActive}
-                          >
-                            {supabaseActive ? 'Launch Nuke' : 'Link Supabase First'}
-                          </button>
-                          {nukeSuccess && (
-                            <span className="text-emerald-600 text-xs font-bold uppercase tracking-[0.3em]">Database Reset</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                        {supabaseActive && Array.isArray(layoutAudits) && layoutAudits.length > 0 && (
-                      <div className="border border-slate-100 rounded-[28px] p-6 space-y-4 bg-slate-50/70">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Family Layout History</p>
-                            <h4 className="text-lg font-serif font-bold text-slate-900">Recent Kinship Edits</h4>
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          {layoutAudits.map((audit) => {
-                            const assignmentCount = Object.keys(audit.layout.assignments ?? {}).length;
-                            const manualGroups = Object.values(audit.layout.manualOrders ?? {}) as string[][];
-                            const manualCount = manualGroups.reduce((total, group) => total + group.length, 0);
-                            return (
-                              <div key={audit.id} className="p-4 bg-white rounded-2xl border border-slate-100 flex flex-col gap-1">
-                                <div className="flex items-center justify-between">
-                                  <p className="text-sm font-bold text-slate-800">{audit.actorName}</p>
-                                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
-                                    {new Date(audit.createdAt).toLocaleString()}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-slate-500">
-                                  {assignmentCount} child links, {manualCount} manual placements
-                                </p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {hasMoreAudits && (
-                          <button
-                            onClick={() => setAuditOffset((prev) => prev + 5)}
-                            className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 hover:underline"
-                          >
-                            View More
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <AdminDatabasePanel
+                    supabaseActive={supabaseActive}
+                    nukeSuccess={nukeSuccess}
+                    layoutAudits={layoutAudits}
+                    hasMoreAudits={hasMoreAudits}
+                    onLaunchNuke={() => setShowNukeModal(true)}
+                    onLoadMoreAudits={() => setAuditOffset((prev) => prev + 5)}
+                  />
                 )}
                 {adminSection === 'trees' && (
                   <AdminTreesPanel
@@ -1395,12 +1314,11 @@ useEffect(() => {
                   />
                 )}
                 {adminSection === 'gedcom' && (
-                  <ImportExport 
-                    people={treePeople} 
-                    relationships={treeRelationships} 
-                    onImport={handleImport} 
+                  <AdminGedcomPanel
+                    people={treePeople}
+                    relationships={treeRelationships}
+                    onImport={handleImport}
                     activeTreeName={activeTree?.name}
-                    showGedcomSection
                   />
                 )}
                 {adminSection === 'dna' && (
@@ -1539,50 +1457,15 @@ useEffect(() => {
           </div>
         </div>
       )}
-      {showNukeModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-[32px] border border-slate-200 shadow-2xl max-w-lg w-full p-8 space-y-6">
-            <div className="flex items-center gap-3 text-rose-600">
-              <AlertTriangle className="w-6 h-6" />
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.3em]">Confirm Database Reset</p>
-                <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">Type "NUKE" to proceed</h3>
-              </div>
-            </div>
-            <p className="text-sm text-slate-600 leading-relaxed">
-              This action truncates every record in Supabase and cannot be undone. Only run this on staging projects when you
-              need a clean slate for GEDCOM ingestion tests. Production archives should take a backup first.
-            </p>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em]">Confirmation Text</label>
-              <input
-                value={nukeConfirmText}
-                onChange={(e) => setNukeConfirmText(e.target.value.toUpperCase())}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-slate-900/5 outline-none uppercase tracking-[0.3em]"
-                placeholder="NUKE"
-                disabled={nukeInProgress}
-              />
-            </div>
-            {nukeError && <p className="text-rose-600 text-xs font-bold">{nukeError}</p>}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setShowNukeModal(false)}
-                className="px-6 py-3 rounded-2xl border border-slate-200 text-slate-500 text-sm font-bold uppercase tracking-widest hover:bg-slate-100 transition-all"
-                disabled={nukeInProgress}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleNukeConfirm}
-                className="flex-1 px-6 py-3 rounded-2xl bg-rose-600 text-white text-sm font-black uppercase tracking-[0.3em] hover:bg-rose-700 transition-all disabled:opacity-60"
-                disabled={nukeInProgress}
-              >
-                {nukeInProgress ? 'Purging…' : 'Confirm Reset'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminNukeModal
+        open={showNukeModal}
+        confirmText={nukeConfirmText}
+        inProgress={nukeInProgress}
+        error={nukeError}
+        onChangeConfirmText={setNukeConfirmText}
+        onCancel={() => setShowNukeModal(false)}
+        onConfirm={handleNukeConfirm}
+      />
 
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={handleAdminLogin} />
       <div className="fixed left-2 bottom-2 z-[70] pointer-events-none rounded-md border border-slate-300/80 bg-white/85 px-2 py-1 text-[10px] font-mono text-slate-500 shadow-sm backdrop-blur">
