@@ -1024,6 +1024,7 @@ export const updatePersonProfile = async (
   let nameRows: NameLookupRow[] = [];
   let focusFullName = '';
   let focusMaidenFullName = '';
+  let uniqueAutosomalTesterId: string | null = null;
   const looksLikeFocusName = (name: string | null | undefined) => {
     const raw = typeof name === 'string' ? name : '';
     if (!raw) return false;
@@ -1046,6 +1047,22 @@ export const updatePersonProfile = async (
         .eq('tree_id', targetPersonRow.tree_id);
       if (peopleNameError) throw new Error(peopleNameError.message);
       nameRows = (peopleNameRows || []) as NameLookupRow[];
+
+      const { data: autosomalRows, error: autosomalError } = await supabase
+        .from('dna_tests')
+        .select('person_id')
+        .eq('type', 'Autosomal');
+      if (autosomalError) throw new Error(autosomalError.message);
+      const autosomalOwners = new Set<string>();
+      (autosomalRows || []).forEach((row: any) => {
+        const ownerId = typeof row?.person_id === 'string' ? row.person_id : '';
+        if (!ownerId) return;
+        if (!nameRows.some((candidate) => candidate.id === ownerId)) return;
+        autosomalOwners.add(ownerId);
+      });
+      if (autosomalOwners.size === 1) {
+        uniqueAutosomalTesterId = Array.from(autosomalOwners)[0];
+      }
     }
   }
   if (payload.dnaTests?.length) {
@@ -1105,6 +1122,11 @@ export const updatePersonProfile = async (
         sharedPersonId = summaryPersonId;
         sharedMatchPersonId = personId;
       }
+    }
+    if (!sharedPersonId && sharedMatchPersonId === personId && uniqueAutosomalTesterId && uniqueAutosomalTesterId !== personId) {
+      // FTDNA comparison CSV omits tester name; when exactly one autosomal tester exists
+      // in this tree, bind that tester as the shared-person side.
+      sharedPersonId = uniqueAutosomalTesterId;
     }
     const sharedPathPersonIds = lineage?.pathPersonIds || test.sharedPathPersonIds || null;
     const sharedPathRelationshipIds =
