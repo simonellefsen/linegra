@@ -1,10 +1,3 @@
-alter table public.dna_tests
-  add column if not exists shared_person_id uuid references public.persons(id) on delete set null,
-  add column if not exists shared_match_person_id uuid references public.persons(id) on delete set null;
-
-create index if not exists dna_tests_shared_person_idx on public.dna_tests(shared_person_id);
-create index if not exists dna_tests_shared_match_person_idx on public.dna_tests(shared_match_person_id);
-
 update public.dna_tests dt
 set
   shared_person_id = coalesce(
@@ -31,7 +24,7 @@ where dt.test_type = 'Shared Autosomal'::public.dna_test_type;
 
 drop function if exists public.admin_list_tree_shared_autosomal_tests(uuid);
 
-create or replace function public.admin_list_tree_shared_autosomal_tests(target_tree_id uuid)
+create function public.admin_list_tree_shared_autosomal_tests(target_tree_id uuid)
 returns table (
   test_id uuid,
   owner_person_id uuid,

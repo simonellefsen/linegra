@@ -11,6 +11,7 @@ import {
 interface AdminDnaPanelProps {
   treeId: string | null;
   actor?: { id?: string | null; name?: string | null };
+  onOpenPerson?: (personId: string) => void | Promise<void>;
 }
 
 const formatVitals = (birthYear?: string | null, deathYear?: string | null) => {
@@ -22,7 +23,7 @@ const formatVitals = (birthYear?: string | null, deathYear?: string | null) => {
 
 const formatCm = (value: number | null) => (typeof value === 'number' ? `${value.toFixed(1)} cM` : 'n/a');
 
-const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor }) => {
+const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPerson }) => {
   const [candidates, setCandidates] = useState<DNAAutosomalCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<string>('');
@@ -179,14 +180,18 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor }) => {
                   </select>
                 </div>
                 {selectedCandidate && (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => onOpenPerson?.(selectedCandidate.personId)}
+                    className="w-full text-left rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 hover:border-blue-200 hover:bg-blue-50/40 transition-colors"
+                  >
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Selected</p>
                     <p className="font-bold text-slate-900">{selectedCandidate.name}</p>
                     <p className="text-xs text-slate-500">{formatVitals(selectedCandidate.birthYear, selectedCandidate.deathYear)}</p>
                     <p className="text-xs text-slate-500 mt-1">
                       Autosomal tests: <span className="font-bold text-slate-700">{selectedCandidate.autosomalTestCount}</span>
                     </p>
-                  </div>
+                  </button>
                 )}
               </div>
             </div>
@@ -213,17 +218,50 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor }) => {
                       ? `${match.pathPersonIds.length} people linked via ${match.pathRelationshipIds.length} relationships`
                       : 'No linked lineage path';
                     return (
-                      <div key={match.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 space-y-2">
+                      <div
+                        key={match.id}
+                        onClick={() => onOpenPerson?.(match.counterpartPersonId)}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return;
+                          e.preventDefault();
+                          onOpenPerson?.(match.counterpartPersonId);
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        className="w-full text-left rounded-2xl border border-slate-200 bg-white px-4 py-4 space-y-2 hover:border-blue-200 hover:bg-blue-50/30 transition-colors"
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-bold text-slate-900">{match.counterpartPersonName}</p>
-                            <p className="text-xs text-slate-500">Test owner: {match.ownerPersonName}</p>
+                            <p className="text-xs text-slate-500">
+                              Test owner:{' '}
+                              <span
+                                role="link"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenPerson?.(match.ownerPersonId);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key !== 'Enter' && e.key !== ' ') return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  onOpenPerson?.(match.ownerPersonId);
+                                }}
+                                className="underline decoration-dotted underline-offset-2 cursor-pointer"
+                              >
+                                {match.ownerPersonName}
+                              </span>
+                            </p>
                             {match.fileName && (
                               <p className="text-xs text-slate-400 truncate max-w-[440px]">File: {match.fileName}</p>
                             )}
                           </div>
                           <button
-                            onClick={() => handleResolveLineage(match.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResolveLineage(match.id);
+                            }}
                             disabled={resolvingMatchId === match.id}
                             className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] ${
                               resolvingMatchId === match.id

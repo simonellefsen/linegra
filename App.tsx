@@ -842,6 +842,20 @@ useEffect(() => {
     []
   );
 
+  const handleAdminOpenPerson = useCallback(
+    async (personId: string) => {
+      try {
+        const person = await fetchPersonDetails(personId);
+        if (person) {
+          setSelectedPerson(person);
+        }
+      } catch (err) {
+        console.error('Failed to open person from DNA panel', err);
+      }
+    },
+    []
+  );
+
   const handleNukeConfirm = useCallback(async () => {
     if (!supabaseActive) {
       setNukeError('Link a Supabase project before issuing a reset.');
@@ -1393,6 +1407,7 @@ useEffect(() => {
                   <AdminDnaPanel
                     treeId={activeTree?.id || null}
                     actor={{ id: currentUser?.id, name: currentUser?.name }}
+                    onOpenPerson={handleAdminOpenPerson}
                   />
                 )}
               </div>

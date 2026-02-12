@@ -54,6 +54,8 @@ const DNA_PATH_RELATIONSHIP_TYPES = new Set<RelationshipType>([
   'guardian',
   'step_parent',
   'child',
+  'marriage',
+  'partner',
 ]);
 
 interface NameLookupRow {
