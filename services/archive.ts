@@ -85,6 +85,7 @@ interface DnaMatchPayloadItem {
 }
 
 interface SharedSegmentSummaryLike {
+  source?: string;
   personName: string;
   matchName: string;
   segmentCount: number;
@@ -272,6 +273,7 @@ const summaryFromDnaTestMetadata = (metadata: Record<string, unknown>): SharedSe
   if (!personName && !matchName) return null;
   if (segmentCount == null || totalCentimorgans == null || largestSegmentCentimorgans == null) return null;
   return {
+    source: typeof summaryRaw.source === 'string' ? summaryRaw.source : undefined,
     personName,
     matchName,
     segmentCount,
@@ -482,7 +484,7 @@ const buildDnaMatchPayload = async (targetPersonId: string, dnaTests: DNATest[])
       path_person_ids: pathPersonIds,
       path_relationship_ids: pathRelationshipIds,
       metadata: {
-        source: 'FTDNA_SHARED_AUTOSOMAL_SEGMENTS_CSV',
+        source: summary?.source || 'SHARED_AUTOSOMAL_SEGMENTS_CSV',
         test_id: test.id,
         match_name: summary?.matchName || test.sharedMatchName || null,
         person_name: summary?.personName || null,
@@ -1797,7 +1799,7 @@ export const resolveSharedTestLineage = async (
   const normalizedActor = normalizeActor(actor);
   const matchMetadataBase = {
     ...testMetadata,
-    source: 'FTDNA_SHARED_AUTOSOMAL_SEGMENTS_CSV',
+    source: summary.source || 'SHARED_AUTOSOMAL_SEGMENTS_CSV',
     test_id: dnaTestId,
     person_name: summary.personName,
     match_name: summary.matchName,

@@ -5,12 +5,12 @@ import {
   DNASharedSegmentSummary,
 } from '../types';
 
-interface ParsedFtdnaAutosomalCsv {
+interface ParsedAutosomalCsv {
   summary: DNARawDataSummary;
   preview: DNARawDataRowPreview[];
 }
 
-interface ParsedFtdnaSharedSegmentsCsv {
+interface ParsedSharedSegmentsCsv {
   summary: DNASharedSegmentSummary;
   preview: DNASharedSegmentRowPreview[];
 }
@@ -42,10 +42,21 @@ const parseCsvLine = (line: string): string[] => {
   return values.map((value) => value.replace(/^"|"$/g, '').trim());
 };
 
-export const parseFtdnaAutosomalCsv = (
+const estimateRelationshipFromSharedCm = (sharedCm: number): string => {
+  if (sharedCm >= 3400) return 'Parent/Child or Full Sibling';
+  if (sharedCm >= 2200) return '1st degree cluster';
+  if (sharedCm >= 1300) return '2nd degree cluster';
+  if (sharedCm >= 680) return '1st cousin cluster';
+  if (sharedCm >= 250) return '2nd cousin cluster';
+  if (sharedCm >= 90) return '3rd cousin cluster';
+  if (sharedCm >= 40) return '4th cousin cluster';
+  return 'Distant cousin cluster';
+};
+
+export const parseAutosomalCsv = (
   csvText: string,
   fileName: string
-): ParsedFtdnaAutosomalCsv => {
+): ParsedAutosomalCsv => {
   const lines = csvText
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -85,7 +96,7 @@ export const parseFtdnaAutosomalCsv = (
 
   return {
     summary: {
-      source: 'FTDNA_AUTOSOMAL_CSV',
+      source: 'AUTOSOMAL_CSV',
       fileName,
       markersTotal,
       calledMarkers,
@@ -97,10 +108,10 @@ export const parseFtdnaAutosomalCsv = (
   };
 };
 
-export const parseFtdnaSharedSegmentsCsv = (
+export const parseSharedSegmentsCsv = (
   csvText: string,
   fileName: string
-): ParsedFtdnaSharedSegmentsCsv => {
+): ParsedSharedSegmentsCsv => {
   const lines = csvText
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -110,7 +121,7 @@ export const parseFtdnaSharedSegmentsCsv = (
   }
 
   const header = parseCsvLine(lines[0]).map((value) => value.toUpperCase());
-  const expected = [
+  const myHeritageHeader = [
     'NAME',
     'MATCH NAME',
     'CHROMOSOME',
@@ -121,12 +132,22 @@ export const parseFtdnaSharedSegmentsCsv = (
     'CENTIMORGANS',
     'SNPS'
   ];
-  const hasExpectedHeader = expected.every((column, idx) => header[idx] === column);
-  if (!hasExpectedHeader) {
+  const ftdnaHeader = [
+    'MATCH NAME',
+    'CHROMOSOME',
+    'START LOCATION',
+    'END LOCATION',
+    'CENTIMORGANS',
+    'MATCHING SNPS'
+  ];
+  const hasMyHeritageHeader = myHeritageHeader.every((column, idx) => header[idx] === column);
+  const hasFtdnaHeader = ftdnaHeader.every((column, idx) => header[idx] === column);
+  if (!hasMyHeritageHeader && !hasFtdnaHeader) {
     throw new Error(
-      'Unsupported shared-segments CSV format. Expected header: Name,Match Name,Chromosome,Start Location,End Location,Start RSID,End RSID,Centimorgans,SNPs.'
+      'Unsupported shared-segments CSV format. Expected MyHeritage or FTDNA segment comparison header.'
     );
   }
+  const isFtdnaComparison = hasFtdnaHeader && !hasMyHeritageHeader;
 
   let personName = '';
   let matchName = '';
@@ -137,17 +158,16 @@ export const parseFtdnaSharedSegmentsCsv = (
   const preview: DNASharedSegmentRowPreview[] = [];
 
   for (let i = 1; i < lines.length; i += 1) {
-    const [
-      personNameCell = '',
-      matchNameCell = '',
-      chromosome = '',
-      startLocation = '',
-      endLocation = '',
-      startRsid = '',
-      endRsid = '',
-      centimorgansCell = '',
-      snpsCell = ''
-    ] = parseCsvLine(lines[i]);
+    const values = parseCsvLine(lines[i]);
+    const personNameCell = isFtdnaComparison ? '' : values[0] || '';
+    const matchNameCell = isFtdnaComparison ? values[0] || '' : values[1] || '';
+    const chromosome = isFtdnaComparison ? values[1] || '' : values[2] || '';
+    const startLocation = isFtdnaComparison ? values[2] || '' : values[3] || '';
+    const endLocation = isFtdnaComparison ? values[3] || '' : values[4] || '';
+    const startRsid = isFtdnaComparison ? '' : values[5] || '';
+    const endRsid = isFtdnaComparison ? '' : values[6] || '';
+    const centimorgansCell = isFtdnaComparison ? values[4] || '' : values[7] || '';
+    const snpsCell = isFtdnaComparison ? values[5] || '' : values[8] || '';
     if (!chromosome && !startLocation && !endLocation && !centimorgansCell && !snpsCell) continue;
     const centimorgans = Number(centimorgansCell);
     const snps = Number(snpsCell);
@@ -178,7 +198,8 @@ export const parseFtdnaSharedSegmentsCsv = (
 
   return {
     summary: {
-      source: 'FTDNA_SHARED_AUTOSOMAL_SEGMENTS_CSV',
+      source: 'SHARED_AUTOSOMAL_SEGMENTS_CSV',
+      importFormat: isFtdnaComparison ? 'FTDNA_COMPARISON_SEGMENTS' : 'MYHERITAGE_SHARED_SEGMENTS',
       fileName,
       personName: personName || 'Unknown',
       matchName: matchName || 'Unknown',
@@ -186,8 +207,13 @@ export const parseFtdnaSharedSegmentsCsv = (
       totalCentimorgans: Number(totalCentimorgans.toFixed(1)),
       largestSegmentCentimorgans: Number(largestSegmentCentimorgans.toFixed(1)),
       totalSnps,
+      estimatedRelationship: estimateRelationshipFromSharedCm(totalCentimorgans),
       importedAt: new Date().toISOString(),
     },
     preview,
   };
 };
+
+// Backward-compatible aliases for older imports.
+export const parseFtdnaAutosomalCsv = parseAutosomalCsv;
+export const parseFtdnaSharedSegmentsCsv = parseSharedSegmentsCsv;

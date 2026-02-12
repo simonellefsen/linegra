@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Lock, Trash2, Dna, Upload, FileText } from 'lucide-react';
 import { DNATest } from '../../types';
 import { DNA_VENDORS, DNA_TEST_TYPES } from './constants';
-import { parseFtdnaAutosomalCsv, parseFtdnaSharedSegmentsCsv } from '../../lib/dnaRawParser';
+import { parseAutosomalCsv, parseSharedSegmentsCsv } from '../../lib/dnaRawParser';
 
 interface DNATabProps {
   dnaTests: DNATest[];
@@ -50,17 +50,15 @@ const DNATabInner: React.FC<DNATabProps> = ({
     try {
       const text = await file.text();
       if (mode === 'autosomal_raw') {
-        const { summary, preview } = parseFtdnaAutosomalCsv(text, file.name);
+        const { summary, preview } = parseAutosomalCsv(text, file.name);
         onUpdateTest(targetId, {
-          vendor: 'FamilyTreeDNA',
           type: 'Autosomal',
           rawDataSummary: summary,
           rawDataPreview: preview
         });
       } else {
-        const { summary, preview } = parseFtdnaSharedSegmentsCsv(text, file.name);
+        const { summary, preview } = parseSharedSegmentsCsv(text, file.name);
         onUpdateTest(targetId, {
-          vendor: 'FamilyTreeDNA',
           type: 'Shared Autosomal',
           sharedMatchName: summary.matchName,
           sharedSegmentSummary: summary,
@@ -157,7 +155,7 @@ const DNATabInner: React.FC<DNATabProps> = ({
                     className="px-4 py-2 rounded-2xl border border-white/20 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 hover:bg-white/10"
                   >
                     <Upload className="w-4 h-4" />
-                    Import FTDNA Raw CSV
+                    Import Autosomal Raw CSV
                   </button>
                   {test.rawDataSummary && (
                     <div className="p-4 bg-white/5 border border-white/10 rounded-3xl text-xs text-white/80 space-y-1">
@@ -182,7 +180,7 @@ const DNATabInner: React.FC<DNATabProps> = ({
                     className="px-4 py-2 rounded-2xl border border-white/20 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 hover:bg-white/10"
                   >
                     <Upload className="w-4 h-4" />
-                    Import FTDNA Shared CSV
+                    Import Shared DNA CSV
                   </button>
                   {test.sharedSegmentSummary && (
                     <div className="p-4 bg-white/5 border border-white/10 rounded-3xl text-xs text-white/80 space-y-1">
@@ -195,6 +193,9 @@ const DNATabInner: React.FC<DNATabProps> = ({
                         {test.sharedSegmentSummary.segmentCount} segments • {test.sharedSegmentSummary.totalCentimorgans.toFixed(1)} cM total •{' '}
                         {test.sharedSegmentSummary.largestSegmentCentimorgans.toFixed(1)} cM largest
                       </p>
+                      {test.sharedSegmentSummary.estimatedRelationship && (
+                        <p>Estimated: {test.sharedSegmentSummary.estimatedRelationship}</p>
+                      )}
                       {test.sharedPathRelationshipIds && test.sharedPathRelationshipIds.length > 0 ? (
                         <p className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
                           <Dna className="w-3.5 h-3.5" />
