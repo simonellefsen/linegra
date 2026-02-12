@@ -92,6 +92,17 @@ interface SharedSegmentSummaryLike {
   importedAt?: string;
 }
 
+interface SharedAutosomalAdminRow {
+  test_id: string;
+  owner_person_id: string;
+  owner_first_name: string | null;
+  owner_last_name: string | null;
+  counterpart_person_id: string | null;
+  counterpart_first_name: string | null;
+  counterpart_last_name: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
 const normalizeName = (value?: string | null) =>
   (value || '')
     .normalize('NFD')
@@ -313,6 +324,16 @@ const readSharedMatchPersonId = (metadata: Record<string, unknown>): string | nu
   if (!direct || !UUID_REGEX.test(direct)) return null;
   return direct;
 };
+
+const readSharedTestRowId = (row: any) =>
+  typeof row?.test_id === 'string' ? row.test_id : typeof row?.id === 'string' ? row.id : null;
+
+const readSharedTestOwnerId = (row: any) =>
+  typeof row?.owner_person_id === 'string'
+    ? row.owner_person_id
+    : typeof row?.person_id === 'string'
+    ? row.person_id
+    : null;
 
 const findRelationshipPath = (
   fromPersonId: string,
@@ -1320,28 +1341,62 @@ export const listSharedMatchesForAutosomalPerson = async (
 
   const personIds = peopleRows.map((row) => row.id);
   const sharedTests: any[] = [];
-  for (let i = 0; i < personIds.length; i += 500) {
-    const batchIds = personIds.slice(i, i + 500);
-    const { data, error } = await supabase
-      .from('dna_tests')
-      .select('id, person_id, metadata')
-      .eq('test_type', 'Shared Autosomal')
-      .in('person_id', batchIds);
-    if (error) throw new Error(error.message);
-    sharedTests.push(...(data || []));
+  const { data: sharedAdminData, error: sharedAdminError } = await supabase.rpc(
+    'admin_list_tree_shared_autosomal_tests',
+    { target_tree_id: treeId }
+  );
+  if (!sharedAdminError && Array.isArray(sharedAdminData)) {
+    sharedTests.push(...(sharedAdminData as SharedAutosomalAdminRow[]));
+  } else {
+    for (let i = 0; i < personIds.length; i += 500) {
+      const batchIds = personIds.slice(i, i + 500);
+      const { data, error } = await supabase
+        .from('dna_tests')
+        .select('id, person_id, metadata')
+        .eq('test_type', 'Shared Autosomal')
+        .in('person_id', batchIds);
+      if (error) throw new Error(error.message);
+      sharedTests.push(...(data || []));
+    }
   }
 
   sharedTests.forEach((testRow) => {
-    if (!testRow?.id || !testRow?.person_id) return;
-    if (existingTestIds.has(testRow.id)) return;
+    const testId = readSharedTestRowId(testRow);
+    const ownerPersonId = readSharedTestOwnerId(testRow);
+    if (!testId || !ownerPersonId) return;
+    if (existingTestIds.has(testId)) return;
     const metadata = asRecord(testRow.metadata);
+    const ownerPersonRow =
+      personById.get(ownerPersonId) ||
+      ({
+        first_name: testRow.owner_first_name || '',
+        last_name: testRow.owner_last_name || '',
+      } as any);
     const explicitMatchPersonId = readSharedMatchPersonId(metadata);
+    const rpcCounterpartId =
+      typeof testRow.counterpart_person_id === 'string' && UUID_REGEX.test(testRow.counterpart_person_id)
+        ? testRow.counterpart_person_id
+        : null;
+    const rpcCounterpartRow =
+      rpcCounterpartId && (testRow.counterpart_first_name || testRow.counterpart_last_name)
+        ? ({
+            first_name: testRow.counterpart_first_name || '',
+            last_name: testRow.counterpart_last_name || '',
+          } as any)
+        : null;
     let counterpartPersonId: string | null = null;
+    if (rpcCounterpartId) {
+      if (ownerPersonId === focusPersonId && rpcCounterpartId !== focusPersonId) {
+        counterpartPersonId = rpcCounterpartId;
+      } else if (rpcCounterpartId === focusPersonId && ownerPersonId !== focusPersonId) {
+        counterpartPersonId = ownerPersonId;
+      }
+    }
     if (explicitMatchPersonId) {
-      if (testRow.person_id === focusPersonId && explicitMatchPersonId !== focusPersonId) {
+      if (ownerPersonId === focusPersonId && explicitMatchPersonId !== focusPersonId) {
         counterpartPersonId = explicitMatchPersonId;
-      } else if (explicitMatchPersonId === focusPersonId && testRow.person_id !== focusPersonId) {
-        counterpartPersonId = testRow.person_id;
+      } else if (explicitMatchPersonId === focusPersonId && ownerPersonId !== focusPersonId) {
+        counterpartPersonId = ownerPersonId;
       }
     }
 
@@ -1355,17 +1410,19 @@ export const listSharedMatchesForAutosomalPerson = async (
       normalizedMatchName.includes(normalizedFocus) ||
       normalizedFocus.includes(normalizedMatchName)
     );
-    if (!counterpartPersonId && focusNamedInSummary && testRow.person_id !== focusPersonId) {
+    if (!counterpartPersonId && focusNamedInSummary && ownerPersonId !== focusPersonId) {
       if (explicitMatchPersonId && explicitMatchPersonId !== focusPersonId) {
         counterpartPersonId = explicitMatchPersonId;
+      } else if (rpcCounterpartId && rpcCounterpartId !== focusPersonId) {
+        counterpartPersonId = rpcCounterpartId;
       } else {
-        counterpartPersonId = testRow.person_id;
+        counterpartPersonId = ownerPersonId;
       }
     }
     if (!counterpartPersonId && summary) {
       counterpartPersonId = inferCounterpartForFocus(
         focusPersonId,
-        testRow.person_id,
+        ownerPersonId,
         summary,
         nameRows,
         focusFullName
@@ -1373,7 +1430,6 @@ export const listSharedMatchesForAutosomalPerson = async (
     }
     if (!summary || !counterpartPersonId) return;
     if (!counterpartPersonId || counterpartPersonId === focusPersonId) return;
-    if (!personById.has(counterpartPersonId)) return;
     const pairKey = [focusPersonId, counterpartPersonId].sort().join(':');
     if (existingPairs.has(pairKey)) return;
 
@@ -1386,14 +1442,24 @@ export const listSharedMatchesForAutosomalPerson = async (
       ? supportsRelationshipHops(summary.totalCentimorgans, pathRelationshipIds.length)
       : false;
 
+    const counterpartNameFromPeople = personById.has(counterpartPersonId)
+      ? toDisplayName(personById.get(counterpartPersonId))
+      : null;
+    const counterpartNameFromRpc = rpcCounterpartRow ? toDisplayName(rpcCounterpartRow) : null;
+    const counterpartPersonName =
+      counterpartNameFromPeople ||
+      counterpartNameFromRpc ||
+      summary.matchName ||
+      'Unknown';
+
     results.push({
-      id: `test:${testRow.id}`,
+      id: `test:${testId}`,
       source: 'dna_test',
-      dnaTestId: testRow.id,
-      ownerPersonId: testRow.person_id,
-      ownerPersonName: toDisplayName(personById.get(testRow.person_id)),
+      dnaTestId: testId,
+      ownerPersonId,
+      ownerPersonName: toDisplayName(ownerPersonRow),
       counterpartPersonId,
-      counterpartPersonName: toDisplayName(personById.get(counterpartPersonId)),
+      counterpartPersonName,
       sharedCM: summary.totalCentimorgans,
       segments: summary.segmentCount,
       longestSegment: summary.largestSegmentCentimorgans,
