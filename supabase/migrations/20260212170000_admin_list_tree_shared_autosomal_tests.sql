@@ -38,3 +38,5 @@ as $$
     and dt.test_type = 'Shared Autosomal'::public.dna_test_type
   order by dt.created_at desc;
 $$;
+
+grant execute on function public.admin_list_tree_shared_autosomal_tests(uuid) to anon, authenticated;
