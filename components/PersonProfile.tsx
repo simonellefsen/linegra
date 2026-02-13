@@ -330,6 +330,30 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     );
   }, [person.id, relationshipData, relationPeople, canViewPrivateRelations]);
 
+  const siblings = useMemo(() => {
+    const parentIds = new Set(
+      relationshipData
+        .filter((r) => r.relatedId === person.id && PARENT_LINK_TYPES.includes(r.type))
+        .map((r) => r.personId)
+    );
+    if (parentIds.size === 0) return [] as Array<{ rel: Relationship; person: Person }>;
+    const siblingByPersonId = new Map<string, { rel: Relationship; person: Person }>();
+    relationshipData
+      .filter((r) => parentIds.has(r.personId) && PARENT_LINK_TYPES.includes(r.type) && r.relatedId !== person.id)
+      .forEach((r) => {
+        const siblingPerson = relationPeople[r.relatedId];
+        if (!siblingPerson || (!canViewPrivateRelations && siblingPerson.isPrivate)) return;
+        if (!siblingByPersonId.has(siblingPerson.id)) {
+          siblingByPersonId.set(siblingPerson.id, { rel: r, person: siblingPerson });
+        }
+      });
+    return Array.from(siblingByPersonId.values()).sort((a, b) => {
+      const aName = `${a.person.lastName} ${a.person.firstName}`.trim();
+      const bName = `${b.person.lastName} ${b.person.firstName}`.trim();
+      return aName.localeCompare(bName);
+    });
+  }, [person.id, relationshipData, relationPeople, canViewPrivateRelations]);
+
   const tabs: { id: ProfileSection; label: string; icon: any; secure?: boolean }[] = [
     { id: 'vital', label: 'Vital', icon: Heart },
     { id: 'family', label: 'Family', icon: Share2 },
@@ -976,6 +1000,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             parents={parents}
             spouses={spouses}
             children={children}
+            siblings={siblings}
             person={person}
             relationships={relationshipData}
             relConfidences={relConfidences}

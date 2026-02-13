@@ -19,6 +19,7 @@ interface FamilyTabProps {
   parents: Array<{ person: Person; rel: Relationship }>;
   spouses: Array<{ person: Person; rel: Relationship }>;
   children: Array<{ person: Person; rel: Relationship }>;
+  siblings: Array<{ person: Person; rel: Relationship }>;
   person: Person;
   relationships: Relationship[];
   relConfidences: Record<string, RelationshipConfidence>;
@@ -118,6 +119,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   parents,
   spouses,
   children,
+  siblings,
   person,
   relationships,
   relConfidences,
@@ -269,6 +271,27 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
           canEdit={canEdit}
           onUnlinkRelationship={onUnlinkRelationship}
         />
+        <div className="space-y-4">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Sibling Connections</p>
+          {siblings.length > 0 ? (
+            siblings.map((item) => {
+              const confidence = relConfidences[item.rel.id] || 'Unknown';
+              return (
+                <RelationCard
+                  key={`sibling-${item.person.id}-${item.rel.id}`}
+                  item={item}
+                  label="Sibling Link"
+                  confidence={confidence}
+                  onConfidenceChange={onUpdateConfidence}
+                  onNavigate={onNavigateToPerson}
+                  canEdit={false}
+                />
+              );
+            })
+          ) : (
+            <p className="text-xs text-slate-400 italic p-4">No sibling records found.</p>
+          )}
+        </div>
       </div>
     </div>
   );
