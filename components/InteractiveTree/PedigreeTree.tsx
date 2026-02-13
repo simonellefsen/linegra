@@ -53,6 +53,7 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2;
 const ZOOM_STEP = 0.15;
 const MIN_ROW_GAP = 1;
+const EDGE_COLORS = ['#CBD5F5', '#C7D2FE', '#BFDBFE', '#A7F3D0', '#FDE68A', '#FBCFE8'];
 
 const extractYear = (value?: string) => {
   if (!value) return null;
@@ -79,6 +80,14 @@ const getDnaSupportMatchIds = (metadata?: Record<string, unknown>) => {
     }
   });
   return Array.from(ids);
+};
+
+const getEdgeColor = (childId: string) => {
+  let hash = 0;
+  for (let i = 0; i < childId.length; i += 1) {
+    hash = (hash * 31 + childId.charCodeAt(i)) >>> 0;
+  }
+  return EDGE_COLORS[hash % EDGE_COLORS.length];
 };
 
 const PedigreeTree: React.FC<PedigreeTreeProps> = ({
@@ -114,6 +123,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingHomeRecenter, setPendingHomeRecenter] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [hoveredPersonId, setHoveredPersonId] = useState<string | null>(null);
   const layout = useMemo(
     () =>
       buildPedigreeLayout(people, relationships, {
@@ -195,6 +205,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     });
     return groups;
   }, [layout]);
+  const highlightedChildId = hoveredPersonId || selectedPersonId || null;
 
   const dnaSupportByPersonId = useMemo(() => {
     const supportMap = new Map<string, Set<string>>();
@@ -249,6 +260,9 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             {Array.from(childEdgeGroups.entries()).map(([childId, edges]) => {
               const childRect = nodeRects.get(childId);
               if (!childRect) return null;
+              const strokeColor = getEdgeColor(childId);
+              const isHighlighted = !highlightedChildId || highlightedChildId === childId;
+              const edgeOpacity = isHighlighted ? 1 : 0.2;
               if (edges.length >= 2) {
                 const parents = edges
                   .map((edge) => {
@@ -276,10 +290,11 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     <path
                       key={`${fallbackEdge.edge.id}-single`}
                       d={`M${fromX},${fromY} L${fromX},${midY} L${toX},${midY} L${toX},${toY}`}
-                      stroke="#CBD5F5"
+                      stroke={strokeColor}
                       strokeWidth={2}
                       fill="none"
                       strokeDasharray={dash}
+                      opacity={edgeOpacity}
                     />
                   );
                 }
@@ -299,9 +314,10 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                         y1={parent.rect.top + cardHeight}
                         x2={parent.rect.left + cardWidth / 2}
                         y2={unionY}
-                        stroke="#CBD5F5"
+                        stroke={strokeColor}
                         strokeWidth={2}
                         strokeDasharray={parent.node.placeholder ? '6,5' : 'none'}
+                        opacity={edgeOpacity}
                       />
                     ))}
                     <line
@@ -309,32 +325,36 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                       x2={Math.max(...parentXs)}
                       y1={unionY}
                       y2={unionY}
-                      stroke="#CBD5F5"
+                      stroke={strokeColor}
                       strokeWidth={2}
+                      opacity={edgeOpacity}
                     />
                     <line
                       x1={midX}
                       x2={midX}
                       y1={unionY}
                       y2={childJoinY}
-                      stroke="#CBD5F5"
+                      stroke={strokeColor}
                       strokeWidth={2}
+                      opacity={edgeOpacity}
                     />
                     <line
                       x1={midX}
                       x2={toX}
                       y1={childJoinY}
                       y2={childJoinY}
-                      stroke="#CBD5F5"
+                      stroke={strokeColor}
                       strokeWidth={2}
+                      opacity={edgeOpacity}
                     />
                     <line
                       x1={toX}
                       x2={toX}
                       y1={childJoinY}
                       y2={childRect.top}
-                      stroke="#CBD5F5"
+                      stroke={strokeColor}
                       strokeWidth={2}
+                      opacity={edgeOpacity}
                     />
                   </g>
                 );
@@ -353,10 +373,11 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                 <path
                   key={edge.id}
                   d={`M${fromX},${fromY} L${fromX},${midY} L${toX},${midY} L${toX},${toY}`}
-                  stroke="#CBD5F5"
+                  stroke={strokeColor}
                   strokeWidth={2}
                   fill="none"
                   strokeDasharray={dash}
+                  opacity={edgeOpacity}
                 />
               );
             })}
@@ -408,6 +429,8 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                 style={{ left: rect.left, top: rect.top, width: cardWidth, height: cardHeight }}
                 disabled={!node.person}
                 onClick={() => node.person && onPersonSelect(node.person)}
+                onMouseEnter={() => setHoveredPersonId(node.person?.id ?? null)}
+                onMouseLeave={() => setHoveredPersonId((prev) => (prev === node.person?.id ? null : prev))}
               >
                 {node.person && siblingHints[node.person.id] && onExpandSiblings && (
                   <>
