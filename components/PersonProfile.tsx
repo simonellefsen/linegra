@@ -66,6 +66,19 @@ const generateUuid = () => {
   });
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const toUuidOrNull = (...candidates: Array<string | null | undefined>) => {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const normalized = candidate.trim();
+    if (UUID_PATTERN.test(normalized)) return normalized;
+    const head = normalized.split(':')[0];
+    if (UUID_PATTERN.test(head)) return head;
+  }
+  return null;
+};
+
 const resolveLivingState = (target: Person) => {
   if (typeof target.isLiving === 'boolean') {
     return target.isLiving;
@@ -390,7 +403,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
 
   const handleAddEvent = () => {
     const newEvent: PersonEvent = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateUuid(),
       type: 'Residence',
       date: '',
       place: '',
@@ -528,7 +541,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
 
   const notesPayload = () =>
     notes.map((note) => ({
-      id: note.id,
+      id: toUuidOrNull(note.id) ?? generateUuid(),
       body: note.text || '',
       type: note.type || 'Generic',
       event_label: note.event || null,
@@ -538,7 +551,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
 
   const sourcesPayload = () =>
     sources.map((source) => ({
-      id: source.id,
+      id: toUuidOrNull(source.externalId, source.id) ?? generateUuid(),
       title: source.title || 'Untitled Record',
       type: source.type || 'Unknown',
       repository: source.repository || null,
