@@ -514,10 +514,64 @@ interface NormalizedDeathCauseResult {
   category: DeathCauseCategory;
 }
 
+type DeathCauseNormalizationRule = {
+  pattern: RegExp;
+  normalized: string;
+  category: DeathCauseCategory;
+  priority?: number;
+};
+
+const DEATH_CAUSE_RULES: DeathCauseNormalizationRule[] = [
+  { pattern: /\bphthisis pulmonum\b|\bphthisis\b/i, normalized: 'Pulmonary tuberculosis', category: 'Disease', priority: 100 },
+  { pattern: /\bhaemoptysis\b|\bhemoptysis\b|\bhaemophthisis\b/i, normalized: 'Coughing up blood (hemoptysis)', category: 'Disease', priority: 80 },
+  { pattern: /\bapoplex(?:ia|y)\b/i, normalized: 'Stroke', category: 'Disease', priority: 90 },
+  { pattern: /\bmorbus cordis\b/i, normalized: 'Heart disease', category: 'Disease', priority: 90 },
+  { pattern: /\bbarselsfeber\b/i, normalized: 'Postpartum infection', category: 'Disease', priority: 90 },
+  { pattern: /\bconsumption\b/i, normalized: 'Tuberculosis', category: 'Disease', priority: 85 },
+];
+
+const normalizeComparableText = (value: string) =>
+  value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/gi, ' ')
+    .trim()
+    .toLowerCase();
+
+const deterministicNormalizeDeathCause = (rawCause: string): NormalizedDeathCauseResult => {
+  const matches = DEATH_CAUSE_RULES
+    .filter((rule) => rule.pattern.test(rawCause))
+    .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0));
+
+  if (matches.length === 0) {
+    return {
+      normalizedCause: rawCause.trim(),
+      category: 'Unknown',
+    };
+  }
+
+  const includesTuberculosis = matches.some((rule) => /tuberculosis/i.test(rule.normalized));
+  const includesHemoptysis = matches.some((rule) => /hemoptysis/i.test(rule.normalized));
+
+  if (includesTuberculosis && includesHemoptysis) {
+    return {
+      normalizedCause: 'Pulmonary tuberculosis with coughing up blood',
+      category: 'Disease',
+    };
+  }
+
+  return {
+    normalizedCause: matches[0].normalized,
+    category: matches[0].category,
+  };
+};
+
 export const normalizeDeathCause = async (rawCause: string): Promise<NormalizedDeathCauseResult> => {
   if (!rawCause.trim()) {
     return { normalizedCause: '', category: 'Unknown' };
   }
+
+  const deterministic = deterministicNormalizeDeathCause(rawCause);
 
   const schema = {
     name: 'NormalizedDeathCause',
@@ -571,11 +625,38 @@ export const normalizeDeathCause = async (rawCause: string): Promise<NormalizedD
   );
 
   const parsed = JSON.parse(content || '{}') as Partial<NormalizedDeathCauseResult>;
+  const aiNormalizedCause =
+    typeof parsed.normalizedCause === 'string' && parsed.normalizedCause.trim()
+      ? parsed.normalizedCause.trim()
+      : rawCause.trim();
+  const aiCategory =
+    typeof parsed.category === 'string' && DEATH_CAUSE_CATEGORIES.includes(parsed.category as DeathCauseCategory)
+      ? (parsed.category as DeathCauseCategory)
+      : 'Unknown';
+
+  const aiEchoedInput =
+    normalizeComparableText(aiNormalizedCause) === normalizeComparableText(rawCause.trim());
+
+  if (
+    aiEchoedInput &&
+    normalizeComparableText(deterministic.normalizedCause) !== normalizeComparableText(rawCause.trim())
+  ) {
+    return deterministic;
+  }
+
+  if (
+    aiCategory === 'Unknown' &&
+    deterministic.category !== 'Unknown' &&
+    normalizeComparableText(deterministic.normalizedCause) !== normalizeComparableText(rawCause.trim())
+  ) {
+    return {
+      normalizedCause: aiNormalizedCause,
+      category: deterministic.category,
+    };
+  }
+
   return {
-    normalizedCause: typeof parsed.normalizedCause === 'string' ? parsed.normalizedCause.trim() : rawCause.trim(),
-    category:
-      typeof parsed.category === 'string' && DEATH_CAUSE_CATEGORIES.includes(parsed.category as DeathCauseCategory)
-        ? (parsed.category as DeathCauseCategory)
-        : 'Unknown'
+    normalizedCause: aiNormalizedCause,
+    category: aiCategory,
   };
 };
