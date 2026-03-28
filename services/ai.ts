@@ -536,12 +536,27 @@ export const normalizeDeathCause = async (rawCause: string): Promise<NormalizedD
       [
         {
           role: 'system',
-          content:
-            'You normalize historical cause-of-death text for genealogy records. Return concise modern wording and choose the best category.'
+          content: [
+            'You normalize historical causes of death for genealogy records.',
+            'Your job is to interpret archaic, Latin, variant-spelled, or composite medical phrases and rewrite them as concise modern plain-English causes of death.',
+            'Do not simply repeat the input unless it is already a clear modern diagnosis.',
+            'Prefer the underlying disease or condition over a symptom when both are present.',
+            'If the text lists both a symptom and a disease, normalize to the disease and optionally mention the symptom only if it adds meaning.',
+            'Examples:',
+            '- "Phthisis pulmonum" -> "Pulmonary tuberculosis"',
+            '- "Haemoptysis, Phthisis pulmonum" -> "Pulmonary tuberculosis with coughing up blood"',
+            '- "Apoplexia" -> "Stroke"',
+            '- "Morbus cordis" -> "Heart disease"',
+            '- "Barselsfeber" -> "Postpartum infection"',
+            'Return JSON matching the schema with:',
+            '- normalizedCause: a concise modern phrase',
+            '- category: one of Natural, Disease, Accident, Suicide, Homicide, Military, Legal Execution, Other, Unknown',
+            'If unsure, make the best medical/historical interpretation and keep uncertainty brief inside normalizedCause.'
+          ].join(' ')
         },
         {
           role: 'user',
-          content: `Normalize this cause of death for a genealogy record: "${rawCause}". Preserve uncertainty if present.`
+          content: `Normalize this cause of death for a genealogy record into modern plain English. Input: "${rawCause}". Do not echo the wording unchanged unless it is already modern and specific. Preserve uncertainty if present.`
         }
       ],
       {
@@ -550,7 +565,7 @@ export const normalizeDeathCause = async (rawCause: string): Promise<NormalizedD
           json_schema: schema
         },
         temperature: 0.1,
-        max_tokens: 120
+        max_tokens: 180
       }
     )
   );
