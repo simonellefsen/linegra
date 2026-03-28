@@ -271,6 +271,7 @@ export interface Person {
   burialDate?: string;
   burialPlace?: string | StructuredPlace;
   deathCause?: string;
+  normalizedDeathCause?: string;
   deathCauseCategory?: DeathCauseCategory;
   residenceAtDeath?: string | StructuredPlace;
   gender: 'M' | 'F' | 'O';

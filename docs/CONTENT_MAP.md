@@ -7,7 +7,7 @@ This catalog highlights the most relevant files for the current Linegra architec
 | Feature | Key Files | Notes |
 | --- | --- | --- |
 | Vite entry + globals | `index.html`, `index.tsx`, `App.tsx`, `index.css`, `vite.config.ts` | App shell, build-time env wiring, global UI layout. |
-| Environment + API boot | `lib/supabase.ts`, `services/archive.ts`, `services/gemini.ts` | Supabase client + OpenRouter-backed AI calls used by profile inputs. |
+| Environment + API boot | `lib/supabase.ts`, `services/archive.ts`, `services/gemini.ts`, `lib/aiSettings.ts` | Supabase client + OpenRouter-backed AI calls used by profile inputs, with browser-local admin AI settings plus env fallback. |
 | Types & shared domain | `types.ts` | Source of truth for persons, relationships, events, DNA tests/matches, and admin DTOs. |
 
 ## Authentication & Administration
@@ -16,7 +16,7 @@ This catalog highlights the most relevant files for the current Linegra architec
 | --- | --- | --- |
 | Super admin auth modal | `components/AuthModal.tsx`, `App.tsx` | Local super-admin login state, first-use credentials flow, session restore. |
 | Admin page tabs | `components/admin/AdminSectionTabs.tsx`, `App.tsx` | Top-level admin sub-panels: Database, Trees, GEDCOM, DNA. |
-| Database panel + reset modal | `components/admin/AdminDatabasePanel.tsx`, `components/admin/AdminNukeModal.tsx`, `services/archive.ts` (`nukeSupabaseDatabase`) | Shows maintenance actions and layout audit history; launches destructive reset flow. |
+| Database panel + reset modal | `components/admin/AdminDatabasePanel.tsx`, `components/admin/AdminNukeModal.tsx`, `services/archive.ts` (`nukeSupabaseDatabase`), `lib/aiSettings.ts` | Shows maintenance actions, browser-local AI settings, OpenRouter connection testing, and layout audit history; launches destructive reset flow. |
 | Trees panel | `components/AdminTreesPanel.tsx`, `services/archive.ts` (`createFamilyTree`, `updateTreeSettings`, `deleteFamilyTreeRecord`, `listFamilyTreesWithCounts`) | Tree CRUD, visibility, default proband, owner metadata, counts. |
 | GEDCOM panel | `components/admin/AdminGedcomPanel.tsx`, `components/ImportExport.tsx`, `lib/gedcom/*`, `services/archive.ts` (`importGedcomToSupabase`) | GEDCOM import/export and parser warnings. |
 | DNA admin panel | `components/AdminDnaPanel.tsx`, `services/archive.ts` (`listAutosomalPeopleInTree`, `listSharedMatchesForAutosomalPerson`, `resolveShared*Lineage`) | Shared autosomal review and lineage-path resolution across a tree. |
@@ -27,7 +27,7 @@ This catalog highlights the most relevant files for the current Linegra architec
 | --- | --- | --- |
 | Interactive pedigree tree | `components/InteractiveTree/PedigreeTree.tsx`, `lib/pedigreeScope.ts`, `App.tsx` | On-demand pedigree rendering with ancestor/descendant expansion, placeholder parent cards, bottom toolbar controls. |
 | Legacy force graph | `components/FamilyTree.tsx` | Older graph renderer retained for compatibility/testing. |
-| Person profile modal | `components/PersonProfile.tsx`, `components/person-profile/*` | Tabbed profile surface (`VitalTab`, `FamilyTab`, `StoryTab`, `SourcesTab`, `MediaTab`, `DNATab`, `NotesTab`). |
+| Person profile modal | `components/PersonProfile.tsx`, `components/person-profile/*` | Tabbed profile surface (`VitalTab`, `FamilyTab`, `StoryTab`, `SourcesTab`, `MediaTab`, `DNATab`, `NotesTab`), including cause-of-death normalization in the Vital tab. |
 | Family layout persistence | `components/person-profile/FamilyTab.tsx`, `services/archive.ts` (`persistFamilyLayout`, `fetchFamilyLayoutAudits`) | Drag/drop order and spouse assignment state saved to person metadata + audits. |
 | Landing page + stats | `components/TreeLandingPage.tsx`, `services/archive.ts` (`fetchTreeStatistics`, widgets fetchers) | Active tree hero, benchmark cards, public stats, highlights modules. |
 | Search | `App.tsx`, `services/archive.ts` (`searchPersonsInTree`) | Enter-to-search modal flow with client filters and paged fetches. |
@@ -47,7 +47,7 @@ This catalog highlights the most relevant files for the current Linegra architec
 | --- | --- | --- |
 | Supabase schema | `supabase/migrations/*.sql` | Authoritative DB model, RPCs, policies, indexes, DNA lineage functions. |
 | Supabase CLI helpers | `docs/SUPABASE_SETUP.md` | Login/link/push workflow and remote migration habits. |
-| OpenRouter AI integration | `docs/AI_SETUP.md`, `services/gemini.ts` | Env-driven OpenRouter calls for biography + place parsing. |
+| OpenRouter AI integration | `docs/AI_SETUP.md`, `services/gemini.ts`, `lib/aiSettings.ts` | Browser-local admin AI settings plus env fallback for biography, place parsing, and normalized cause-of-death workflows. |
 
 ## Documentation & Operations
 

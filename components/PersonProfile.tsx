@@ -26,6 +26,7 @@ import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
 import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent } from '../services/archive';
+import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause } from '../services/gemini';
 
 const serializePlaceValue = (value: string | StructuredPlace) =>
   typeof value === 'string' ? value : JSON.stringify(value ?? '');
@@ -99,6 +100,7 @@ const buildSnapshotFromPerson = (target: Person) =>
     burialDate: target.burialDate || '',
     burialPlace: serializePlaceValue(target.burialPlace || ''),
     deathCause: target.deathCause || '',
+    normalizedDeathCause: target.normalizedDeathCause || '',
     deathCategory: target.deathCauseCategory || 'Unknown',
     altNames: target.alternateNames || [],
     events: target.events || [],
@@ -148,6 +150,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   const [burialDate, setBurialDate] = useState(person.burialDate || '');
   const [burialPlace, setBurialPlace] = useState<string | StructuredPlace>(person.burialPlace || '');
   const [deathCause, setDeathCause] = useState(person.deathCause || '');
+  const [normalizedDeathCause, setNormalizedDeathCause] = useState(person.normalizedDeathCause || '');
   const [deathCategory, setDeathCategory] = useState<DeathCauseCategory>(person.deathCauseCategory || 'Unknown');
   const [altNames, setAltNames] = useState<AlternateName[]>(dedupeAlternateNames(person.alternateNames || []));
   const [events, setEvents] = useState<PersonEvent[]>(person.events || []);
@@ -171,6 +174,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   const [saveFeedback, setSaveFeedback] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [normalizingDeathCause, setNormalizingDeathCause] = useState(false);
+  const [normalizeDeathCauseError, setNormalizeDeathCauseError] = useState<string | null>(null);
   const [shareFeedback, setShareFeedback] = useState<string>('');
   const [overlayProfile, setOverlayProfile] = useState<Person | null>(null);
   const [pendingParentType, setPendingParentType] = useState<'father' | 'mother' | null>(null);
@@ -187,6 +192,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     setBurialDate(person.burialDate || '');
     setBurialPlace(person.burialPlace || '');
     setDeathCause(person.deathCause || '');
+    setNormalizedDeathCause(person.normalizedDeathCause || '');
     setDeathCategory(person.deathCauseCategory || 'Unknown');
     setAltNames(dedupeAlternateNames(person.alternateNames || []));
     setEvents(person.events || []);
@@ -540,7 +546,10 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       alternate_names: altNames,
       is_living: isLiving,
       is_private: isPrivate,
-      metadata: metadataPatch
+      metadata: {
+        ...metadataPatch,
+        normalized_death_cause: normalizedDeathCause || null
+      }
     };
   };
 
@@ -661,6 +670,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         burialDate,
         burialPlace: serializePlaceValue(burialPlace),
         deathCause,
+        normalizedDeathCause,
         deathCategory,
         altNames,
         events,
@@ -683,6 +693,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       burialDate,
       burialPlace,
       deathCause,
+      normalizedDeathCause,
       deathCategory,
       altNames,
       events,
@@ -708,6 +719,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     setBurialDate(person.burialDate || '');
     setBurialPlace(person.burialPlace || '');
     setDeathCause(person.deathCause || '');
+    setNormalizedDeathCause(person.normalizedDeathCause || '');
     setDeathCategory(person.deathCauseCategory || 'Unknown');
     setAltNames(person.alternateNames || []);
     setEvents(person.events || []);
@@ -758,6 +770,25 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     };
     setMediaItems([newMedia, ...mediaItems]);
     setActiveSection('media');
+  };
+
+  const handleNormalizeDeathCause = async () => {
+    if (!canEditPerson || !deathCause.trim() || normalizingDeathCause) return;
+    setNormalizingDeathCause(true);
+    setNormalizeDeathCauseError(null);
+    try {
+      const normalized = await requestNormalizedDeathCause(deathCause);
+      setNormalizedDeathCause(normalized.normalizedCause);
+      if (deathCategory === 'Unknown' && normalized.category !== 'Unknown') {
+        setDeathCategory(normalized.category);
+      }
+    } catch (err) {
+      setNormalizeDeathCauseError(
+        err instanceof Error ? err.message : 'Failed to normalize cause of death.'
+      );
+    } finally {
+      setNormalizingDeathCause(false);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1017,6 +1048,12 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             onResidenceAtDeathChange={setResidenceAtDeath}
             deathCause={deathCause}
             onDeathCauseChange={setDeathCause}
+            normalizedDeathCause={normalizedDeathCause}
+            onNormalizedDeathCauseChange={setNormalizedDeathCause}
+            onNormalizeDeathCause={handleNormalizeDeathCause}
+            isNormalizingDeathCause={normalizingDeathCause}
+            normalizeDeathCauseError={normalizeDeathCauseError}
+            aiAvailable={hasOpenRouterConfig()}
             deathCategory={deathCategory}
             onDeathCategoryChange={setDeathCategory}
             burialDate={burialDate}

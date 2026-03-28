@@ -1,4 +1,10 @@
-import { Person, StructuredPlace } from "../types";
+import { Person, StructuredPlace, DeathCauseCategory } from "../types";
+import {
+  DEFAULT_OPENROUTER_BASE_URL,
+  DEFAULT_OPENROUTER_MODEL,
+  getStoredAISettings,
+  OpenRouterSettings,
+} from "../lib/aiSettings";
 
 type RuntimeEnv = Record<string, string | undefined>;
 
@@ -8,18 +14,39 @@ const getRuntimeEnv = (): RuntimeEnv => {
   return { ...envFromProcess, ...envFromImport };
 };
 
-const defaultModel = 'nvidia/nemotron-nano-12b-v2-vl:free';
+const DEATH_CAUSE_CATEGORIES: DeathCauseCategory[] = [
+  'Natural',
+  'Disease',
+  'Accident',
+  'Suicide',
+  'Homicide',
+  'Military',
+  'Legal Execution',
+  'Other',
+  'Unknown',
+];
 
-const getOpenRouterConfig = () => {
+const getOpenRouterConfig = (overrides?: Partial<OpenRouterSettings>) => {
   const env = getRuntimeEnv();
-  const key = env.VITE_OPENROUTER_API_KEY ?? env.OPENROUTER_API_KEY ?? '';
+  const stored = getStoredAISettings().providers.openrouter;
+  const key = overrides?.apiKey ?? stored.apiKey ?? env.VITE_OPENROUTER_API_KEY ?? env.OPENROUTER_API_KEY ?? '';
   if (!key) {
     throw new Error('OPENROUTER_API_KEY (or VITE_OPENROUTER_API_KEY) is missing.');
   }
   return {
     apiKey: key,
-    model: env.VITE_OPENROUTER_MODEL ?? env.OPENROUTER_MODEL ?? defaultModel,
-    baseUrl: env.VITE_OPENROUTER_BASE_URL ?? env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1'
+    model:
+      overrides?.model ??
+      stored.model ??
+      env.VITE_OPENROUTER_MODEL ??
+      env.OPENROUTER_MODEL ??
+      DEFAULT_OPENROUTER_MODEL,
+    baseUrl:
+      overrides?.baseUrl ??
+      stored.baseUrl ??
+      env.VITE_OPENROUTER_BASE_URL ??
+      env.OPENROUTER_BASE_URL ??
+      DEFAULT_OPENROUTER_BASE_URL
   };
 };
 
@@ -51,8 +78,12 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3): Promise<T> => {
   throw new Error("API call failed after retries");
 };
 
-const callOpenRouter = async (messages: ChatMessage[], extraBody: Record<string, unknown> = {}) => {
-  const { apiKey, model, baseUrl } = getOpenRouterConfig();
+const callOpenRouter = async (
+  messages: ChatMessage[],
+  extraBody: Record<string, unknown> = {},
+  overrides?: Partial<OpenRouterSettings>
+) => {
+  const { apiKey, model, baseUrl } = getOpenRouterConfig(overrides);
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -173,4 +204,87 @@ export const analyzeHistoricalEra = async (year: string, location: string): Prom
     console.error("OpenRouter Historical Era Error:", error);
     return "Failed to fetch historical context.";
   }
+};
+
+export const hasOpenRouterConfig = () => {
+  try {
+    const config = getOpenRouterConfig();
+    return Boolean(config.apiKey && config.model && config.baseUrl);
+  } catch {
+    return false;
+  }
+};
+
+export const testOpenRouterConnection = async (overrides?: Partial<OpenRouterSettings>) => {
+  const content = await withRetry(() =>
+    callOpenRouter(
+      [
+        { role: 'system', content: 'You validate API connectivity for a genealogy application.' },
+        { role: 'user', content: 'Reply with exactly: OPENROUTER_OK' }
+      ],
+      { max_tokens: 16, temperature: 0 },
+      overrides
+    )
+  );
+
+  if (!content.includes('OPENROUTER_OK')) {
+    throw new Error('Unexpected AI response while testing the OpenRouter connection.');
+  }
+  return 'OPENROUTER_OK';
+};
+
+interface NormalizedDeathCauseResult {
+  normalizedCause: string;
+  category: DeathCauseCategory;
+}
+
+export const normalizeDeathCause = async (rawCause: string): Promise<NormalizedDeathCauseResult> => {
+  if (!rawCause.trim()) {
+    return { normalizedCause: '', category: 'Unknown' };
+  }
+
+  const schema = {
+    name: 'NormalizedDeathCause',
+    schema: {
+      type: 'object',
+      properties: {
+        normalizedCause: { type: 'string' },
+        category: { type: 'string', enum: DEATH_CAUSE_CATEGORIES }
+      },
+      required: ['normalizedCause', 'category']
+    }
+  };
+
+  const content = await withRetry(() =>
+    callOpenRouter(
+      [
+        {
+          role: 'system',
+          content:
+            'You normalize historical cause-of-death text for genealogy records. Return concise modern wording and choose the best category.'
+        },
+        {
+          role: 'user',
+          content: `Normalize this cause of death for a genealogy record: "${rawCause}". Preserve uncertainty if present.`
+        }
+      ],
+      {
+        response_format: {
+          type: 'json_schema',
+          json_schema: schema
+        },
+        temperature: 0.1,
+        max_tokens: 120
+      }
+    )
+  );
+
+  const parsed = JSON.parse(content || '{}') as Partial<NormalizedDeathCauseResult>;
+  return {
+    normalizedCause: typeof parsed.normalizedCause === 'string' ? parsed.normalizedCause.trim() : rawCause.trim(),
+    category:
+      typeof parsed.category === 'string' && DEATH_CAUSE_CATEGORIES.includes(parsed.category as DeathCauseCategory)
+        ? (parsed.category as DeathCauseCategory)
+        : 'Unknown'
+  };
 };

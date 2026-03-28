@@ -46,6 +46,12 @@ interface VitalTabProps {
   onResidenceAtDeathChange: (value: string | StructuredPlace) => void;
   deathCause: string;
   onDeathCauseChange: (value: string) => void;
+  normalizedDeathCause: string;
+  onNormalizedDeathCauseChange: (value: string) => void;
+  onNormalizeDeathCause: () => void;
+  isNormalizingDeathCause: boolean;
+  normalizeDeathCauseError: string | null;
+  aiAvailable: boolean;
   deathCategory: DeathCauseCategory;
   onDeathCategoryChange: (value: DeathCauseCategory) => void;
   burialDate: string;
@@ -111,6 +117,12 @@ const VitalTab: React.FC<VitalTabProps> = ({
   onResidenceAtDeathChange,
   deathCause,
   onDeathCauseChange,
+  normalizedDeathCause,
+  onNormalizedDeathCauseChange,
+  onNormalizeDeathCause,
+  isNormalizingDeathCause,
+  normalizeDeathCauseError,
+  aiAvailable,
   deathCategory,
   onDeathCategoryChange,
   burialDate,
@@ -217,6 +229,36 @@ const VitalTab: React.FC<VitalTabProps> = ({
                   <PlaceInput label="Place of Death (e.g. Hospital)" value={deathPlace} onChange={onDeathPlaceChange} disabled={readOnly} />
                   <PlaceInput label="Residence at Death (e.g. Home)" value={residenceAtDeath} onChange={onResidenceAtDeathChange} disabled={readOnly} />
                   <DetailEdit label="Cause of Death" value={deathCause} onChange={onDeathCauseChange} disabled={readOnly} />
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                        Normalized Cause
+                      </label>
+                      <button
+                        type="button"
+                        onClick={onNormalizeDeathCause}
+                        disabled={readOnly || !aiAvailable || !deathCause.trim() || isNormalizingDeathCause}
+                        className="text-[9px] font-black uppercase tracking-[0.25em] text-blue-600 disabled:text-slate-300 disabled:cursor-not-allowed"
+                      >
+                        {isNormalizingDeathCause ? 'Normalizing...' : 'AI Normalize'}
+                      </button>
+                    </div>
+                    <DetailEdit
+                      label="Normalized Text"
+                      value={normalizedDeathCause}
+                      onChange={onNormalizedDeathCauseChange}
+                      placeholder={aiAvailable ? 'AI-normalized wording...' : 'Configure AI in Administrator -> Database'}
+                      disabled={readOnly}
+                    />
+                    {normalizeDeathCauseError && (
+                      <p className="text-xs text-rose-600 px-1">{normalizeDeathCauseError}</p>
+                    )}
+                    {!normalizeDeathCauseError && !aiAvailable && (
+                      <p className="text-xs text-slate-400 px-1">
+                        OpenRouter must be configured in Administrator -&gt; Database before AI normalization can run.
+                      </p>
+                    )}
+                  </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Death Category</label>
                     <select

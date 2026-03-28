@@ -599,6 +599,10 @@ const mapDbPerson = (
     deathPlace: structuredDeath || row.death_place_text || undefined,
     burialDate: row.burial_date_text || undefined,
     burialPlace: structuredBurial || row.burial_place_text || undefined,
+    deathCause: row.death_cause || undefined,
+    normalizedDeathCause:
+      typeof metadata.normalized_death_cause === 'string' ? metadata.normalized_death_cause : undefined,
+    deathCauseCategory: row.death_cause_category || undefined,
     residenceAtDeath: row.residence_at_death_text || undefined,
     photoUrl: row.photo_url || undefined,
     bio: row.bio || undefined,
