@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution } from '../types';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -19,6 +19,39 @@ const normalizePlace = (place?: string | { fullText?: string }) => {
   if (!place) return null;
   if (typeof place === 'string') return place;
   return place.fullText ?? null;
+};
+
+const asRelationshipMetadata = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return { ...(value as Record<string, unknown>) };
+};
+
+const relationshipDateFromMetadata = (metadata: Record<string, unknown>): string | undefined => {
+  const dateCandidate = metadata.date_text ?? metadata.relationship_date_text;
+  return typeof dateCandidate === 'string' && dateCandidate.trim() ? dateCandidate : undefined;
+};
+
+const relationshipPlaceFromMetadata = (metadata: Record<string, unknown>): string | undefined => {
+  const placeCandidate = metadata.place_text ?? metadata.relationship_place_text;
+  return typeof placeCandidate === 'string' && placeCandidate.trim() ? placeCandidate : undefined;
+};
+
+const mapDbRelationship = (row: any): Relationship => {
+  const metadata = asRelationshipMetadata(row.metadata);
+  return {
+    id: row.id,
+    treeId: row.tree_id,
+    personId: row.person_id,
+    relatedId: row.related_id,
+    type: row.type,
+    status: row.status || undefined,
+    confidence: row.confidence || undefined,
+    order: row.sort_order || undefined,
+    date: relationshipDateFromMetadata(metadata),
+    place: relationshipPlaceFromMetadata(metadata),
+    notes: row.notes || undefined,
+    metadata: Object.keys(metadata).length ? metadata : undefined
+  };
 };
 
 const PAGE_SIZE = 1000;
@@ -811,18 +844,7 @@ export const loadArchiveData = async (treeId: string) => {
     ...mapDbPerson(row, emptyNotes, emptySources, emptyEvents, emptyCitations),
     detailsLoaded: false
   }));
-  const relationships = (relationshipRows || []).map((row) => ({
-    id: row.id,
-    treeId: row.tree_id,
-    personId: row.person_id,
-    relatedId: row.related_id,
-    type: row.type,
-    status: row.status || undefined,
-    confidence: row.confidence || undefined,
-    order: row.sort_order || undefined,
-    notes: row.notes || undefined,
-    metadata: row.metadata || undefined
-  }));
+  const relationships = (relationshipRows || []).map(mapDbRelationship);
 
   return { people, relationships };
 };
@@ -965,18 +987,7 @@ export const fetchPersonConnections = async (
     });
   }
 
-  const relationships = (relationshipRows || []).map((row) => ({
-    id: row.id,
-    treeId: row.tree_id,
-    personId: row.person_id,
-    relatedId: row.related_id,
-    type: row.type,
-    status: row.status || undefined,
-    confidence: row.confidence || undefined,
-    order: row.sort_order || undefined,
-    notes: row.notes || undefined,
-    metadata: row.metadata || undefined
-  }));
+  const relationships = (relationshipRows || []).map(mapDbRelationship);
 
   const relatedIds = Array.from(
     new Set(
@@ -1245,6 +1256,32 @@ export const updateRelationshipConfidence = async (
   const { error } = await supabase.rpc('admin_set_relationship_confidence', {
     target_relationship_id: relationshipId,
     payload_confidence: confidence,
+    payload_actor_id: normalizedActor.id,
+    payload_actor_name: normalizedActor.name
+  });
+  if (error) throw new Error(error.message);
+};
+
+export const updateRelationshipDetails = async (
+  relationshipId: string,
+  payload: {
+    dateText?: string | null;
+    placeText?: string | null;
+    status?: RelationshipStatus | null;
+    notes?: string | null;
+  },
+  actor?: { id?: string | null; name?: string | null }
+) => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const normalizedActor = normalizeActor(actor);
+  const { error } = await supabase.rpc('admin_update_relationship_details', {
+    target_relationship_id: relationshipId,
+    payload_date_text: payload.dateText ?? null,
+    payload_place_text: payload.placeText ?? null,
+    payload_status: payload.status ?? null,
+    payload_notes: payload.notes ?? null,
     payload_actor_id: normalizedActor.id,
     payload_actor_name: normalizedActor.name
   });
@@ -2241,6 +2278,11 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
     const personId = personIdMap.get(rel.personId);
     const relatedId = personIdMap.get(rel.relatedId);
     if (!personId || !relatedId) return null;
+    const relationshipMetadata = asRelationshipMetadata(rel.metadata);
+    const dateText = typeof rel.date === 'string' && rel.date.trim() ? rel.date : null;
+    const placeText = normalizePlace(rel.place);
+    if (dateText) relationshipMetadata.date_text = dateText;
+    if (placeText) relationshipMetadata.place_text = placeText;
     return {
       id: randomId(),
       tree_id: treeId,
@@ -2251,7 +2293,7 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
       confidence: rel.confidence || null,
       notes: rel.notes || null,
       sort_order: rel.order || null,
-      metadata: rel.metadata ? rel.metadata : {}
+      metadata: relationshipMetadata
     };
   }).filter(Boolean);
 

@@ -11,7 +11,7 @@ import {
   Unlink as UnlinkIcon,
   Plus,
 } from 'lucide-react';
-import { FamilyLayoutState, Person, Relationship, RelationshipConfidence } from '../../types';
+import { FamilyLayoutState, Person, Relationship, RelationshipConfidence, RelationshipStatus } from '../../types';
 import { CONFIDENCE_LEVELS, PARENT_LINK_TYPES } from './constants';
 import { getAvatarForPerson } from '../../lib/avatar';
 
@@ -31,6 +31,15 @@ interface FamilyTabProps {
   loading?: boolean;
   error?: string | null;
   onUnlinkRelationship?: (relId: string) => void;
+  onUpdateRelationshipDetails?: (
+    relId: string,
+    updates: {
+      dateText?: string | null;
+      placeText?: string | null;
+      status?: RelationshipStatus | null;
+      notes?: string | null;
+    }
+  ) => Promise<void> | void;
   onRequestAddParent?: (parentType: 'father' | 'mother') => void;
   pendingParentType?: 'father' | 'mother' | null;
 }
@@ -54,6 +63,20 @@ const getConfidenceStyle = (level: RelationshipConfidence) => {
     default:
       return { bg: 'bg-slate-50', text: 'text-slate-500', border: 'border-slate-200', icon: Search };
   }
+};
+
+const RELATIONSHIP_STATUS_OPTIONS: Array<{ value: RelationshipStatus; label: string }> = [
+  { value: 'current', label: 'Current' },
+  { value: 'divorced', label: 'Divorced' },
+  { value: 'separated', label: 'Separated' },
+  { value: 'widowed', label: 'Widowed' },
+];
+
+type RelationshipDetailDraft = {
+  dateText: string;
+  placeText: string;
+  status: RelationshipStatus | '';
+  notes: string;
 };
 
 const RelationCard: React.FC<{
@@ -131,6 +154,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   loading,
   error,
   onUnlinkRelationship,
+  onUpdateRelationshipDetails,
   onRequestAddParent,
   pendingParentType = null,
 }) => {
@@ -270,6 +294,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
           onUpdateConfidence={onUpdateConfidence}
           canEdit={canEdit}
           onUnlinkRelationship={onUnlinkRelationship}
+          onUpdateRelationshipDetails={onUpdateRelationshipDetails}
         />
         <div className="space-y-4">
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Sibling Connections</p>
@@ -311,6 +336,15 @@ interface FamilyGroupProps {
   onUpdateConfidence: (relId: string, confidence: RelationshipConfidence) => void;
   canEdit: boolean;
   onUnlinkRelationship?: (relId: string) => void;
+  onUpdateRelationshipDetails?: (
+    relId: string,
+    updates: {
+      dateText?: string | null;
+      placeText?: string | null;
+      status?: RelationshipStatus | null;
+      notes?: string | null;
+    }
+  ) => Promise<void> | void;
 }
 
 const FamilyGroups: React.FC<FamilyGroupProps> = ({
@@ -325,6 +359,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   onUpdateConfidence,
   canEdit,
   onUnlinkRelationship,
+  onUpdateRelationshipDetails,
 }) => {
   const layoutSeed = useMemo(() => {
     const baseAssignments: Record<string, string | null> = {};
@@ -372,6 +407,10 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   const [dragContext, setDragContext] = useState<{ childId: string; groupKey: string } | null>(null);
   const [hoverGroup, setHoverGroup] = useState<string | null>(null);
   const [hoverChild, setHoverChild] = useState<string | null>(null);
+  const [expandedDetailIds, setExpandedDetailIds] = useState<Set<string>>(new Set());
+  const [relationshipDrafts, setRelationshipDrafts] = useState<Record<string, RelationshipDetailDraft>>({});
+  const [savingDetailIds, setSavingDetailIds] = useState<Set<string>>(new Set());
+  const [relationshipDetailErrors, setRelationshipDetailErrors] = useState<Record<string, string>>({});
   const lastPersistedRef = useRef(
     JSON.stringify({
       assignments: layoutSeed.assignments,
@@ -411,6 +450,52 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
 
   const activeSpouses = spouses.filter((sp) => !removedSpouseIds.has(sp.rel.id));
   const activeChildren = children.filter((child) => !removedChildIds.has(child.rel.id));
+
+  const draftFromRelationship = useCallback((relationship: Relationship): RelationshipDetailDraft => {
+    const placeText =
+      typeof relationship.place === 'string'
+        ? relationship.place
+        : (relationship.place as { fullText?: string } | undefined)?.fullText ?? '';
+    return {
+      dateText: relationship.date || '',
+      placeText: placeText || '',
+      status: relationship.status || '',
+      notes: relationship.notes || '',
+    };
+  }, []);
+
+  useEffect(() => {
+    setRelationshipDrafts((prev) => {
+      const next: Record<string, RelationshipDetailDraft> = {};
+      spouses.forEach((spouse) => {
+        next[spouse.rel.id] = prev[spouse.rel.id] ?? draftFromRelationship(spouse.rel);
+      });
+      return next;
+    });
+    setExpandedDetailIds((prev) => {
+      const next = new Set<string>();
+      spouses.forEach((spouse) => {
+        if (prev.has(spouse.rel.id)) next.add(spouse.rel.id);
+      });
+      return next;
+    });
+    setSavingDetailIds((prev) => {
+      const next = new Set<string>();
+      spouses.forEach((spouse) => {
+        if (prev.has(spouse.rel.id)) next.add(spouse.rel.id);
+      });
+      return next;
+    });
+    setRelationshipDetailErrors((prev) => {
+      const next: Record<string, string> = {};
+      spouses.forEach((spouse) => {
+        if (prev[spouse.rel.id]) {
+          next[spouse.rel.id] = prev[spouse.rel.id];
+        }
+      });
+      return next;
+    });
+  }, [spouses, draftFromRelationship]);
 
   const getBaseChildren = useCallback(
     (groupId: string | null): Array<{ person: Person; rel: Relationship }> => {
@@ -630,6 +715,66 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
     onUnlinkRelationship?.(spouseId);
   };
 
+  const updateRelationshipDraft = (
+    relationshipId: string,
+    field: keyof RelationshipDetailDraft,
+    value: string
+  ) => {
+    setRelationshipDrafts((prev) => ({
+      ...prev,
+      [relationshipId]: {
+        ...(prev[relationshipId] ?? {
+          dateText: '',
+          placeText: '',
+          status: '',
+          notes: '',
+        }),
+        [field]: value,
+      },
+    }));
+  };
+
+  const toggleRelationshipDetails = (relationshipId: string) => {
+    setExpandedDetailIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(relationshipId)) {
+        next.delete(relationshipId);
+      } else {
+        next.add(relationshipId);
+      }
+      return next;
+    });
+  };
+
+  const handleSaveRelationshipDetails = async (relationshipId: string) => {
+    if (!canEdit || !onUpdateRelationshipDetails) return;
+    const draft = relationshipDrafts[relationshipId];
+    if (!draft) return;
+    setSavingDetailIds((prev) => new Set(prev).add(relationshipId));
+    setRelationshipDetailErrors((prev) => {
+      const next = { ...prev };
+      delete next[relationshipId];
+      return next;
+    });
+    try {
+      await onUpdateRelationshipDetails(relationshipId, {
+        dateText: draft.dateText.trim() || null,
+        placeText: draft.placeText.trim() || null,
+        status: draft.status ? (draft.status as RelationshipStatus) : null,
+        notes: draft.notes.trim() || null,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update relationship details.';
+      setRelationshipDetailErrors((prev) => ({ ...prev, [relationshipId]: message }));
+    } finally {
+      setSavingDetailIds((prev) => {
+        const next = new Set(prev);
+        next.delete(relationshipId);
+        return next;
+      });
+    }
+  };
+
   const getChildLifeMeta = (child: Person) => {
     if (child.birthDate) {
       return {
@@ -741,9 +886,18 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
       {activeSpouses.map((spouse) => {
         const metaBits: string[] = [];
         if (spouse.rel.date) metaBits.push(`Since ${formatYear(spouse.rel.date)}`);
+        const placeText =
+          typeof spouse.rel.place === 'string'
+            ? spouse.rel.place
+            : (spouse.rel.place as { fullText?: string } | undefined)?.fullText;
+        if (placeText) metaBits.push(placeText);
         if (spouse.rel.status) metaBits.push(spouse.rel.status.replace(/_/g, ' '));
         const childrenForSpouse = getDisplayChildren(spouse.rel.id);
         const confidence = relConfidences[spouse.rel.id] || 'Unknown';
+        const detailDraft = relationshipDrafts[spouse.rel.id] ?? draftFromRelationship(spouse.rel);
+        const detailsExpanded = expandedDetailIds.has(spouse.rel.id);
+        const detailSaving = savingDetailIds.has(spouse.rel.id);
+        const detailError = relationshipDetailErrors[spouse.rel.id];
         return (
           <div key={spouse.rel.id} className="space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -756,16 +910,88 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
                 onNavigate={onNavigate}
                 canEdit={canEdit}
               />
-              {canEdit && (
-                <button
-                  className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
-                  onClick={() => handleUnlinkSpouse(spouse.rel.id)}
-                  aria-label="Unlink spouse"
-                >
-                  <UnlinkIcon className="w-4 h-4" />
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="px-3 py-2 rounded-2xl border border-slate-200 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:bg-slate-100 transition"
+                    onClick={() => toggleRelationshipDetails(spouse.rel.id)}
+                  >
+                    {detailsExpanded ? 'Hide Details' : 'Edit Union'}
+                  </button>
+                )}
+                {canEdit && (
+                  <button
+                    className="p-2 rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 transition"
+                    onClick={() => handleUnlinkSpouse(spouse.rel.id)}
+                    aria-label="Unlink spouse"
+                  >
+                    <UnlinkIcon className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
+            {canEdit && detailsExpanded && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Union Date</label>
+                    <input
+                      type="text"
+                      value={detailDraft.dateText}
+                      onChange={(event) => updateRelationshipDraft(spouse.rel.id, 'dateText', event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      placeholder="e.g. 14 May 1872"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Union Place</label>
+                    <input
+                      type="text"
+                      value={detailDraft.placeText}
+                      onChange={(event) => updateRelationshipDraft(spouse.rel.id, 'placeText', event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      placeholder="e.g. Copenhagen, Denmark"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Status</label>
+                    <select
+                      value={detailDraft.status}
+                      onChange={(event) => updateRelationshipDraft(spouse.rel.id, 'status', event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    >
+                      <option value="">Unknown</option>
+                      {RELATIONSHIP_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Relationship Notes</label>
+                  <textarea
+                    value={detailDraft.notes}
+                    onChange={(event) => updateRelationshipDraft(spouse.rel.id, 'notes', event.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 min-h-[72px]"
+                    placeholder="Optional notes about this union"
+                  />
+                </div>
+                {detailError && <p className="text-xs text-rose-500">{detailError}</p>}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                    onClick={() => handleSaveRelationshipDetails(spouse.rel.id)}
+                    disabled={detailSaving}
+                  >
+                    {detailSaving ? 'Saving…' : 'Save Union Details'}
+                  </button>
+                </div>
+              </div>
+            )}
             <div
               className={`ml-4 pl-4 space-y-3 transition border-l ${
                 hoverGroup === spouse.rel.id ? 'border-blue-300 bg-blue-50/30 rounded-2xl' : 'border-slate-200'

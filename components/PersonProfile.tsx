@@ -25,7 +25,7 @@ import MediaTab from './person-profile/MediaTab';
 import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
-import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, unlinkRelationship, createPlaceholderParent } from '../services/archive';
+import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent } from '../services/archive';
 
 const serializePlaceValue = (value: string | StructuredPlace) =>
   typeof value === 'string' ? value : JSON.stringify(value ?? '');
@@ -390,6 +390,33 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         setRelConfidences((prev) => ({ ...prev, [relId]: prevValue }));
       });
   };
+
+  const handleUpdateRelationshipDetails = useCallback(
+    async (
+      relId: string,
+      updates: { dateText?: string | null; placeText?: string | null; status?: Relationship['status'] | null; notes?: string | null }
+    ) => {
+      if (!canEditFamily) return;
+      try {
+        await updateRelationshipDetails(
+          relId,
+          {
+            dateText: updates.dateText ?? null,
+            placeText: updates.placeText ?? null,
+            status: updates.status ?? null,
+            notes: updates.notes ?? null,
+          },
+          { id: currentUser?.id ?? null, name: currentUser?.name ?? null }
+        );
+        await refreshConnections({ silent: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to update relationship details.';
+        setConnectionsError(message);
+        throw err;
+      }
+    },
+    [canEditFamily, currentUser, refreshConnections]
+  );
 
   const handleUpdateEvent = (id: string, field: keyof PersonEvent, value: any) => {
     setEvents(events.map(e => e.id === id ? { ...e, [field]: value } : e));
@@ -1025,6 +1052,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             loading={connectionsLoading}
             error={connectionsError}
             onUnlinkRelationship={handleUnlinkRelationship}
+            onUpdateRelationshipDetails={handleUpdateRelationshipDetails}
             onRequestAddParent={handleRequestAddParent}
             pendingParentType={pendingParentType}
           />
