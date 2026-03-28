@@ -91,6 +91,14 @@ const MediaTab: React.FC<MediaTabProps> = ({ canEdit, mediaItems, onUploadClick,
                 disabled={!canEdit}
                 className="w-full font-bold text-slate-900 border-none outline-none bg-transparent disabled:opacity-60"
               />
+              <textarea
+                value={media.description || ''}
+                onChange={(e) => onUpdateMedia(media.id, { description: e.target.value })}
+                placeholder="Describe what this media shows..."
+                disabled={!canEdit}
+                rows={3}
+                className="w-full resize-none rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none disabled:opacity-60"
+              />
               <div className="flex items-center gap-4 flex-wrap">
                 <select
                   value={media.category}

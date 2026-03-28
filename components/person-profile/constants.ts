@@ -60,6 +60,8 @@ export const CONFIDENCE_LEVELS: RelationshipConfidence[] = [
 
 export const SOURCE_TYPES: SourceType[] = [
   'Book',
+  'Article',
+  'Newspaper',
   'Church Record',
   'Probate Register',
   'Website',

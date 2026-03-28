@@ -31,10 +31,19 @@ import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause
 const serializePlaceValue = (value: string | StructuredPlace) =>
   typeof value === 'string' ? value : JSON.stringify(value ?? '');
 
+const sanitizeMediaItems = (items: MediaItem[] = []): MediaItem[] =>
+  items.map((item) => ({
+    ...item,
+    caption: item.caption || '',
+    description: item.description?.trim() || undefined,
+    linkedPersonIds: Array.isArray(item.linkedPersonIds) ? item.linkedPersonIds : [],
+    linkedEventLabel: item.linkedEventLabel || undefined,
+  }));
+
 const extractMediaItemsFromPerson = (target: Person): MediaItem[] => {
   const metadataMedia = (target.metadata as { mediaItems?: MediaItem[] } | undefined)?.mediaItems;
   if (Array.isArray(metadataMedia)) {
-    return metadataMedia;
+    return sanitizeMediaItems(metadataMedia);
   }
   return [];
 };
@@ -107,7 +116,7 @@ const buildSnapshotFromPerson = (target: Person) =>
     sources: target.sources || [],
     notes: target.notes || [],
     dnaTests: target.dnaTests || [],
-    mediaItems: extractMediaItemsFromPerson(target),
+    mediaItems: sanitizeMediaItems(extractMediaItemsFromPerson(target)),
     isLiving: resolveLivingState(target),
     isPrivate: !!target.isPrivate
   });
@@ -570,7 +579,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       is_private: isPrivate,
       metadata: {
         ...metadataPatch,
-        normalized_death_cause: normalizedDeathCause || null
+        normalized_death_cause: normalizedDeathCause || null,
+        mediaItems: sanitizeMediaItems(mediaItems)
       }
     };
   };
@@ -699,7 +709,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         sources,
         notes,
         dnaTests,
-        mediaItems,
+        mediaItems: sanitizeMediaItems(mediaItems),
         isLiving,
         isPrivate
       }),
@@ -781,15 +791,16 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   };
 
   const handleLinkMedia = () => {
-    const newMedia: MediaItem = {
-      id: Math.random().toString(36).substr(2, 9),
-      url: '',
-      type: 'image',
-      source: 'remote',
-      category: 'Other',
-      caption: 'New Media Link',
-      linkedPersonIds: [person.id]
-    };
+      const newMedia: MediaItem = {
+        id: Math.random().toString(36).substr(2, 9),
+        url: '',
+        type: 'image',
+        source: 'remote',
+        category: 'Other',
+        caption: 'New Media Link',
+        description: '',
+        linkedPersonIds: [person.id]
+      };
     setMediaItems([newMedia, ...mediaItems]);
     setActiveSection('media');
   };
@@ -826,6 +837,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         source: 'local',
         category: 'Portrait',
         caption: file.name,
+        description: '',
         linkedPersonIds: [person.id]
       };
       setMediaItems([newMedia, ...mediaItems]);

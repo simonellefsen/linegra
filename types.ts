@@ -1,6 +1,8 @@
 
 export type SourceType = 
   | 'Book' 
+  | 'Article'
+  | 'Newspaper'
   | 'Church Record' 
   | 'Probate Register' 
   | 'Website' 
