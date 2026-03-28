@@ -4,12 +4,15 @@ import { FamilyLayoutAudit } from '../../types';
 import {
   DEFAULT_OPENROUTER_BASE_URL,
   DEFAULT_OPENROUTER_MODEL,
-  getStoredAISettings,
-  saveStoredAISettings,
 } from '../../lib/aiSettings';
-import { testOpenRouterConnection } from '../../services/gemini';
+import {
+  fetchAdminAISettingsMetadata,
+  saveAdminAISettings,
+  testOpenRouterConnection,
+} from '../../services/gemini';
 
 interface AdminDatabasePanelProps {
+  actorName?: string;
   supabaseActive: boolean;
   nukeSuccess: boolean;
   layoutAudits: FamilyLayoutAudit[];
@@ -19,6 +22,7 @@ interface AdminDatabasePanelProps {
 }
 
 const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
+  actorName,
   supabaseActive,
   nukeSuccess,
   layoutAudits,
@@ -33,31 +37,71 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [testMessage, setTestMessage] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
 
   useEffect(() => {
-    const stored = getStoredAISettings().providers.openrouter;
-    setProvider('openrouter');
-    setApiKey(stored.apiKey || '');
-    setModel(stored.model || DEFAULT_OPENROUTER_MODEL);
-    setBaseUrl(stored.baseUrl || DEFAULT_OPENROUTER_BASE_URL);
-  }, []);
+    let cancelled = false;
 
-  const hasKey = useMemo(() => apiKey.trim().length > 0, [apiKey]);
+    if (!supabaseActive) {
+      setLoadingSettings(false);
+      setHasApiKey(false);
+      return () => {
+        cancelled = true;
+      };
+    }
 
-  const handleSaveAiSettings = () => {
-    saveStoredAISettings({
-      defaultProvider: 'openrouter',
-      providers: {
-        openrouter: {
-          enabled: true,
-          apiKey: apiKey.trim(),
-          model: model.trim() || DEFAULT_OPENROUTER_MODEL,
-          baseUrl: baseUrl.trim() || DEFAULT_OPENROUTER_BASE_URL,
-        },
-      },
-    });
-    setSaveMessage('AI settings saved in this browser.');
+    const loadSettings = async () => {
+      setLoadingSettings(true);
+      try {
+        const metadata = await fetchAdminAISettingsMetadata();
+        if (cancelled) return;
+        const stored = metadata.providers.openrouter;
+        setProvider('openrouter');
+        setApiKey('');
+        setModel(stored.model || DEFAULT_OPENROUTER_MODEL);
+        setBaseUrl(stored.baseUrl || DEFAULT_OPENROUTER_BASE_URL);
+        setHasApiKey(stored.hasApiKey);
+      } catch (error) {
+        if (cancelled) return;
+        setTestMessage(error instanceof Error ? error.message : 'Failed to load central AI settings.');
+      } finally {
+        if (!cancelled) {
+          setLoadingSettings(false);
+        }
+      }
+    };
+
+    void loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabaseActive]);
+
+  const hasKey = useMemo(() => apiKey.trim().length > 0 || hasApiKey, [apiKey, hasApiKey]);
+
+  const handleSaveAiSettings = async () => {
+    setSaveMessage(null);
     setTestMessage(null);
+    try {
+      const metadata = await saveAdminAISettings({
+        provider: 'openrouter',
+        enabled: true,
+        apiKey,
+        model,
+        baseUrl,
+        actorName,
+      });
+      const stored = metadata.providers.openrouter;
+      setApiKey('');
+      setModel(stored.model || DEFAULT_OPENROUTER_MODEL);
+      setBaseUrl(stored.baseUrl || DEFAULT_OPENROUTER_BASE_URL);
+      setHasApiKey(stored.hasApiKey);
+      setSaveMessage('AI settings saved centrally in Supabase.');
+    } catch (error) {
+      setTestMessage(error instanceof Error ? error.message : 'Failed to save central AI settings.');
+    }
   };
 
   const handleTestAiConnection = async () => {
@@ -100,8 +144,8 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
             </div>
           </div>
           <p className="text-sm text-slate-500 max-w-3xl">
-            Configure AI access for this browser. OpenRouter is supported first. The key is stored in local browser
-            storage, not in Supabase. Use a backend or edge function later if you need real secret management.
+            Configure the central AI provider for the archive. OpenRouter is supported first. The configuration is now
+            stored in Supabase so every admin browser sees the same provider, model, and endpoint.
           </p>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1">
@@ -130,7 +174,7 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
                 type="password"
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}
-                placeholder="sk-or-v1-..."
+                placeholder={hasApiKey ? 'Stored centrally - enter a new key to rotate it' : 'sk-or-v1-...'}
                 className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none"
               />
             </label>
@@ -146,7 +190,8 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
           <div className="flex flex-wrap gap-4 items-center">
             <button
               type="button"
-              onClick={handleSaveAiSettings}
+              onClick={() => void handleSaveAiSettings()}
+              disabled={loadingSettings}
               className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-xs font-black uppercase tracking-[0.3em]"
             >
               Save AI Settings
@@ -159,6 +204,7 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
             >
               {testing ? 'Testing...' : 'Test Connection'}
             </button>
+            {loadingSettings && <span className="text-xs font-bold text-slate-500">Loading current settings...</span>}
             {saveMessage && <span className="text-xs font-bold text-emerald-600">{saveMessage}</span>}
             {!saveMessage && testMessage && (
               <span className={`text-xs font-bold ${testMessage.includes('verified') ? 'text-emerald-600' : 'text-rose-600'}`}>

@@ -1291,6 +1291,7 @@ useEffect(() => {
                 <AdminSectionTabs section={adminSection} onChange={setAdminSection} />
                 {adminSection === 'database' && (
                   <AdminDatabasePanel
+                    actorName={currentUser?.name}
                     supabaseActive={supabaseActive}
                     nukeSuccess={nukeSuccess}
                     layoutAudits={layoutAudits}

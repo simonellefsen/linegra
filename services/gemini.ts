@@ -1,12 +1,52 @@
 import { Person, StructuredPlace, DeathCauseCategory } from "../types";
+import { supabase } from "../lib/supabase";
 import {
   DEFAULT_OPENROUTER_BASE_URL,
   DEFAULT_OPENROUTER_MODEL,
-  getStoredAISettings,
+  getCachedAISettings,
+  getDefaultAISettings,
+  getDefaultAISettingsMetadata,
   OpenRouterSettings,
+  setCachedAISettings,
+  StoredAISettings,
+  StoredAISettingsMetadata,
 } from "../lib/aiSettings";
 
 type RuntimeEnv = Record<string, string | undefined>;
+
+interface AISettingsMetadataRow {
+  provider: string;
+  enabled: boolean | null;
+  model: string | null;
+  base_url: string | null;
+  has_api_key: boolean | null;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+interface AIRuntimeSettingsRow {
+  provider: string;
+  enabled: boolean | null;
+  api_key: string | null;
+  model: string | null;
+  base_url: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+interface SaveAdminAISettingsInput {
+  provider?: 'openrouter';
+  enabled?: boolean;
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+  actorName?: string;
+}
+
+type RuntimeConfigOptions = {
+  forceRefresh?: boolean;
+  overrides?: Partial<OpenRouterSettings>;
+};
 
 const getRuntimeEnv = (): RuntimeEnv => {
   const envFromProcess = (globalThis as typeof globalThis & { process?: { env?: RuntimeEnv } }).process?.env ?? {};
@@ -26,28 +66,187 @@ const DEATH_CAUSE_CATEGORIES: DeathCauseCategory[] = [
   'Unknown',
 ];
 
-const getOpenRouterConfig = (overrides?: Partial<OpenRouterSettings>) => {
-  const env = getRuntimeEnv();
-  const stored = getStoredAISettings().providers.openrouter;
-  const key = overrides?.apiKey ?? stored.apiKey ?? env.VITE_OPENROUTER_API_KEY ?? env.OPENROUTER_API_KEY ?? '';
-  if (!key) {
-    throw new Error('OPENROUTER_API_KEY (or VITE_OPENROUTER_API_KEY) is missing.');
+const normalizeProvider = (provider?: string | null): 'openrouter' => {
+  return provider === 'openrouter' ? 'openrouter' : 'openrouter';
+};
+
+const coalesceNonEmpty = (...values: Array<string | null | undefined>) => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
   }
+  return '';
+};
+
+const buildEnvFallbackSettings = (overrides?: Partial<OpenRouterSettings>): StoredAISettings => {
+  const env = getRuntimeEnv();
+  const defaults = getDefaultAISettings();
   return {
-    apiKey: key,
-    model:
-      overrides?.model ??
-      stored.model ??
-      env.VITE_OPENROUTER_MODEL ??
-      env.OPENROUTER_MODEL ??
-      DEFAULT_OPENROUTER_MODEL,
-    baseUrl:
-      overrides?.baseUrl ??
-      stored.baseUrl ??
-      env.VITE_OPENROUTER_BASE_URL ??
-      env.OPENROUTER_BASE_URL ??
-      DEFAULT_OPENROUTER_BASE_URL
+    defaultProvider: 'openrouter',
+    providers: {
+      openrouter: {
+        enabled: overrides?.enabled ?? defaults.providers.openrouter.enabled,
+        apiKey:
+          overrides?.apiKey ??
+          env.VITE_OPENROUTER_API_KEY ??
+          env.OPENROUTER_API_KEY ??
+          '',
+        model:
+          overrides?.model ??
+          env.VITE_OPENROUTER_MODEL ??
+          env.OPENROUTER_MODEL ??
+          DEFAULT_OPENROUTER_MODEL,
+        baseUrl:
+          overrides?.baseUrl ??
+          env.VITE_OPENROUTER_BASE_URL ??
+          env.OPENROUTER_BASE_URL ??
+          DEFAULT_OPENROUTER_BASE_URL,
+        updatedAt: null,
+        updatedBy: null,
+      },
+    },
   };
+};
+
+const mapRuntimeRowToSettings = (row: AIRuntimeSettingsRow): StoredAISettings => ({
+  defaultProvider: normalizeProvider(row.provider),
+  providers: {
+    openrouter: {
+      enabled: row.enabled ?? true,
+      apiKey: row.api_key ?? '',
+      model: row.model ?? DEFAULT_OPENROUTER_MODEL,
+      baseUrl: row.base_url ?? DEFAULT_OPENROUTER_BASE_URL,
+      updatedAt: row.updated_at,
+      updatedBy: row.updated_by,
+    },
+  },
+});
+
+const mapMetadataRows = (rows: AISettingsMetadataRow[] | null): StoredAISettingsMetadata => {
+  const defaults = getDefaultAISettingsMetadata();
+  const openrouter = rows?.find((row) => normalizeProvider(row.provider) === 'openrouter');
+  if (!openrouter) return defaults;
+  return {
+    defaultProvider: 'openrouter',
+    providers: {
+      openrouter: {
+        enabled: openrouter.enabled ?? defaults.providers.openrouter.enabled,
+        model: openrouter.model ?? DEFAULT_OPENROUTER_MODEL,
+        baseUrl: openrouter.base_url ?? DEFAULT_OPENROUTER_BASE_URL,
+        hasApiKey: openrouter.has_api_key ?? false,
+        updatedAt: openrouter.updated_at,
+        updatedBy: openrouter.updated_by,
+      },
+    },
+  };
+};
+
+let runtimeSettingsInflight: Promise<StoredAISettings> | null = null;
+
+export const fetchAdminAISettingsMetadata = async (): Promise<StoredAISettingsMetadata> => {
+  const { data, error } = await supabase.rpc('admin_get_ai_settings_metadata');
+  if (error) {
+    throw new Error(error.message);
+  }
+  return mapMetadataRows((data ?? []) as AISettingsMetadataRow[]);
+};
+
+export const fetchAdminAIRuntimeSettings = async (forceRefresh = false): Promise<StoredAISettings> => {
+  if (!forceRefresh) {
+    const cached = getCachedAISettings();
+    if (cached.providers.openrouter.apiKey) {
+      return cached;
+    }
+    if (runtimeSettingsInflight) {
+      return runtimeSettingsInflight;
+    }
+  }
+
+  runtimeSettingsInflight = (async () => {
+    const { data, error } = await supabase.rpc('admin_get_ai_runtime_settings', {
+      payload_provider: 'openrouter',
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const row = Array.isArray(data) ? (data[0] as AIRuntimeSettingsRow | undefined) : undefined;
+    const settings = row ? mapRuntimeRowToSettings(row) : buildEnvFallbackSettings();
+    setCachedAISettings(settings);
+    return settings;
+  })();
+
+  try {
+    return await runtimeSettingsInflight;
+  } finally {
+    runtimeSettingsInflight = null;
+  }
+};
+
+export const saveAdminAISettings = async ({
+  provider = 'openrouter',
+  enabled = true,
+  apiKey,
+  model,
+  baseUrl,
+  actorName,
+}: SaveAdminAISettingsInput) => {
+  const { data, error } = await supabase.rpc('admin_upsert_ai_settings', {
+    payload_provider: provider,
+    payload_enabled: enabled,
+    payload_api_key: apiKey?.trim() || null,
+    payload_model: model?.trim() || null,
+    payload_base_url: baseUrl?.trim() || null,
+    payload_actor_name: actorName?.trim() || 'System',
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  setCachedAISettings(null);
+  await fetchAdminAIRuntimeSettings(true);
+  return mapMetadataRows((data ?? []) as AISettingsMetadataRow[]);
+};
+
+const resolveOpenRouterConfig = async ({ forceRefresh = false, overrides }: RuntimeConfigOptions = {}) => {
+  const fallback = buildEnvFallbackSettings(overrides);
+  let centralSettings: StoredAISettings | null = null;
+
+  try {
+    centralSettings = await fetchAdminAIRuntimeSettings(forceRefresh);
+  } catch {
+    centralSettings = null;
+  }
+
+  const merged: OpenRouterSettings = {
+    ...fallback.providers.openrouter,
+    ...(centralSettings?.providers.openrouter ?? {}),
+    ...(overrides ?? {}),
+    enabled: overrides?.enabled ?? centralSettings?.providers.openrouter.enabled ?? fallback.providers.openrouter.enabled,
+    apiKey: coalesceNonEmpty(
+      overrides?.apiKey,
+      centralSettings?.providers.openrouter.apiKey,
+      fallback.providers.openrouter.apiKey
+    ),
+    model: coalesceNonEmpty(
+      overrides?.model,
+      centralSettings?.providers.openrouter.model,
+      fallback.providers.openrouter.model
+    ),
+    baseUrl: coalesceNonEmpty(
+      overrides?.baseUrl,
+      centralSettings?.providers.openrouter.baseUrl,
+      fallback.providers.openrouter.baseUrl
+    ),
+  };
+
+  if (!merged.apiKey) {
+    throw new Error('OpenRouter API key is missing. Configure it in Administrator -> Database.');
+  }
+
+  return merged;
 };
 
 interface ChatMessage {
@@ -57,13 +256,45 @@ interface ChatMessage {
 
 interface ChatResponse {
   choices: Array<{
-    message: { content?: string };
+    message: {
+      content?: string | null;
+      reasoning?: string | null;
+      reasoning_details?: Array<{
+        type?: string;
+        text?: string | null;
+      }> | null;
+    };
   }>;
 }
 
-/**
- * Executes an AI task with exponential backoff retry logic to handle transient API errors.
- */
+const extractAssistantText = (
+  message: ChatResponse['choices'][number]['message'],
+  options?: { allowReasoningFallback?: boolean }
+) => {
+  if (typeof message.content === 'string' && message.content.trim()) {
+    return message.content.trim();
+  }
+
+  if (!options?.allowReasoningFallback) {
+    return '';
+  }
+
+  const reasoningDetailText = (message.reasoning_details ?? [])
+    .map((detail) => (typeof detail?.text === 'string' ? detail.text.trim() : ''))
+    .filter(Boolean)
+    .join('\n');
+
+  if (reasoningDetailText) {
+    return reasoningDetailText;
+  }
+
+  if (typeof message.reasoning === 'string' && message.reasoning.trim()) {
+    return message.reasoning.trim();
+  }
+
+  return '';
+};
+
 const withRetry = async <T>(fn: () => Promise<T>, retries = 3): Promise<T> => {
   let delay = 1000;
   for (let i = 0; i < retries; i++) {
@@ -71,7 +302,7 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3): Promise<T> => {
       return await fn();
     } catch (error) {
       if (i === retries - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
       delay *= 2;
     }
   }
@@ -81,9 +312,9 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3): Promise<T> => {
 const callOpenRouter = async (
   messages: ChatMessage[],
   extraBody: Record<string, unknown> = {},
-  overrides?: Partial<OpenRouterSettings>
+  options?: RuntimeConfigOptions & { allowReasoningFallback?: boolean }
 ) => {
-  const { apiKey, model, baseUrl } = getOpenRouterConfig(overrides);
+  const { apiKey, model, baseUrl } = await resolveOpenRouterConfig(options);
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -105,7 +336,9 @@ const callOpenRouter = async (
   }
 
   const data: ChatResponse = await response.json();
-  return data.choices[0]?.message.content?.trim() ?? '';
+  return extractAssistantText(data.choices[0]?.message ?? {}, {
+    allowReasoningFallback: options?.allowReasoningFallback,
+  });
 };
 
 export const generateBio = async (person: Person): Promise<string> => {
@@ -206,10 +439,10 @@ export const analyzeHistoricalEra = async (year: string, location: string): Prom
   }
 };
 
-export const hasOpenRouterConfig = () => {
+export const hasOpenRouterConfig = async (forceRefresh = false) => {
   try {
-    const config = getOpenRouterConfig();
-    return Boolean(config.apiKey && config.model && config.baseUrl);
+    const config = await resolveOpenRouterConfig({ forceRefresh });
+    return Boolean(config.enabled && config.apiKey && config.model && config.baseUrl);
   } catch {
     return false;
   }
@@ -222,8 +455,8 @@ export const testOpenRouterConnection = async (overrides?: Partial<OpenRouterSet
         { role: 'system', content: 'You validate API connectivity for a genealogy application.' },
         { role: 'user', content: 'Reply with exactly: OPENROUTER_OK' }
       ],
-      { max_tokens: 16, temperature: 0 },
-      overrides
+      { max_tokens: 64, temperature: 0 },
+      { forceRefresh: true, overrides, allowReasoningFallback: true }
     )
   );
 

@@ -5,6 +5,8 @@ export interface OpenRouterSettings {
   apiKey: string;
   model: string;
   baseUrl: string;
+  updatedAt?: string | null;
+  updatedBy?: string | null;
 }
 
 export interface StoredAISettings {
@@ -14,11 +16,17 @@ export interface StoredAISettings {
   };
 }
 
-export const AI_SETTINGS_STORAGE_KEY = 'LINEGRA_AI_SETTINGS';
+export interface StoredAISettingsMetadata {
+  defaultProvider: AIProvider;
+  providers: {
+    openrouter: Omit<OpenRouterSettings, 'apiKey'> & {
+      hasApiKey: boolean;
+    };
+  };
+}
+
 export const DEFAULT_OPENROUTER_MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free';
 export const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
-
-const isBrowser = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
 const buildDefaults = (): StoredAISettings => ({
   defaultProvider: 'openrouter',
@@ -28,32 +36,35 @@ const buildDefaults = (): StoredAISettings => ({
       apiKey: '',
       model: DEFAULT_OPENROUTER_MODEL,
       baseUrl: DEFAULT_OPENROUTER_BASE_URL,
+      updatedAt: null,
+      updatedBy: null,
     },
   },
 });
 
-export const getStoredAISettings = (): StoredAISettings => {
-  const defaults = buildDefaults();
-  if (!isBrowser) return defaults;
-  try {
-    const raw = window.localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
-    if (!raw) return defaults;
-    const parsed = JSON.parse(raw) as Partial<StoredAISettings>;
-    return {
-      defaultProvider: parsed.defaultProvider === 'openrouter' ? 'openrouter' : defaults.defaultProvider,
-      providers: {
-        openrouter: {
-          ...defaults.providers.openrouter,
-          ...(parsed.providers?.openrouter ?? {}),
-        },
-      },
-    };
-  } catch {
-    return defaults;
-  }
+let cachedAISettings: StoredAISettings | null = null;
+
+export const getDefaultAISettings = (): StoredAISettings => buildDefaults();
+
+export const getCachedAISettings = (): StoredAISettings => cachedAISettings ?? buildDefaults();
+
+export const setCachedAISettings = (settings: StoredAISettings | null) => {
+  cachedAISettings = settings;
 };
 
-export const saveStoredAISettings = (settings: StoredAISettings) => {
-  if (!isBrowser) return;
-  window.localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+export const getDefaultAISettingsMetadata = (): StoredAISettingsMetadata => {
+  const defaults = buildDefaults();
+  return {
+    defaultProvider: defaults.defaultProvider,
+    providers: {
+      openrouter: {
+        enabled: defaults.providers.openrouter.enabled,
+        model: defaults.providers.openrouter.model,
+        baseUrl: defaults.providers.openrouter.baseUrl,
+        hasApiKey: false,
+        updatedAt: defaults.providers.openrouter.updatedAt,
+        updatedBy: defaults.providers.openrouter.updatedBy,
+      },
+    },
+  };
 };

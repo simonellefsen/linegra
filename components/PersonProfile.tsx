@@ -176,6 +176,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [normalizingDeathCause, setNormalizingDeathCause] = useState(false);
   const [normalizeDeathCauseError, setNormalizeDeathCauseError] = useState<string | null>(null);
+  const [aiAvailable, setAiAvailable] = useState(false);
   const [shareFeedback, setShareFeedback] = useState<string>('');
   const [overlayProfile, setOverlayProfile] = useState<Person | null>(null);
   const [pendingParentType, setPendingParentType] = useState<'father' | 'mother' | null>(null);
@@ -300,6 +301,27 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   const canEditFamily = !!currentUser?.isAdmin;
   const canEditPerson = !!currentUser?.isAdmin;
   const canViewPrivateRelations = !!currentUser?.isAdmin;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!canEditPerson) {
+      setAiAvailable(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void hasOpenRouterConfig().then((available) => {
+      if (!cancelled) {
+        setAiAvailable(available);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canEditPerson]);
 
   const parents = useMemo(() => {
     return relationshipData
@@ -1053,7 +1075,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             onNormalizeDeathCause={handleNormalizeDeathCause}
             isNormalizingDeathCause={normalizingDeathCause}
             normalizeDeathCauseError={normalizeDeathCauseError}
-            aiAvailable={hasOpenRouterConfig()}
+            aiAvailable={aiAvailable}
             deathCategory={deathCategory}
             onDeathCategoryChange={setDeathCategory}
             burialDate={burialDate}
