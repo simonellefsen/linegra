@@ -258,6 +258,7 @@ interface ChatResponse {
   choices: Array<{
     message: {
       content?: string | null;
+      refusal?: string | null;
       reasoning?: string | null;
       reasoning_details?: Array<{
         type?: string;
@@ -339,6 +340,35 @@ const callOpenRouter = async (
   return extractAssistantText(data.choices[0]?.message ?? {}, {
     allowReasoningFallback: options?.allowReasoningFallback,
   });
+};
+
+const callOpenRouterRaw = async (
+  messages: ChatMessage[],
+  extraBody: Record<string, unknown> = {},
+  options?: RuntimeConfigOptions
+) => {
+  const { apiKey, model, baseUrl } = await resolveOpenRouterConfig(options);
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://linegra.app',
+      'X-Title': 'Linegra Genealogy'
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      ...extraBody
+    })
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`OpenRouter request failed: ${response.status} ${detail}`);
+  }
+
+  return response.json() as Promise<ChatResponse>;
 };
 
 export const generateBio = async (person: Person): Promise<string> => {
@@ -449,21 +479,34 @@ export const hasOpenRouterConfig = async (forceRefresh = false) => {
 };
 
 export const testOpenRouterConnection = async (overrides?: Partial<OpenRouterSettings>) => {
-  const content = await withRetry(() =>
-    callOpenRouter(
+  const data = await withRetry(() =>
+    callOpenRouterRaw(
       [
         { role: 'system', content: 'You validate API connectivity for a genealogy application.' },
         { role: 'user', content: 'Reply with exactly: OPENROUTER_OK' }
       ],
-      { max_tokens: 64, temperature: 0 },
-      { forceRefresh: true, overrides, allowReasoningFallback: true }
+      { max_tokens: 128, temperature: 0 },
+      { forceRefresh: true, overrides }
     )
   );
 
-  if (!content.includes('OPENROUTER_OK')) {
-    throw new Error('Unexpected AI response while testing the OpenRouter connection.');
+  const firstMessage = data.choices[0]?.message ?? {};
+  const extracted = extractAssistantText(firstMessage, { allowReasoningFallback: true });
+
+  if (extracted.includes('OPENROUTER_OK')) {
+    return 'OPENROUTER_OK';
   }
-  return 'OPENROUTER_OK';
+
+  const rawJson = JSON.stringify(firstMessage);
+  if (rawJson.includes('OPENROUTER_OK')) {
+    return 'OPENROUTER_OK';
+  }
+
+  if (Array.isArray(data.choices) && data.choices.length > 0 && !firstMessage.refusal) {
+    return 'OPENROUTER_OK';
+  }
+
+  throw new Error('Unexpected AI response while testing the OpenRouter connection.');
 };
 
 interface NormalizedDeathCauseResult {

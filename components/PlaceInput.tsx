@@ -18,7 +18,7 @@ import {
   FileText
 } from 'lucide-react';
 import { StructuredPlace } from '../types';
-import { parsePlaceString } from '../services/gemini';
+import { parsePlaceString } from '../services/ai';
 
 interface PlaceInputProps {
   label: string;

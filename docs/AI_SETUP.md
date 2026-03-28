@@ -35,7 +35,7 @@ Then use:
 Those settings are used by:
 
 - Cause-of-death normalization in the Vital tab
-- Other OpenRouter-backed helpers in `services/gemini.ts`
+- Other OpenRouter-backed helpers in `services/ai.ts`
 
 At present only the Linegra administrator should be allowed to configure or use
 AI-assisted features. The UI enforces that model today. A later phase should
@@ -105,4 +105,4 @@ supabase db push
 ## Headers
 
 OpenRouter recommends sending `HTTP-Referer` + `X-Title`; the service includes
-Linegra defaults, but update `services/gemini.ts` if branding changes.
+Linegra defaults, but update `services/ai.ts` if branding changes.

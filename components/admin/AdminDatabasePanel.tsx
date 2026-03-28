@@ -9,7 +9,7 @@ import {
   fetchAdminAISettingsMetadata,
   saveAdminAISettings,
   testOpenRouterConnection,
-} from '../../services/gemini';
+} from '../../services/ai';
 
 interface AdminDatabasePanelProps {
   actorName?: string;

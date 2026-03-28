@@ -26,7 +26,7 @@ import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
 import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent } from '../services/archive';
-import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause } from '../services/gemini';
+import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause } from '../services/ai';
 
 const serializePlaceValue = (value: string | StructuredPlace) =>
   typeof value === 'string' ? value : JSON.stringify(value ?? '');
