@@ -77,7 +77,7 @@ the file input and the persistence call.
 flowchart TD
   F[.ged file] --> P[parseGedcom — lib/gedcomParser.ts]
   P --> W[Collect unsupported-tag warnings]
-  P --> M[Map to Person[] + Relationship[]<br/>bind to selected tree]
+  P --> M["Map to Person[] + Relationship[]<br/>bind to selected tree"]
   M --> I[importGedcomToSupabase<br/>services/archive.ts]
   I --> DB[(persons, relationships,<br/>places, events, sources)]
   I --> REC[(gedcom_imports: status, stats, log)]
