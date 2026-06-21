@@ -1,4 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { deriveMatchConfidence, supportsRelationshipHops, relationshipPredictionLabel } from '../lib/dnaClassification';
+import { inferLivingStatus } from '../lib/lifespan';
 import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
@@ -207,12 +209,6 @@ const resolvePersonIdByName = (
   return best.id;
 };
 
-const deriveMatchConfidence = (sharedCM: number, segments: number): 'High' | 'Medium' | 'Low' => {
-  if (sharedCM >= 90 || segments >= 6) return 'High';
-  if (sharedCM >= 40 || segments >= 3) return 'Medium';
-  return 'Low';
-};
-
 const extractYear = (value?: string | null) => {
   if (!value) return null;
   const match = value.match(/(\d{4})/);
@@ -238,28 +234,6 @@ const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-
-const supportsRelationshipHops = (sharedCM: number | null, hops: number) => {
-  if (!sharedCM || sharedCM <= 0) return true;
-  if (sharedCM >= 1300) return hops <= 4;
-  if (sharedCM >= 680) return hops <= 6;
-  if (sharedCM >= 200) return hops <= 8;
-  if (sharedCM >= 90) return hops <= 10;
-  if (sharedCM >= 40) return hops <= 12;
-  return hops <= 16;
-};
-
-const relationshipPredictionLabel = (sharedCM: number | null, segments: number | null) => {
-  if (!sharedCM || sharedCM <= 0) return 'Insufficient cM data';
-  if (sharedCM >= 2300) return 'Parent/Child or Full Sibling';
-  if (sharedCM >= 1300) return 'Close family (1st-degree cluster)';
-  if (sharedCM >= 680) return '1st cousin / great-grand relation cluster';
-  if (sharedCM >= 200) return '2nd cousin cluster';
-  if (sharedCM >= 90) return '3rd cousin cluster';
-  if (sharedCM >= 40) return '4th cousin cluster';
-  if ((segments || 0) >= 4) return 'Distant but likely related';
-  return 'Very distant / uncertain';
-};
 
 const traversalLabel = (
   relationship: RelationshipLookupRow | undefined,
@@ -586,6 +560,7 @@ const mapDbPerson = (
   const structuredBirth = metadata.structured_birth_place;
   const structuredDeath = metadata.structured_death_place;
   const structuredBurial = metadata.structured_burial_place;
+  const structuredResidence = metadata.structured_residence_at_death;
   return {
     id: row.id,
     treeId: row.tree_id,
@@ -603,13 +578,20 @@ const mapDbPerson = (
     normalizedDeathCause:
       typeof metadata.normalized_death_cause === 'string' ? metadata.normalized_death_cause : undefined,
     deathCauseCategory: row.death_cause_category || undefined,
-    residenceAtDeath: row.residence_at_death_text || undefined,
+    residenceAtDeath: structuredResidence || row.residence_at_death_text || undefined,
     photoUrl: row.photo_url || undefined,
     bio: row.bio || undefined,
     occupations: row.occupations || [],
     generation: row.generation || undefined,
     updatedAt: row.updated_at,
-    isLiving: row.is_living === null ? undefined : row.is_living ?? undefined,
+    // Apply common-sense living/deceased inference so every client surface (profile, search,
+    // pedigree) agrees: a recorded death/burial or an implausibly old birth year => deceased.
+    isLiving: inferLivingStatus({
+      birthDate: row.birth_date_text || undefined,
+      deathDate: row.death_date_text || undefined,
+      burialDate: row.burial_date_text || undefined,
+      isLiving: row.is_living === null ? undefined : (row.is_living ?? undefined),
+    }),
     isPrivate: !!row.is_private,
     isDNAMatch: row.is_dna_match,
     dnaMatchInfo: row.dna_match_info || undefined,
@@ -1028,6 +1010,7 @@ export interface UpdatePersonProfilePayload {
   events?: any[];
   notes?: any[];
   sources?: any[];
+  citations?: any[];
   dnaTests?: DNATest[];
 }
 
@@ -1050,7 +1033,8 @@ export const updatePersonProfile = async (
     payload_profile: payload.profile,
     payload_events: payload.events ?? [],
     payload_notes: payload.notes ?? [],
-    payload_sources: payload.sources ?? []
+    payload_sources: payload.sources ?? [],
+    payload_citations: payload.citations ?? []
   });
   if (error) throw new Error(error.message);
 
@@ -1248,6 +1232,59 @@ export const updatePersonProfile = async (
   return data;
 };
 
+/**
+ * All source documents in a tree (the tree-wide source library). RLS `can_read_tree` gates visibility.
+ * Used by the source picker when citing an existing source for an additional event/person.
+ */
+export const listTreeSources = async (treeId: string): Promise<Source[]> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data, error } = await supabase
+    .from('sources')
+    .select('id, title, abbreviation, type, url, repository, citation_date_text, call_number, notes')
+    .eq('tree_id', treeId)
+    .order('title', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    externalId: row.id,
+    title: row.title || 'Untitled Record',
+    abbreviation: row.abbreviation || undefined,
+    type: row.type || 'Unknown',
+    url: row.url || undefined,
+    repository: row.repository || undefined,
+    citationDate: row.citation_date_text || undefined,
+    callNumber: row.call_number || undefined,
+    notes: row.notes || undefined
+  }));
+};
+
+/**
+ * Consolidate duplicate source rows into one canonical source. Citations on the merged rows are
+ * repointed to the canonical (duplicate person+event citations collapsed), then the merged rows are
+ * deleted. Delegates to the `admin_merge_sources` security-definer RPC.
+ */
+export const mergeSources = async (
+  treeId: string,
+  canonicalSourceId: string,
+  sourceIds: string[],
+  actor?: { id?: string | null; name?: string | null }
+): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const normalizedActor = normalizeActor(actor);
+  const { error } = await supabase.rpc('admin_merge_sources', {
+    target_tree_id: treeId,
+    payload_canonical_source_id: canonicalSourceId,
+    payload_source_ids: sourceIds,
+    payload_actor_id: normalizedActor.id,
+    payload_actor_name: normalizedActor.name
+  });
+  if (error) throw new Error(error.message);
+};
+
 export const updateRelationshipConfidence = async (
   relationshipId: string,
   confidence: RelationshipConfidence,
@@ -1273,6 +1310,7 @@ export const updateRelationshipDetails = async (
     placeText?: string | null;
     status?: RelationshipStatus | null;
     notes?: string | null;
+    unionType?: 'marriage' | 'partner' | null;
   },
   actor?: { id?: string | null; name?: string | null }
 ) => {
@@ -1286,6 +1324,7 @@ export const updateRelationshipDetails = async (
     payload_place_text: payload.placeText ?? null,
     payload_status: payload.status ?? null,
     payload_notes: payload.notes ?? null,
+    payload_union_type: payload.unionType ?? null,
     payload_actor_id: normalizedActor.id,
     payload_actor_name: normalizedActor.name
   });
@@ -2075,14 +2114,21 @@ export const fetchPersonDetails = async (personId: string): Promise<Person> => {
   }
 
   if (eventRows.data) {
-    eventMap[personId] = eventRows.data.map((event) => ({
-      id: event.id,
-      type: event.event_type,
-      date: event.date_text || undefined,
-      place: event.place_text || undefined,
-      description: event.description || undefined,
-      employer: event.employer || undefined
-    }));
+    eventMap[personId] = eventRows.data.map((event) => {
+      const eventMeta =
+        event.metadata && typeof event.metadata === 'object'
+          ? (event.metadata as Record<string, unknown>)
+          : {};
+      return {
+        id: event.id,
+        type: event.event_type,
+        date: event.date_text || undefined,
+        place: (eventMeta.structured_place as StructuredPlace | undefined) || event.place_text || undefined,
+        description: event.description || undefined,
+        employer: event.employer || undefined,
+        metadata: Object.keys(eventMeta).length ? eventMeta : undefined
+      };
+    });
   }
 
   const citationList = citationRows.data ?? [];
@@ -2097,11 +2143,11 @@ export const fetchPersonDetails = async (personId: string): Promise<Person> => {
 
     citationMap[personId] = [];
     sourceMap[personId] = [];
+    const pushedSources = new Set<string>();
     citationList.forEach((citation: any) => {
       const src = sourceLookup.get(citation.source_id);
       if (!src) return;
       const extra = (citation as any)?.extra || {};
-      const inlineNotes = extra.inline_notes as string | undefined;
       const entry: Citation = {
         id: citation.id,
         sourceId: citation.source_id,
@@ -2114,22 +2160,27 @@ export const fetchPersonDetails = async (personId: string): Promise<Person> => {
         extra
       };
       citationMap[personId]!.push(entry);
-      sourceMap[personId]!.push({
-        id: `${src.id}:${citation.id}`,
-        externalId: src.id,
-        title: src.title,
-        type: src.type,
-        repository: src.repository || undefined,
-        url: src.url || undefined,
-        citationDate: src.citation_date_text || undefined,
-        page: citation.page_text || src.page || undefined,
-        reliability: src.reliability || undefined,
-        actualText: src.actual_text || undefined,
-        abbreviation: src.abbreviation || undefined,
-        callNumber: src.call_number || undefined,
-        notes: inlineNotes || undefined,
-        event: citation.event_label || 'General'
-      });
+      // One source card per underlying source row (deduped), so a source cited for multiple events
+      // (e.g. a single dødsannonce for both death and burial) appears once with its citations listed
+      // beneath rather than as duplicate cards.
+      if (!pushedSources.has(src.id)) {
+        pushedSources.add(src.id);
+        sourceMap[personId]!.push({
+          id: src.id,
+          externalId: src.id,
+          title: src.title,
+          type: src.type,
+          repository: src.repository || undefined,
+          url: src.url || undefined,
+          citationDate: src.citation_date_text || undefined,
+          page: src.page || undefined,
+          reliability: src.reliability || undefined,
+          actualText: src.actual_text || undefined,
+          abbreviation: src.abbreviation || undefined,
+          callNumber: src.call_number || undefined,
+          notes: src.notes || undefined
+        });
+      }
     });
   }
 

@@ -62,7 +62,7 @@ interface VitalTabProps {
   onAddEvent: () => void;
   onUpdateEvent: (id: string, field: keyof PersonEvent, value: any) => void;
   onRemoveEvent: (id: string) => void;
-  onAddSource: (eventLabel?: string) => void;
+  onOpenSources: () => void;
   onNotesBadgeClick: (eventLabel: string) => void;
   getSourceCountForEvent: (eventLabel: string) => number;
   getNoteCountForEvent: (eventLabel: string) => number;
@@ -133,7 +133,7 @@ const VitalTab: React.FC<VitalTabProps> = ({
   onAddEvent,
   onUpdateEvent,
   onRemoveEvent,
-  onAddSource,
+  onOpenSources,
   onNotesBadgeClick,
   getSourceCountForEvent,
   getNoteCountForEvent,
@@ -299,9 +299,11 @@ const VitalTab: React.FC<VitalTabProps> = ({
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => onAddSource(record.eventLabel)}
-                    aria-label={`Link ${record.eventLabel?.toLowerCase()} source`}
-                    className="relative p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
+                    onClick={getSourceCountForEvent(record.eventLabel) > 0 ? onOpenSources : undefined}
+                    aria-label={`View ${record.eventLabel?.toLowerCase()} sources`}
+                    className={`relative p-2 rounded-full transition-colors ${
+                      getSourceCountForEvent(record.eventLabel) > 0 ? 'text-rose-500 hover:bg-rose-50' : 'text-slate-300 cursor-default'
+                    }`}
                   >
                     <Library className="w-4 h-4" />
                     {getSourceCountForEvent(record.eventLabel) > 0 && (
@@ -324,7 +326,12 @@ const VitalTab: React.FC<VitalTabProps> = ({
                       </span>
                     )}
                   </button>
-                  <button aria-label="View linked media" className="relative p-2 rounded-full text-sky-600 hover:bg-sky-50 transition-colors">
+                  <button
+                    aria-label="View linked media"
+                    className={`relative p-2 rounded-full transition-colors ${
+                      getMediaCountForEvent(record.eventLabel) > 0 ? 'text-sky-600 hover:bg-sky-50' : 'text-slate-300 cursor-default'
+                    }`}
+                  >
                     <ImageIcon className="w-4 h-4" />
                     {getMediaCountForEvent(record.eventLabel) > 0 && (
                       <span className="absolute -top-1 -right-1 bg-sky-600 text-white text-[9px] font-black rounded-full px-1">
@@ -383,8 +390,11 @@ const VitalTab: React.FC<VitalTabProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => onAddSource(event.type || eventLabel)}
-                      className="relative p-2 rounded-full text-rose-500 hover:bg-rose-50 transition-colors"
+                      onClick={sourceCount > 0 ? onOpenSources : undefined}
+                      aria-label="View sources"
+                      className={`relative p-2 rounded-full transition-colors ${
+                        sourceCount > 0 ? 'text-rose-500 hover:bg-rose-50' : 'text-slate-300 cursor-default'
+                      }`}
                     >
                       <Library className="w-4 h-4" />
                       {sourceCount > 0 && (
@@ -406,7 +416,12 @@ const VitalTab: React.FC<VitalTabProps> = ({
                         </span>
                       )}
                     </button>
-                    <button className="relative p-2 rounded-full text-sky-600 hover:bg-sky-50 transition-colors">
+                    <button
+                      aria-label="View linked media"
+                      className={`relative p-2 rounded-full transition-colors ${
+                        mediaCount > 0 ? 'text-sky-600 hover:bg-sky-50' : 'text-slate-300 cursor-default'
+                      }`}
+                    >
                       <ImageIcon className="w-4 h-4" />
                       {mediaCount > 0 && (
                         <span className="absolute -top-1 -right-1 bg-sky-600 text-white text-[9px] font-black rounded-full px-1">

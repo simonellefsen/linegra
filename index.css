@@ -14,3 +14,33 @@ html, body, #root {
 body {
   background: #f8fafc;
 }
+
+/* ── Family Book print/PDF ───────────────────────────────────────────────────
+   When a book preview overlay is open, `window.print()` should yield only the book
+   document (cover, contents, chapters) on clean A4 pages — not the app chrome. The
+   overlay toolbar carries `.no-print`; the document lives under `.book-print-root`. */
+@page {
+  size: A4;
+  margin: 22mm 18mm;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .book-print-root,
+  .book-print-root * {
+    visibility: visible !important;
+  }
+  .book-print-root {
+    position: absolute;
+    inset: 0;
+    background: #ffffff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .book-page-break {
+    break-before: page;
+  }
+}
