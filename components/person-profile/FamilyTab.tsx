@@ -38,6 +38,7 @@ interface FamilyTabProps {
       placeText?: string | null;
       status?: RelationshipStatus | null;
       notes?: string | null;
+      unionType?: 'marriage' | 'partner' | null;
     }
   ) => Promise<void> | void;
   onRequestAddParent?: (parentType: 'father' | 'mother') => void;
@@ -72,11 +73,21 @@ const RELATIONSHIP_STATUS_OPTIONS: Array<{ value: RelationshipStatus; label: str
   { value: 'widowed', label: 'Widowed' },
 ];
 
+// A spousal union can be a formal marriage or an unmarried partnership (a couple that lived
+// together). GEDCOM 7.x has no dedicated partner-union type, so Linegra records this distinction
+// on the relationship and uses it to word biographies correctly (e.g. avoid saying a cohabiting
+// partner "married" the subject).
+const UNION_TYPE_OPTIONS: Array<{ value: 'marriage' | 'partner'; label: string }> = [
+  { value: 'marriage', label: 'Married' },
+  { value: 'partner', label: 'Partners (lived together)' },
+];
+
 type RelationshipDetailDraft = {
   dateText: string;
   placeText: string;
   status: RelationshipStatus | '';
   notes: string;
+  unionType: 'marriage' | 'partner';
 };
 
 const RelationCard: React.FC<{
@@ -343,6 +354,7 @@ interface FamilyGroupProps {
       placeText?: string | null;
       status?: RelationshipStatus | null;
       notes?: string | null;
+      unionType?: 'marriage' | 'partner' | null;
     }
   ) => Promise<void> | void;
 }
@@ -461,6 +473,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
       placeText: placeText || '',
       status: relationship.status || '',
       notes: relationship.notes || '',
+      unionType: relationship.type === 'partner' ? 'partner' : 'marriage',
     };
   }, []);
 
@@ -728,6 +741,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
           placeText: '',
           status: '',
           notes: '',
+          unionType: 'marriage',
         }),
         [field]: value,
       },
@@ -762,6 +776,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
         placeText: draft.placeText.trim() || null,
         status: draft.status ? (draft.status as RelationshipStatus) : null,
         notes: draft.notes.trim() || null,
+        unionType: draft.unionType,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update relationship details.';
@@ -885,6 +900,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
       )}
       {activeSpouses.map((spouse) => {
         const metaBits: string[] = [];
+        metaBits.push(spouse.rel.type === 'partner' ? 'Partners' : 'Married');
         if (spouse.rel.date) metaBits.push(`Since ${formatYear(spouse.rel.date)}`);
         const placeText =
           typeof spouse.rel.place === 'string'
@@ -933,6 +949,23 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
             </div>
             {canEdit && detailsExpanded && (
               <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Union Type</label>
+                  <select
+                    value={detailDraft.unionType}
+                    onChange={(event) => updateRelationshipDraft(spouse.rel.id, 'unionType', event.target.value as 'marriage' | 'partner')}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  >
+                    {UNION_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 leading-snug">
+                    Choose “Partners” for a couple that lived together but never married — this keeps the biography from saying they married.
+                  </p>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Union Date</label>

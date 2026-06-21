@@ -22,9 +22,10 @@ This repository supports agentic development workflows (Codex, CI bots, etc.). U
 | --- | --- |
 | **App shell / entry** | `index.tsx`, `App.tsx`, `services/*` |
 | **Person profile tabs** | `components/person-profile/*` (VitalTab, FamilyTab, etc.) |
-| **Admin panels** | `components/admin/*`, `components/AdminTreesPanel.tsx`, `components/AdminDnaPanel.tsx`, `components/ImportExport.tsx` |
-| **GEDCOM ingest / parsing** | `lib/gedcom/*`, `components/ImportExport.tsx`, `services/archive.ts` |
+| **Admin panels** | `components/admin/*`, `components/AdminTreesPanel.tsx`, `components/AdminDnaPanel.tsx`, `components/ImportExport.tsx`, `components/book/*` (AI family books) |
+| **GEDCOM ingest / parsing** | `lib/gedcomParser.ts` (pure `parseGedcom`), `components/ImportExport.tsx`, `services/archive.ts` |
 | **DNA ingest / lineage** | `components/person-profile/DNATab.tsx`, `components/AdminDnaPanel.tsx`, `lib/dnaRawParser.ts`, `services/archive.ts` |
+| **AI family books** | `lib/bookComposer.ts` (pure `planBook`), `services/books.ts` (`composeBook`, save/list/delete), `services/ai.ts` (`composeFamilyOverview`, `composePersonBiography` + deterministic fallbacks), `components/admin/BookComposerPanel.tsx`, `components/book/BookDocument.tsx`, `components/book/BookPrintOverlay.tsx`, `supabase/migrations/20260620180000_family_books.sql` |
 | **Supabase schema** | `supabase/migrations/*.sql`, `supabase/seed/*` |
 | **Docs overview** | `docs/CONTENT_MAP.md`, `docs/AI_SETUP.md`, `docs/SUPABASE_SETUP.md`, `docs/DNA_SETUP.md`, `docs/CICD.md` |
 

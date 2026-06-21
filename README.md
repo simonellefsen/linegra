@@ -34,6 +34,7 @@ This includes supported CSV formats (MyHeritage and FTDNA segment comparison), h
 - Product/technical specification: [`SPEC.md`](SPEC.md)
 - Agent/developer entrypoint: [`AGENT.md`](AGENT.md)
 - Feature-to-file map: [`docs/CONTENT_MAP.md`](docs/CONTENT_MAP.md)
+- LLM-optimized knowledge base (architecture, schema, decisions, runbooks): [`wiki/index.md`](wiki/index.md)
 
 ## Super Administrator Login
 
@@ -50,3 +51,9 @@ Updated credentials are stored in the browser/Electron `localStorage`, so if you
 storage or move to a new machine you will need to repeat the bootstrap process. Multi‑user
 registration is not yet available—only this super administrator can add, edit, or delete
 archival data in the current release.
+
+> **Local development:** when the app is served from `localhost` (or `127.0.0.1`/`*.local`),
+> you can sign in one‑step with **`admin` / `admin`** (the `linegra` / `linegra` bootstrap also
+> works) and the forced credential‑reset prompt is skipped. This convenience is gated on the
+> hostname at runtime, so deployments to a real domain are unaffected — there the forced reset
+> still applies and only your stored credentials are accepted.

@@ -25,8 +25,9 @@ import MediaTab from './person-profile/MediaTab';
 import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
+import { inferLivingStatus } from '../lib/lifespan';
 import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent } from '../services/archive';
-import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause } from '../services/ai';
+import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause, transcribeRecordImage } from '../services/ai';
 
 const serializePlaceValue = (value: string | StructuredPlace) =>
   typeof value === 'string' ? value : JSON.stringify(value ?? '');
@@ -89,12 +90,15 @@ const toUuidOrNull = (...candidates: Array<string | null | undefined>) => {
   return null;
 };
 
-const resolveLivingState = (target: Person) => {
-  if (typeof target.isLiving === 'boolean') {
-    return target.isLiving;
-  }
-  return !target.deathDate;
-};
+const resolveLivingState = (target: Person) =>
+  // Apply common sense: a recorded death/burial — or an implausibly old birth year (e.g. born
+  // 1807 with no death recorded) — means deceased, even if no isLiving flag was ever set.
+  inferLivingStatus({
+    birthDate: target.birthDate,
+    deathDate: target.deathDate,
+    burialDate: target.burialDate,
+    isLiving: target.isLiving,
+  });
 
 const buildSnapshotFromPerson = (target: Person) =>
   JSON.stringify({
@@ -167,6 +171,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
 
   // Dynamic Archive state
   const [sources, setSources] = useState<Source[]>(person.sources || []);
+  const [citations, setCitations] = useState<Citation[]>(person.citations || []);
   const [notes, setNotes] = useState<Note[]>(person.notes || []);
   const [dnaTests, setDnaTests] = useState<DNATest[]>(person.dnaTests || []);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(extractMediaItemsFromPerson(person));
@@ -207,6 +212,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     setAltNames(dedupeAlternateNames(person.alternateNames || []));
     setEvents(person.events || []);
     setSources(person.sources || []);
+    setCitations(person.citations || []);
     setNotes(person.notes || []);
     setDnaTests(person.dnaTests || []);
     setMediaItems(extractMediaItemsFromPerson(person));
@@ -275,7 +281,15 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   }, [refreshConnections]);
 
   const getSourceCountForEvent = (eventLabel: string) => {
-    return sources.filter((source) => (source.event || 'General') === eventLabel).length;
+    // Sources are reusable documents (no per-source event after the dedup refactor); an event is
+    // "sourced" when a citation links it. Count the distinct sources cited for this event.
+    const ids = new Set<string>();
+    citations.forEach((citation) => {
+      if ((citation.eventLabel || 'General') === eventLabel && citation.sourceId) {
+        ids.add(citation.sourceId);
+      }
+    });
+    return ids.size;
   };
 
   const getNoteCountForEvent = (eventLabel: string) => {
@@ -298,13 +312,13 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
 
   const citationMap = useMemo(() => {
     const map: Record<string, Citation[]> = {};
-    (person.citations || []).forEach((citation) => {
+    citations.forEach((citation) => {
       const key = citation.sourceId;
       if (!key) return;
       (map[key] || (map[key] = [])).push(citation);
     });
     return map;
-  }, [person.citations]);
+  }, [citations]);
 
   const canAccessDNA = !!currentUser?.isAdmin;
   const canEditFamily = !!currentUser?.isAdmin;
@@ -431,7 +445,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   const handleUpdateRelationshipDetails = useCallback(
     async (
       relId: string,
-      updates: { dateText?: string | null; placeText?: string | null; status?: Relationship['status'] | null; notes?: string | null }
+      updates: { dateText?: string | null; placeText?: string | null; status?: Relationship['status'] | null; notes?: string | null; unionType?: 'marriage' | 'partner' | null }
     ) => {
       if (!canEditFamily) return;
       try {
@@ -442,6 +456,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             placeText: updates.placeText ?? null,
             status: updates.status ?? null,
             notes: updates.notes ?? null,
+            unionType: updates.unionType ?? null,
           },
           { id: currentUser?.id ?? null, name: currentUser?.name ?? null }
         );
@@ -477,19 +492,51 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   };
 
   const handleAddSource = (linkedEvent?: string) => {
+    const id = generateUuid();
     const newSource: Source = {
-      id: generateUuid(),
-      title: 'New Source Record',
+      id,
+      externalId: id,
+      title: '',
       type: 'Unknown',
       citationDate: new Date().getFullYear().toString(),
       reliability: 1,
       actualText: '',
-      event: linkedEvent || 'General',
       abbreviation: '',
       callNumber: ''
     };
-    setSources([newSource, ...sources]);
+    setSources((prev) => [newSource, ...prev]);
+    // A source is cited for at least one event; seed a default citation so it is linked on save.
+    setCitations((prev) => [
+      ...prev,
+      { id: generateUuid(), sourceId: id, eventLabel: linkedEvent || 'General', label: 'Citation' }
+    ]);
     setActiveSection('sources');
+  };
+
+  // Attach an event citation to a source (reusing an existing source rather than duplicating it).
+  const handleAddCitation = (sourceId: string, eventLabel?: string) => {
+    setCitations((prev) => [
+      ...prev,
+      { id: generateUuid(), sourceId, eventLabel: eventLabel || 'General', label: 'Citation' }
+    ]);
+  };
+
+  const handleUpdateCitation = (id: string, updates: Partial<Citation>) => {
+    setCitations((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+  };
+
+  const handleRemoveCitation = (id: string) => {
+    setCitations((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  // Cite a tree-wide source for an event on this person: ensure the source is in the local list,
+  // then add a citation referencing it (no new source row is created if it already exists).
+  const handleCiteExisting = (source: Source, eventLabel: string) => {
+    const canonicalId = source.externalId || source.id;
+    setSources((prev) =>
+      prev.some((s) => (s.externalId || s.id) === canonicalId) ? prev : [...prev, { ...source, externalId: canonicalId }]
+    );
+    handleAddCitation(canonicalId, eventLabel);
   };
 
   const handleAddNote = (linkedEvent?: string) => {
@@ -509,8 +556,26 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   };
 
   const handleRemoveSource = (id: string) => {
+    const source = sources.find((s) => s.id === id);
+    const canonicalId = source?.externalId || source?.id || id;
     setSources((prev) => prev.filter((source) => source.id !== id));
+    // Dropping a source from this person also drops its event citations for this person.
+    setCitations((prev) => prev.filter((c) => c.sourceId !== canonicalId && c.sourceId !== id));
   };
+
+  // AI-transcribe a scanned record page into the source's transcription field. The image arrives as a
+  // downscaled data URL from the picker; pass it to the vision model with light record context.
+  const handleTranscribeSource = useCallback(async (sourceId: string, imageDataUrl: string) => {
+    const source = sources.find((s) => s.id === sourceId);
+    const canonicalId = source?.externalId || source?.id || sourceId;
+    const eventLabel = citations.find((c) => c.sourceId === canonicalId || c.sourceId === sourceId)?.eventLabel;
+    const text = await transcribeRecordImage(imageDataUrl, {
+      recordType: source?.type,
+      personName: `${firstName} ${lastName}`.trim() || undefined,
+      eventLabel,
+    });
+    setSources((prev) => prev.map((s) => (s.id === sourceId ? { ...s, actualText: text } : s)));
+  }, [sources, citations, firstName, lastName]);
 
   const handleUpdateMediaItem = (id: string, updates: Partial<MediaItem>) => {
     setMediaItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
@@ -620,7 +685,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   const sourcesPayload = () =>
     sources.map((source) => ({
       id: toUuidOrNull(source.externalId, source.id) ?? generateUuid(),
-      title: source.title || 'Untitled Record',
+      title: source.title || source.abbreviation || 'Untitled Record',
       type: source.type || 'Unknown',
       repository: source.repository || null,
       url: source.url || null,
@@ -630,11 +695,39 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       call_number: source.callNumber || null,
       reliability: source.reliability ?? null,
       actual_text: source.actualText || null,
-      notes: source.notes || null,
-      label: source.title || null,
-      event_label: source.event || null,
-      quality: source.reliability ? source.reliability.toString() : null
+      notes: source.notes || null
     }));
+
+  // Citations link a source to an event on this person. sourceId resolves to the source's canonical
+  // db id (externalId), so one source can carry several event citations without duplication.
+  const citationsPayload = () =>
+    citations
+      .map((citation) => {
+        const source = sources.find((s) => (s.externalId || s.id) === citation.sourceId);
+        const sourceId = source
+          ? toUuidOrNull(source.externalId, source.id)
+          : toUuidOrNull(citation.sourceId);
+        return {
+          source_id: sourceId ?? null,
+          event_label: citation.eventLabel || null,
+          label: citation.label || null,
+          page_text: citation.page || null,
+          data_date: citation.dataDate || null,
+          data_text: citation.dataText || null,
+          quality: citation.quality || null
+        };
+      })
+      .filter((citation) => citation.source_id);
+
+  // Re-fetch the person (e.g. after a source merge repoints citations) and cascade through state.
+  const handleRefreshPerson = useCallback(async () => {
+    try {
+      const refreshed = await fetchPersonDetails(person.id);
+      onPersonUpdated?.(refreshed);
+    } catch {
+      // best-effort refresh; ignore failures
+    }
+  }, [person.id, onPersonUpdated]);
 
   const handleSave = async () => {
     if (!canEditPerson || saving || !isDirty) return;
@@ -648,6 +741,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         events: eventsPayload(),
         notes: notesPayload(),
         sources: sourcesPayload(),
+        citations: citationsPayload(),
         dnaTests
       });
       await onRefreshTreeGraph?.();
@@ -756,6 +850,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     setAltNames(person.alternateNames || []);
     setEvents(person.events || []);
     setSources(person.sources || []);
+    setCitations(person.citations || []);
     setNotes(person.notes || []);
     setDnaTests(person.dnaTests || []);
     setMediaItems(extractMediaItemsFromPerson(person));
@@ -1098,7 +1193,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             onAddEvent={handleAddEvent}
             onUpdateEvent={handleUpdateEvent}
             onRemoveEvent={handleRemoveEvent}
-            onAddSource={handleAddSource}
+            onOpenSources={() => setActiveSection('sources')}
             onNotesBadgeClick={handleNotesBadgeClick}
             getSourceCountForEvent={getSourceCountForEvent}
             getNoteCountForEvent={getNoteCountForEvent}
@@ -1130,18 +1225,34 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         )}
 
         {activeSection === 'story' && (
-          <StoryTab bio={person.bio} />
+          <StoryTab
+            person={person}
+            relationships={relationshipData}
+            connectedPeople={Object.values(relationPeople)}
+            canEdit={canEditPerson}
+            actor={{ id: currentUser?.id ?? null, name: currentUser?.name ?? null }}
+          />
         )}
 
         {activeSection === 'sources' && (
           <SourcesTab
             canEdit={canEditPerson}
             sources={sources}
+            citations={citations}
             availableEvents={availableEvents}
+            treeId={person.treeId}
+            actor={{ id: currentUser?.id ?? null, name: currentUser?.name ?? null }}
             onAddSource={() => handleAddSource()}
             onUpdateSource={handleUpdateSource}
             onRemoveSource={handleRemoveSource}
+            onAddCitation={handleAddCitation}
+            onUpdateCitation={handleUpdateCitation}
+            onRemoveCitation={handleRemoveCitation}
+            onCiteExisting={handleCiteExisting}
+            onRefresh={handleRefreshPerson}
             citationMap={citationMap}
+            aiAvailable={aiAvailable}
+            onTranscribe={handleTranscribeSource}
           />
         )}
 

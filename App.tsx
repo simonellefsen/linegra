@@ -14,6 +14,7 @@ import AdminDnaPanel from './components/AdminDnaPanel';
 import AdminSectionTabs, { AdminSection } from './components/admin/AdminSectionTabs';
 import AdminDatabasePanel from './components/admin/AdminDatabasePanel';
 import AdminGedcomPanel from './components/admin/AdminGedcomPanel';
+import BookComposerPanel from './components/admin/BookComposerPanel';
 import AdminNukeModal from './components/admin/AdminNukeModal';
 import { getAvatarForPerson } from './lib/avatar';
 import { 
@@ -251,6 +252,13 @@ useEffect(() => {
     setAllRelationships([]);
     setGraphTreeId(null);
     setPedigreeFocusId(null);
+    // Clear a person carried over from the *previous* tree: a stale selectedPerson keeps the old
+    // profile panel open and, via the focusPersonId fallback, points the new tree's pedigree at
+    // someone who isn't in it (empty tree). But keep a person that belongs to the newly selected
+    // tree — e.g. when a ?person= URL switches the active tree to that person's tree.
+    setSelectedPerson((prev) =>
+      prev && activeTreeId && prev.treeId !== activeTreeId ? null : prev
+    );
   }, [activeTreeId]);
 
   useEffect(() => {
@@ -700,6 +708,9 @@ useEffect(() => {
 
   useEffect(() => {
     if (!pendingPersonId) return;
+    // Wait for the tree list before resolving a cross-tree ?person= URL, so we can switch the
+    // active tree to the one the person actually belongs to.
+    if (!trees.length) return;
     const match = treePeople.find((p) => p.id === pendingPersonId);
     if (match) {
       setSelectedPerson(match);
@@ -710,16 +721,30 @@ useEffect(() => {
       }
       return;
     }
+    let cancelled = false;
     (async () => {
       try {
         const person = await fetchPersonDetails(pendingPersonId);
+        if (cancelled) return;
         setSelectedPerson(person);
+        // A ?person= UUID may belong to a different tree than the ?tree= param selected at
+        // boot. The person's tree wins so the profile and the tree selector stay consistent.
+        if (person.treeId && person.treeId !== activeTreeId) {
+          const targetTree = trees.find((tree) => tree.id === person.treeId);
+          if (targetTree) {
+            setActiveTree(targetTree);
+          }
+        }
         setPendingPersonId(null);
       } catch (err) {
         console.error('Failed to load person from URL', err);
+        setPendingPersonId(null);
       }
     })();
-  }, [pendingPersonId, treePeople, handleEnsurePersonDetails]);
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingPersonId, treePeople, handleEnsurePersonDetails, activeTreeId, trees]);
 
 
   const handleAdminCreateTree = useCallback(
@@ -1329,6 +1354,15 @@ useEffect(() => {
                     onOpenPerson={handleAdminOpenPerson}
                   />
                 )}
+                {adminSection === 'books' && (
+                  <BookComposerPanel
+                    treeId={activeTree?.id || null}
+                    people={treePeople}
+                    relationships={treeRelationships}
+                    activeTreeName={activeTree?.name}
+                    actor={{ id: currentUser?.id, name: currentUser?.name }}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -1428,7 +1462,7 @@ useEffect(() => {
                             {person.firstName} {person.lastName}
                           </p>
                           <p className="text-[11px] text-slate-500 uppercase tracking-[0.3em] truncate">
-                            {person.birthDate || 'Unknown'} • {person.deathDate || 'Living'}
+                            {person.birthDate || 'Unknown'} • {person.deathDate || (person.isLiving === false ? 'Deceased' : 'Living')}
                           </p>
                         </div>
                         <div className="text-right text-[10px] uppercase tracking-[0.3em] text-slate-400">

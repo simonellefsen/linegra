@@ -3,6 +3,7 @@ import { Lock, Trash2, Dna, Upload, FileText } from 'lucide-react';
 import { DNATest } from '../../types';
 import { DNA_VENDORS, DNA_TEST_TYPES } from './constants';
 import { parseAutosomalCsv, parseSharedSegmentsCsv } from '../../lib/dnaRawParser';
+import { describeSharedLineage } from '../../lib/dnaClassification';
 
 interface DNATabProps {
   personId: string;
@@ -13,6 +14,47 @@ interface DNATabProps {
   onUpdateTest: (id: string, updates: Partial<DNATest>) => void;
   onRemoveTest: (id: string) => void;
 }
+
+// Resolved-lineage status shown on the profile DNA tab. Mirrors the admin DNA panel's
+// verdict (path found + cM compatibility + cM prediction) via the shared, tested
+// describeSharedLineage helper, so both surfaces agree (SPEC §6.3).
+const SharedLineageStatusBadge: React.FC<{
+  totalCentimorgans: number;
+  segmentCount: number;
+  pathRelationshipIds?: string[];
+}> = ({ totalCentimorgans, segmentCount, pathRelationshipIds }) => {
+  const pathLinks = pathRelationshipIds?.length ?? 0;
+  const { pathFound, cmCompatible, prediction } = describeSharedLineage(
+    totalCentimorgans,
+    segmentCount,
+    pathLinks
+  );
+
+  const tone = !pathFound
+    ? 'border-white/20 bg-white/5 text-white/60'
+    : cmCompatible
+      ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
+      : 'border-amber-300/40 bg-amber-400/10 text-amber-100';
+
+  const links = `${pathLinks} link${pathLinks === 1 ? '' : 's'}`;
+  const label = !pathFound
+    ? 'Shared match saved — no lineage path linked yet'
+    : cmCompatible
+      ? `Lineage path verified — cM compatible (${links})`
+      : `Lineage path linked — review cM mismatch (${links})`;
+
+  return (
+    <div className="space-y-2">
+      <p>
+        cM prediction: <span className="font-semibold text-white">{prediction}</span>
+      </p>
+      <p className={`inline-flex items-center gap-2 rounded-xl border px-2 py-1 ${tone}`}>
+        <Dna className="w-3.5 h-3.5" />
+        {label}
+      </p>
+    </div>
+  );
+};
 
 const DNATab: React.FC<DNATabProps> = ({ personId, personNameCandidates, dnaTests, canAccessDNA, onAddTest, onUpdateTest, onRemoveTest }) => (
   <DNATabInner
@@ -242,20 +284,11 @@ const DNATabInner: React.FC<DNATabProps> = ({
                         {test.sharedSegmentSummary.segmentCount} segments • {test.sharedSegmentSummary.totalCentimorgans.toFixed(1)} cM total •{' '}
                         {test.sharedSegmentSummary.largestSegmentCentimorgans.toFixed(1)} cM largest
                       </p>
-                      {test.sharedSegmentSummary.estimatedRelationship && (
-                        <p>Estimated: {test.sharedSegmentSummary.estimatedRelationship}</p>
-                      )}
-                      {test.sharedPathRelationshipIds && test.sharedPathRelationshipIds.length > 0 ? (
-                        <p className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                          <Dna className="w-3.5 h-3.5" />
-                          Lineage path verified ({test.sharedPathRelationshipIds.length} relationship links).
-                        </p>
-                      ) : (
-                        <p className="inline-flex items-center gap-2 rounded-xl border border-amber-300/40 bg-amber-400/10 px-2 py-1 text-amber-100">
-                          <Dna className="w-3.5 h-3.5" />
-                          Shared match saved, but no lineage path is linked in the tree yet.
-                        </p>
-                      )}
+                      <SharedLineageStatusBadge
+                        totalCentimorgans={test.sharedSegmentSummary.totalCentimorgans}
+                        segmentCount={test.sharedSegmentSummary.segmentCount}
+                        pathRelationshipIds={test.sharedPathRelationshipIds}
+                      />
                     </div>
                   )}
                 </div>
