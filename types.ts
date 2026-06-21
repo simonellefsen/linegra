@@ -185,29 +185,32 @@ export interface Note {
 
 export interface StructuredPlace {
   fullText: string;
-  placeName?: string; 
-  street?: string;
-  houseNumber?: string;
-  floor?: string;
-  apartment?: string;
-  city?: string; 
-  county?: string; 
-  state?: string; 
-  country?: string;
+  placeName?: string;        // Stednavn (neighborhood / landmark / named place)
+  street?: string;           // Gade (street)
+  houseNumber?: string;      // Husnr. (street number)
+  floor?: string;            // Sal / etage (kælder, stue, 1. sal, …)
+  apartment?: string;        // Lejlighed (incl. old-style: baggården, baghuset, st.th.)
+  city?: string;             // By (town / city)
+  parish?: string;           // Sogn (parish) — the key unit for Scandinavian church records
+  hundred?: string;          // Herred / Kommune (hundred / municipality)
+  county?: string;           // Amt (county / diocese)
+  state?: string;            // Region (modern region / state / province)
+  country?: string;          // Land (country)
   zip?: string;
-  historicalName?: string; 
+  historicalName?: string;
   lat?: number;
   lng?: number;
-  notes?: string; 
+  notes?: string;
 }
 
 export interface PersonEvent {
   id: string;
-  type: string; 
+  type: string;
   date?: string;
   place?: string | StructuredPlace;
-  description?: string; 
-  employer?: string; 
+  description?: string;
+  employer?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export type DeathCauseCategory = 
@@ -331,6 +334,88 @@ export interface FamilyTree {
 export interface FamilyTreeSummary extends FamilyTree {
   personCount: number;
   relationshipCount: number;
+}
+
+// ── AI Family Books ──────────────────────────────────────────────────────────
+// A generated narrative family-history book. Persisted per tree in `family_books`
+// so it can be reopened, re-exported to PDF, and (later) edited in the UI.
+
+export type BookScope = 'all' | 'descendants' | 'selected';
+export type BookStyle = 'narrative' | 'concise' | 'scholarly';
+export type BookLength = 'short' | 'medium' | 'long';
+export type BookChapterKind = 'overview' | 'person';
+export type BookStatus = 'draft' | 'complete';
+export type BookLanguage = 'da' | 'sv' | 'no' | 'en';
+
+export interface BookGenerationOptions {
+  scope: BookScope;
+  probandId?: string | null;     // root for the 'descendants' scope
+  selectedIds?: string[];        // explicit set for the 'selected' scope
+  style: BookStyle;
+  length: BookLength;
+  language: BookLanguage;        // default 'da' (Danish)
+  includeHistoricalContext?: boolean;
+}
+
+/** Structured, non-AI facts assembled for a chapter (so text can be regenerated without re-planning). */
+export interface BookChapterFacts {
+  birthYear?: number | null;
+  deathYear?: number | null;
+  lifespanLabel?: string;
+  birthPlace?: string;
+  deathPlace?: string;
+  occupations?: string[];
+  spouseNames?: string[];      // formal spouses (marriage unions)
+  partnerNames?: string[];     // unmarried partners (cohabiting unions) — worded differently in bios
+  parentNames?: string[];
+  childNames?: string[];
+  siblingNames?: string[];
+}
+
+export interface BookChapter {
+  kind: BookChapterKind;
+  title: string;
+  personId?: string;
+  narrative: string;             // AI (or deterministic-fallback) text
+  facts?: BookChapterFacts;
+}
+
+export interface BookStatistics {
+  personCount: number;
+  earliestBirthYear?: number | null;
+  latestDeathYear?: number | null;
+  topSurnames: string[];
+  topPlaces: string[];
+  topOccupations: string[];
+  generationDepth?: number;
+}
+
+export interface FamilyBook {
+  id: string;
+  treeId: string;
+  title: string;
+  subtitle?: string | null;
+  status: BookStatus;
+  isPublic: boolean;
+  options: BookGenerationOptions;
+  chapters: BookChapter[];
+  statistics: BookStatistics;
+  createdById?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A stored, evolving per-person biography in one language (surfaced on the profile Story tab). */
+export interface PersonBiography {
+  personId: string;
+  language: BookLanguage;
+  narrative: string;
+  signature: string;          // content hash; stale when it differs from the person's current facts
+  style?: string | null;
+  length?: string | null;
+  isManual: boolean;          // human-edited → not auto-regenerated
+  updatedAt?: string;
 }
 
 export interface User {
