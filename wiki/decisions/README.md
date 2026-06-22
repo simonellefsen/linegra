@@ -11,5 +11,7 @@ decision is reversed, add a new page that supersedes the old and link both.
 | [uuid-first-dna-linking.md](uuid-first-dna-linking.md) | DNA matches link by UUID first; name matching is legacy fallback only. |
 | [openrouter-for-ai-utilities.md](openrouter-for-ai-utilities.md) | OpenRouter for opt-in AI text utilities, centrally configured, with fallbacks. |
 | [local-superadmin-auth.md](local-superadmin-auth.md) | Single local super-admin in localStorage; multi-user deferred. |
+| [raw-dna-consent-and-encryption.md](raw-dna-consent-and-encryption.md) | Raw autosomal DNA is sensitive biometric data: consent-gated, encrypted/not-persisted, never public. |
+| [ai-narrative-editing-and-grounding.md](ai-narrative-editing-and-grounding.md) | AI narrative is a human-owned, editable first draft; claims are grounded, inference is marked. |
 
 See also: [../concepts/](../concepts/llm-maintained-project-wiki.md), [../roadmap.md](../roadmap.md).

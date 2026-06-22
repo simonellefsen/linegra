@@ -108,6 +108,130 @@ See the [log entry](log.md) and [concepts/ai-family-books.md](concepts/ai-family
   GEDCOM panel) — consider loading `allPeople` on tree selection so admin panels work without first
   visiting Interactive Tree.
 
+### K. DNA analysis & visualization
+Extends SPEC §6.1 (ingestion) / §6.3 (lineage resolution); new SPEC ground — flag a §6 update. Turn
+DNA from a per-match verdict into a tree-wide analytical surface. The cM classifier, shared-segment
+parser, and lineage resolver already exist — the gap is higher-order analysis and the consent work
+that gates raw data.
+
+- **K1. Segment triangulation / Leeds-method clustering.** Group shared matches into the four
+  grandparent clusters by shared-segment overlap. Reuse the per-segment data already parsed in
+  [../lib/dnaRawParser.ts](../lib/dnaRawParser.ts) (`parseSharedSegmentsCsv`,
+  `parseFtdnaSharedSegmentsCsv`), the cluster labels in
+  [../lib/dnaClassification.ts](../lib/dnaClassification.ts), and the `dna_matches` schema. Deeper
+  design: `sources/dna-triangulation.md` (to be written).
+- **K2. MRCA suggestion from shared matches + cM.** Propose most-recent-common-ancestor candidates
+  by combining the shortest-path resolver with shared-match overlap. Reuse
+  `resolveSharedMatchLineage` / `resolveSharedTestLineage` in
+  [../services/archive.ts](../services/archive.ts) and `supportsRelationshipHops` in
+  `lib/dnaClassification.ts`. *(Note: the resolver lives in `services/archive.ts`, not the admin
+  panel — the panel only calls it.)*
+- **K3. In-tree auto-placement of unknown matches.** When a match has no person row, use the
+  resolver to suggest where they slot in. Reuse `resolveSharedMatchLineage`, `persons.is_dna_match` /
+  `dna_match_info`. Extends [concepts/dna-lineage-verification.md](concepts/dna-lineage-verification.md).
+- **K4. Y / mtDNA haplogroup migration display.** Map `DNATest.haplogroup` (already stored) →
+  migration route on tester profiles. Needs an external haplogroup→route reference dataset.
+- **K5. DNA-painter-style segment view.** Per-chromosome bar of shared segments colored by cluster.
+  Reuse the shared-segment parser output + K1 clusters.
+- **K6. Raw-autosomal ingestion beyond CSV.** `parseAutosomalCsv` is shallow
+  (rsid/chromosome/position preview only); full per-SNP matching is a different scale problem — the
+  heavy lift. **Blocked by K7.** Reuse [../lib/dnaRawParser.ts](../lib/dnaRawParser.ts).
+- **K7. Consent + encryption-at-rest for raw biometric DNA.** Raw autosomal DNA is sensitive,
+  immutable, hereditary data. Add `consent_given_at` / `consent_scope` on `dna_tests`; encrypt at
+  rest or don't persist (minimize first); keep out of the public read path. Policy:
+  [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md); ties
+  to SPEC §8.
+- **Sequencing:** K7 → K6 → K1 → K5 (consent gates raw ingestion gates triangulation gates painter).
+
+### L. Interactive tree enhancements
+Extends SPEC §7 (performance); new UI views are new SPEC ground. The pedigree view
+([../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx)) is
+solid but single-mode. These add alternate lenses (DNA-aware, spatial, chronological) without
+replacing the layout engine in [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.ts).
+
+- **L1. DNA-aware tree overlay (highest leverage; ships immediately).** Color edges by
+  `RelationshipConfidence` and surface shared-cM on edges where `dna_support_by_person` is set.
+  Reuse the existing confidence enum (`types.ts`) + `relationships.metadata.dna_support_by_person`.
+  Extends D.
+- **L2. Fan / pedigree-compact view.** Alternate renderer for 8+ ancestor generations. Reuse
+  [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.ts) +
+  [../lib/pedigreeScope.ts](../lib/pedigreeScope.ts) (ancestor depth already capped at 8).
+- **L3. Timeline / chronological view.** Persons/events on a time axis. Reuse `person_events` +
+  birth/death-year helpers.
+- **L4. Map / migration view.** Plot persons/events by `StructuredPlace.lat`/`lng` over a basemap;
+  animate migration paths. **New runtime dependency (a map lib) — flag before starting.**
+- **L5. Keyboard navigation + search-to-focus + breadcrumbs.** UX polish. Reuse
+  [../lib/pedigreeScope.ts](../lib/pedigreeScope.ts).
+- **L6. Tree export as PNG / SVG / PDF.** Client-side canvas/SVG serialization. Model on the
+  `@media print` pattern in `components/book/*`.
+- **L7. Side-by-side person / tree compare.** Two-focus view. Reuse
+  [../lib/pedigreeScope.ts](../lib/pedigreeScope.ts).
+- **Virtualization for large trees folds under existing G / SPEC §7**, not a new L item — G already
+  covers "no full-tree hydration."
+- **Sequencing:** L1 first (cheap, high-visibility); then L4 (map) as the showcase; the rest as
+  capacity allows.
+
+### M. AI family books & biography editing
+Builds on J. Extends SPEC §3.5 (admin workspace) and adds a public viewer; grounding policy ties to
+§8. The books pillar works end-to-end (compose → persist → print-to-PDF) and per-person biographies
+persist with signatures + staleness detection — **but both are effectively read-only after
+generation.** Books are write-once (no chapter editing, reorder, or single-chapter regen);
+biographies are AI-generate-only in the StoryTab (no manual text editing). The schemas are already
+structured for editing, so M makes human editing first-class and deepens generation quality. Policy
+foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narrative-editing-and-grounding.md).
+
+*Book creation & editing:*
+
+- **M1. In-UI book editor (highest book-leverage).** The `chapters` jsonb is already structured
+  (`BookChapter` = kind/title/personId?/narrative/facts?). Add: inline edit of chapter text, reorder
+  (drag or up/down), add/remove custom chapters (intro, photo essay, source appendix), edit titles.
+  Reuse `BookChapter` + `saveFamilyBook` in [../services/books.ts](../services/books.ts). Deeper
+  design: `sources/book-editor.md` (to be written).
+- **M2. Single-chapter regeneration.** Today only "force-regenerate all." Add per-chapter
+  "regenerate" (and "regenerate with different style/length") via `composePersonBiography` /
+  `composeFamilyOverview` in [../services/ai.ts](../services/ai.ts). The composer already works
+  chapter-by-chapter — just expose one chapter.
+- **M3. Richer book structure.** `BookChapterKind` is only `'overview' | 'person'` today. Extend to
+  `section`/`custom` (intros, era context, surname origin, photo plates, source appendix) +
+  auto-TOC; add a per-chapter `status` (draft/edited/locked).
+- **M4. Book versioning + draft/publish.** `status` exists (`draft`/`complete`) but there's no real
+  history. Add version snapshots of `chapters` (a `family_book_versions` table or jsonb snapshots)
+  + a publish flow that fixes a viewer-facing snapshot.
+- **M5. Public book sharing viewer.** `is_public` + an RLS policy already exist but there's no
+  public viewer UI. Build the read-only viewer route + shareable link; print-to-PDF already works.
+
+*Biography editing & generation:*
+
+- **M6. Manual biography editing in StoryTab (highest bio-leverage).** Today
+  [../components/person-profile/StoryTab.tsx](../components/person-profile/StoryTab.tsx) shows
+  biography read-only with only AI Generate/Rewrite. Add an editable textarea (admin) that persists
+  to `person_biographies.narrative` with `is_manual = true` — **the flag already exists.** AI
+  rewrite becomes a starting point, not the only path. Reuse `upsertPersonBiography` in
+  [../services/books.ts](../services/books.ts). Deeper design: `sources/biography-editing.md` (to be
+  written).
+- **M7. Richer biography inputs (`fetchPersonDetails`).** Composition uses only the provided
+  `Person` object today (J flags this). Pull deeper context: events, occupations timeline,
+  sources/citations, and already-composed relative narratives. Reuse/expand `buildChapterFacts` +
+  `BookChapterFacts` in [../lib/bookComposer.ts](../lib/bookComposer.ts).
+- **M8. Per-biography style/tone controls + variants.** StoryTab hardcodes
+  `{style:'narrative', length:'medium'}` today. Expose style/length/language pickers per person, and
+  consider a `variant` dimension (the table is keyed by `(person_id, language)` only; provenance
+  cols `style`/`length`/`model` already exist).
+- **M9. Streaming generation UX.** All AI calls are request→full-response with a progress bar
+  today. Stream biography/chapter text token-by-token via OpenRouter SSE for better perceived
+  performance on long bios. Add streaming variants alongside the cached path.
+- **M10. AI-assisted editing (selection ops, not full regen).** Once text is editable (M1/M6), add
+  operations on a selection: "rewrite this paragraph," "make more formal," "expand with sources,"
+  "translate to [lang]."
+- **M11. Citation & fact-grounding in generated text.** Generated bios/books can hallucinate, which
+  matters in genealogy. Have the composer cite which facts/events/sources each passage draws from,
+  and flag ungrounded sentences as narrative interpolation. Reuse the existing sources/citation
+  system; policy in the decision doc above. Pairs with M7.
+- **M12. Retire legacy `generateBio`.** [../services/ai.ts](../services/ai.ts) `generateBio`
+  (~L416–446) is unused (books use `composePersonBiography`). Remove it — housekeeping, like B.
+- **Sequencing:** M6 + M1 (editing foundation, parallel) → M2 → M7 → M11 → M10 → M3/M4/M5. M9 runs
+  in parallel; M12 anytime.
+
 ## Known stale references
 - ✅ Resolved 2026-06-20: GEDCOM *parsing* now lives in `lib/gedcomParser.ts` (extracted from
   `ImportExport.tsx`); persistence is still `importGedcomToSupabase` in `services/archive.ts`,
@@ -116,4 +240,8 @@ See the [log entry](log.md) and [concepts/ai-family-books.md](concepts/ai-family
 
 ## How to pick the next item
 Default recommendation: **A (multi-user auth)** for product leverage, or **C (tests)** if the
-goal is to make further refactors safe. Confirm priority with the user before large changes.
+goal is to make further refactors safe. For user-facing polish with low dependencies, the
+highest-leverage items in the new themed groups are **L1** (DNA-aware tree overlay), **M6 + M1**
+(make biographies and books editable — both schemas are already ready), and **K1** (segment
+clustering, building on the existing shared-segment parser). Confirm priority with the user before
+large changes.
