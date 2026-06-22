@@ -529,6 +529,8 @@ const BookComposerPanel: React.FC<BookComposerPanelProps> = ({
       {editingBook ? (
         <BookEditor
           book={editingBook}
+          people={effectivePeople}
+          treeName={activeTreeName}
           actor={actor}
           onClose={() => setEditingBook(null)}
           onSaved={loadBooks}

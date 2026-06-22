@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, ArrowDown, Plus, Trash2, Save, Loader2, Eye, X, AlertCircle } from 'lucide-react';
-import { FamilyBook, BookChapter, BookChapterKind } from '../../types';
+import { ArrowUp, ArrowDown, Plus, Trash2, Save, Loader2, Eye, X, AlertCircle, RefreshCw } from 'lucide-react';
+import { FamilyBook, BookChapter, BookChapterKind, Person } from '../../types';
 import { saveFamilyBook } from '../../services/books';
+import { composePersonBiography, composeFamilyOverview } from '../../services/ai';
 import { moveChapter, removeChapter, createCustomChapter } from '../../lib/bookComposer';
 import BookPrintOverlay from './BookPrintOverlay';
 
 interface BookEditorProps {
   book: FamilyBook;
+  people?: Person[];
+  treeName?: string | null;
   actor: { id?: string | null; name?: string | null };
   onClose: () => void;
   onSaved: () => void;
@@ -32,7 +35,7 @@ const KIND_BADGE: Record<BookChapterKind, string> = {
  * wiki/decisions/ai-narrative-editing-and-grounding.md, AI-generated chapter text is freely
  * editable — this is where a curator rewrites, trims, or restructures the book by hand.
  */
-const BookEditor: React.FC<BookEditorProps> = ({ book, actor, onClose, onSaved }) => {
+const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, actor, onClose, onSaved }) => {
   const [title, setTitle] = useState(book.title);
   const [subtitle, setSubtitle] = useState(book.subtitle ?? '');
   const [chapters, setChapters] = useState<BookChapter[]>(book.chapters);
@@ -62,6 +65,37 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, actor, onClose, onSaved }
   const updateChapter = useCallback((index: number, patch: Partial<BookChapter>) => {
     setChapters((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
   }, []);
+
+  const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
+
+  // Re-compose just one chapter with the AI (overview or person), leaving the rest of the book
+  // intact. Custom (hand-written) chapters aren't regenerable. Uses the book's own options.
+  const handleRegenerate = useCallback(
+    async (index: number) => {
+      const chapter = chapters[index];
+      if (!chapter || chapter.kind === 'custom') return;
+      setRegeneratingIndex(index);
+      setError(null);
+      try {
+        let narrative: string;
+        if (chapter.kind === 'overview') {
+          narrative = await composeFamilyOverview({ name: treeName ?? undefined }, book.statistics, book.options);
+        } else {
+          const person = people.find((p) => p.id === chapter.personId);
+          if (!person) {
+            throw new Error('This person is not loaded — reload the tree to regenerate their chapter.');
+          }
+          narrative = await composePersonBiography(person, chapter.facts ?? {}, book.options);
+        }
+        updateChapter(index, { narrative });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not regenerate this chapter.');
+      } finally {
+        setRegeneratingIndex(null);
+      }
+    },
+    [chapters, book, treeName, people, updateChapter]
+  );
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -160,6 +194,22 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, actor, onClose, onSaved }
                 onChange={(e) => updateChapter(index, { title: e.target.value })}
                 className="min-w-0 flex-1 rounded-lg border border-transparent px-2 py-1 font-serif text-base font-bold text-slate-900 outline-none hover:border-slate-200 focus:border-slate-400"
               />
+              {chapter.kind !== 'custom' ? (
+                <button
+                  type="button"
+                  onClick={() => handleRegenerate(index)}
+                  disabled={regeneratingIndex !== null}
+                  title="Regenerate this chapter with AI"
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                >
+                  {regeneratingIndex === index ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  {regeneratingIndex === index ? 'Writing…' : 'Regenerate'}
+                </button>
+              ) : null}
               <div className="flex items-center gap-1">
                 <button
                   type="button"
