@@ -250,6 +250,10 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
 
   return (
     <div className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
+      <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex items-center gap-3 rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 shadow-sm backdrop-blur">
+        <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 rounded-full bg-emerald-600" />DNA-backed</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 rounded-full bg-indigo-300" />Lineage</span>
+      </div>
       <div ref={scrollContainerRef} className="w-full h-full overflow-auto pb-20">
         <div style={{ width: scaledWidth, height: scaledHeight }} className="relative min-h-full min-w-full">
           <div
@@ -260,7 +264,10 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             {Array.from(childEdgeGroups.entries()).map(([childId, edges]) => {
               const childRect = nodeRects.get(childId);
               if (!childRect) return null;
-              const strokeColor = getEdgeColor(childId);
+              // DNA-aware overlay (roadmap L1): when a child's lineage is backed by DNA evidence,
+              // trace the edge in emerald instead of the lineage pastel, so DNA-confirmed links pop.
+              const childDnaCount = dnaSupportByPersonId.get(childId)?.size ?? 0;
+              const strokeColor = childDnaCount > 0 ? '#059669' : getEdgeColor(childId);
               const isHighlighted = !highlightedChildId || highlightedChildId === childId;
               const edgeOpacity = isHighlighted ? 1 : 0.2;
               if (edges.length >= 2) {
