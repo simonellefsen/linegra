@@ -1,0 +1,3 @@
+# Fast checks at commit time — block the commit on lint or type errors.
+# (Tests + build run on push, in .husky/pre-push, to keep commits snappy.)
+npm run lint && npm run typecheck
