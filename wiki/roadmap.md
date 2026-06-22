@@ -114,6 +114,11 @@ DNA from a per-match verdict into a tree-wide analytical surface. The cM classif
 parser, and lineage resolver already exist — the gap is higher-order analysis and the consent work
 that gates raw data.
 
+> **Done 2026-06-22 — K1 (engine):** [../lib/dnaClustering.ts](../lib/dnaClustering.ts) groups
+> shared-segment matches into triangulation clusters via union-find (min-cM filter, 11 tests) — the
+> clustering engine underpinning K1/K5. Remaining: wire it into the DNA admin panel as a
+> "cluster matches" view.
+
 - **K1. Segment triangulation / Leeds-method clustering.** Group shared matches into the four
   grandparent clusters by shared-segment overlap. Reuse the per-segment data already parsed in
   [../lib/dnaRawParser.ts](../lib/dnaRawParser.ts) (`parseSharedSegmentsCsv`,
@@ -149,6 +154,12 @@ Extends SPEC §7 (performance); new UI views are new SPEC ground. The pedigree v
 solid but single-mode. These add alternate lenses (DNA-aware, spatial, chronological) without
 replacing the layout engine in [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.ts).
 
+> **Done 2026-06-22 — L1 (partial):** DNA-backed pedigree edges now trace emerald (with a legend) in
+> [../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx), so
+> DNA-confirmed lineages are visible at a glance. Remaining: encode `RelationshipConfidence` via edge
+> style, and surface shared-cM on DNA-backed edges (cM needs a `dna_matches` join not yet wired to
+> the tree).
+
 - **L1. DNA-aware tree overlay (highest leverage; ships immediately).** Color edges by
   `RelationshipConfidence` and surface shared-cM on edges where `dna_support_by_person` is set.
   Reuse the existing confidence enum (`types.ts`) + `relationships.metadata.dna_support_by_person`.
@@ -179,6 +190,13 @@ generation.** Books are write-once (no chapter editing, reorder, or single-chapt
 biographies are AI-generate-only in the StoryTab (no manual text editing). The schemas are already
 structured for editing, so M makes human editing first-class and deepens generation quality. Policy
 foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narrative-editing-and-grounding.md).
+
+> **Done 2026-06-22 — editing + grounding arc:** M6 (manual biography editing), M1 (in-UI book
+> editor), M2 (single-chapter regen), M7 (richer inputs: life events + sources), M11 (fact-grounding
+> footers + hedged prose), M10 (AI-assisted text ops: rewrite/formal/concise/expand/translate), M12
+> (retire legacy `generateBio`). Remaining: M3 (richer book structure — the `custom` chapter kind
+> already landed via M1), M4 (versioning); M5 (public viewer) is gated by roadmap **A** (multi-user
+> auth).
 
 *Book creation & editing:*
 
@@ -239,9 +257,9 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
   `AGENT.md` for any remaining `lib/gedcom/*` mentions.
 
 ## How to pick the next item
-Default recommendation: **A (multi-user auth)** for product leverage, or **C (tests)** if the
-goal is to make further refactors safe. For user-facing polish with low dependencies, the
-highest-leverage items in the new themed groups are **L1** (DNA-aware tree overlay), **M6 + M1**
-(make biographies and books editable — both schemas are already ready), and **K1** (segment
-clustering, building on the existing shared-segment parser). Confirm priority with the user before
-large changes.
+Default recommendation: **A (multi-user auth)** for product leverage — it unblocks M5 (public book
+viewer) and live verification of the book features (the local admin can't read saved books today; see
+the RLS note). For user-facing progress on the themed groups: **wire K1 into the DNA panel** (the
+clustering engine exists in `lib/dnaClustering.ts`; it needs a UI), **finish L1** (relationship-
+confidence edge style + shared-cM on edges), or **M3** (richer book structure). Confirm priority with
+the user before large changes.
