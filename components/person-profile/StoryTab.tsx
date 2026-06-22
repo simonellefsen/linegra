@@ -3,7 +3,7 @@ import { Sparkles, Loader2, AlertTriangle, Pencil, Check, X } from 'lucide-react
 import { Person, Relationship, BookLanguage, PersonBiography, BookGenerationOptions } from '../../types';
 import { listBiographiesForPerson, upsertPersonBiography } from '../../services/books';
 import { composePersonBiography } from '../../services/ai';
-import { buildChapterFacts, buildRelationshipMaps, personBiographySignature } from '../../lib/bookComposer';
+import { buildChapterFacts, buildRelationshipMaps, personBiographySignature, groundingSummary } from '../../lib/bookComposer';
 import { BOOK_LANGUAGES, DEFAULT_BOOK_LANGUAGE } from '../../lib/bookI18n';
 
 interface StoryTabProps {
@@ -253,6 +253,13 @@ const StoryTab: React.FC<StoryTabProps> = ({ person, relationships, connectedPeo
               || PLACEHOLDER}
         </div>
       )}
+
+      {/* Evidence basis for AI-drafted stories, so documented fact is distinguishable from
+          narrative interpolation (decisions/ai-narrative-editing-and-grounding.md, M11). Curated
+          (human-edited) bios are owned by the curator, so they don't carry this footer. */}
+      {!editing && current?.narrative && !current?.isManual && groundingSummary(facts) ? (
+        <p className="px-8 pb-2 text-[11px] italic text-slate-400">{groundingSummary(facts)}</p>
+      ) : null}
     </div>
   );
 };

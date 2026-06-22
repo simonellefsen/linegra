@@ -312,6 +312,27 @@ export const buildChapterFacts = (
   sourceCount: person.sources?.length ?? 0,
 });
 
+/**
+ * A compact, deterministic "Grounded in: …" summary of the documented facts a biography was built
+ * from, so a reader can see the evidence basis and tell documented fact apart from narrative
+ * interpolation (decisions/ai-narrative-editing-and-grounding.md, roadmap M11). Pure and testable.
+ * Returns '' when nothing is recorded.
+ */
+export const groundingSummary = (facts: BookChapterFacts): string => {
+  const bits: string[] = [];
+  if (facts.lifespanLabel) bits.push(facts.lifespanLabel);
+  if (facts.birthPlace) bits.push(`born ${facts.birthPlace}`);
+  if (facts.deathPlace) bits.push(`died ${facts.deathPlace}`);
+  if (facts.occupations?.length) bits.push(facts.occupations.join(', '));
+  const relCount =
+    (facts.spouseNames?.length ?? 0) + (facts.partnerNames?.length ?? 0) + (facts.childNames?.length ?? 0);
+  if (relCount) bits.push(`${relCount} documented relative${relCount === 1 ? '' : 's'}`);
+  const eventCount = facts.events?.length ?? 0;
+  if (eventCount) bits.push(`${eventCount} life event${eventCount === 1 ? '' : 's'}`);
+  if (facts.sourceCount) bits.push(`${facts.sourceCount} source${facts.sourceCount === 1 ? '' : 's'}`);
+  return bits.length ? `Grounded in: ${bits.join(' · ')}` : '';
+};
+
 // FNV-1a 32-bit — small, fast, dependency-free stable string hash.
 const stableHash = (input: string): string => {
   let h = 0x811c9dc5;

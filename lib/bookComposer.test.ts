@@ -14,6 +14,7 @@ import {
   moveChapter,
   removeChapter,
   createCustomChapter,
+  groundingSummary,
 } from './bookComposer';
 import { bookStrings } from './bookI18n';
 import { BookChapterFacts, BookChapter, BookGenerationOptions, PersonBiography, PersonEvent, Source } from '../types';
@@ -408,5 +409,39 @@ describe('chapter editing helpers', () => {
   it('createCustomChapter makes an empty custom chapter', () => {
     expect(createCustomChapter('Intro')).toEqual({ kind: 'custom', title: 'Intro', narrative: '' });
     expect(createCustomChapter().kind).toBe('custom');
+  });
+});
+
+describe('groundingSummary', () => {
+  it('returns an empty string when nothing is recorded', () => {
+    expect(groundingSummary({})).toBe('');
+  });
+
+  it('lists lifespan, places, occupations, relatives, events, and sources', () => {
+    const summary = groundingSummary({
+      lifespanLabel: '1820–1890',
+      birthPlace: 'Odense',
+      deathPlace: 'Copenhagen',
+      occupations: ['Farmer', 'Blacksmith'],
+      spouseNames: ['Wife'],
+      childNames: ['A', 'B'],
+      events: [
+        { type: 'Residence', label: 'x' },
+        { type: 'Military', label: 'y' },
+      ],
+      sourceCount: 4,
+    });
+    expect(summary).toBe(
+      'Grounded in: 1820–1890 · born Odense · died Copenhagen · Farmer, Blacksmith · 3 documented relatives · 2 life events · 4 sources'
+    );
+  });
+
+  it('uses singular forms for one relative / one event / one source', () => {
+    const summary = groundingSummary({
+      childNames: ['A'],
+      events: [{ type: 'X', label: 'y' }],
+      sourceCount: 1,
+    });
+    expect(summary).toBe('Grounded in: 1 documented relative · 1 life event · 1 source');
   });
 });

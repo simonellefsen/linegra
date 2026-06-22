@@ -1,6 +1,7 @@
 import React from 'react';
 import { FamilyBook } from '../../types';
 import { bookStrings, DEFAULT_BOOK_LANGUAGE } from '../../lib/bookI18n';
+import { groundingSummary } from '../../lib/bookComposer';
 
 const formatDate = (iso?: string): string => {
   if (!iso) return '';
@@ -75,6 +76,9 @@ const BookDocument: React.FC<{ book: FamilyBook }> = ({ book }) => {
             <p className="whitespace-pre-wrap font-serif text-[17px] leading-[1.85] text-slate-800">
               {chapter.narrative}
             </p>
+            {chapter.kind === 'person' && chapter.facts && groundingSummary(chapter.facts) ? (
+              <p className="mt-6 text-[11px] italic text-slate-400">{groundingSummary(chapter.facts)}</p>
+            ) : null}
           </section>
         );
       })}

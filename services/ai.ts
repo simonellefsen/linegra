@@ -976,7 +976,7 @@ const personBiographyPrompt = (
     ...livingRules,
     '- Distinguish spouses (formally married) from partners (unmarried, cohabiting): never say a partner "married" or "wed" the subject — describe them as having lived together as a couple.',
     '- Situate the life in its historical context: the era, the region, and the major events and social changes a person of this place, time, and occupation would plausibly have lived through (wars, epidemics, migration, industrialization, religious or political shifts as relevant).',
-    '- Do NOT invent personal facts (names, dates, relationships) beyond those listed. Historical context and plausible everyday-life detail are welcome and expected, but keep them clearly framed as context rather than documented personal fact.',
+    '- Do NOT invent personal facts (names, dates, relationships) beyond those listed. Historical context and plausible everyday-life detail are welcome and expected, but keep the distinction legible: state documented facts plainly, and signal inferred or contextual material with hedged phrasing ("would have", "likely", "may have") so a reader can tell recorded evidence from narrative interpolation.',
     '- Plain prose only: no headings, no bullet lists, no markdown, no introductory labels.',
     '- Begin the first paragraph with the subject\'s name.',
   ].join('\n');
