@@ -1235,6 +1235,7 @@ useEffect(() => {
                         <PedigreeTree
                           people={pedigreeScope.people}
                           relationships={pedigreeScope.relationships}
+                          allRelationships={treeRelationships}
                           focusId={focusPersonId}
                           selectedPersonId={selectedPerson?.id}
                           onPersonSelect={handlePersonSelect}

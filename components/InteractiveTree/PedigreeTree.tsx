@@ -18,6 +18,9 @@ import {
 interface PedigreeTreeProps {
   people: Person[];
   relationships: Relationship[];
+  /** All tree relationships (scope-independent) — DNA-support badges are built from this so they stay
+      complete and stable regardless of the visible pedigree scope or focus. Defaults to `relationships`. */
+  allRelationships?: Relationship[];
   focusId?: string;
   onPersonSelect: (person: Person) => void;
   maxAncestors?: number;
@@ -93,6 +96,7 @@ const getEdgeColor = (childId: string) => {
 const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   people,
   relationships,
+  allRelationships,
   focusId,
   onPersonSelect,
   maxAncestors = 4,
@@ -208,8 +212,11 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   const highlightedChildId = hoveredPersonId || selectedPersonId || null;
 
   const dnaSupportByPersonId = useMemo(() => {
+    // Build from ALL tree relationships (not the visible-scope subset) so DNA badges are complete,
+    // the count is right, and they don't flicker when focus/scope changes (roadmap L1 fix).
+    const source = allRelationships ?? relationships;
     const supportMap = new Map<string, Set<string>>();
-    relationships.forEach((relationship) => {
+    source.forEach((relationship) => {
       const matchIds = getDnaSupportMatchIds(
         relationship.metadata as Record<string, unknown> | undefined
       );
@@ -222,7 +229,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
       });
     });
     return supportMap;
-  }, [relationships]);
+  }, [allRelationships, relationships]);
 
   useEffect(() => {
     if (!pendingHomeRecenter || !focusId) return;
