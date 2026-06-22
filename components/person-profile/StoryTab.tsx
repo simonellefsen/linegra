@@ -5,6 +5,7 @@ import { listBiographiesForPerson, upsertPersonBiography } from '../../services/
 import { composePersonBiography } from '../../services/ai';
 import { buildChapterFacts, buildRelationshipMaps, personBiographySignature, groundingSummary } from '../../lib/bookComposer';
 import { BOOK_LANGUAGES, DEFAULT_BOOK_LANGUAGE } from '../../lib/bookI18n';
+import AiTextOps from '../common/AiTextOps';
 
 interface StoryTabProps {
   person: Person;
@@ -236,14 +237,17 @@ const StoryTab: React.FC<StoryTabProps> = ({ person, relationships, connectedPeo
       )}
 
       {editing ? (
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          disabled={saving}
-          autoFocus
-          placeholder="Write the biography…"
-          className="w-full min-h-[320px] resize-y rounded-[40px] border border-slate-200 bg-white p-8 font-serif text-lg leading-relaxed text-slate-800 shadow-sm outline-none focus:border-slate-400 disabled:opacity-60"
-        />
+        <div className="space-y-3">
+          <AiTextOps value={draft} onApply={setDraft} language={language} />
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={saving}
+            autoFocus
+            placeholder="Write the biography…"
+            className="w-full min-h-[320px] resize-y rounded-[40px] border border-slate-200 bg-white p-8 font-serif text-lg leading-relaxed text-slate-800 shadow-sm outline-none focus:border-slate-400 disabled:opacity-60"
+          />
+        </div>
       ) : (
         <div className="prose prose-slate prose-lg max-w-none text-slate-700 leading-relaxed font-serif whitespace-pre-wrap first-letter:text-6xl first-letter:font-bold first-letter:mr-3 first-letter:float-left first-letter:text-slate-900 bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
           {loading

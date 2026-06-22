@@ -6,6 +6,7 @@ import { saveFamilyBook } from '../../services/books';
 import { composePersonBiography, composeFamilyOverview } from '../../services/ai';
 import { moveChapter, removeChapter, createCustomChapter } from '../../lib/bookComposer';
 import BookPrintOverlay from './BookPrintOverlay';
+import AiTextOps from '../common/AiTextOps';
 
 interface BookEditorProps {
   book: FamilyBook;
@@ -245,6 +246,13 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
               placeholder="Chapter text…"
               className="min-h-[180px] w-full resize-y rounded-xl border border-slate-200 p-3 font-serif text-[15px] leading-relaxed text-slate-800 outline-none focus:border-slate-400"
             />
+            <div className="mt-2">
+              <AiTextOps
+                value={chapter.narrative}
+                onApply={(t) => updateChapter(index, { narrative: t })}
+                language={book.options.language}
+              />
+            </div>
           </div>
         ))}
 

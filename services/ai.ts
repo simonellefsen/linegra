@@ -1,4 +1,4 @@
-import { Person, StructuredPlace, DeathCauseCategory, BookChapterFacts, BookStatistics, BookGenerationOptions, BookStyle, BookLength } from "../types";
+import { Person, StructuredPlace, DeathCauseCategory, BookChapterFacts, BookStatistics, BookGenerationOptions, BookStyle, BookLength, BookLanguage } from "../types";
 import { supabase } from "../lib/supabase";
 import { deterministicParsePlace, mergeStructuredPlace } from "../lib/placeParser";
 import { fullName } from "../lib/bookComposer";
@@ -1009,6 +1009,65 @@ const familyOverviewPrompt = (
     '- Introduce the family, where they lived, the span of time covered, and the historical currents those generations would have lived through.',
     '- Set up the individual chapters that follow. Plain prose only; no headings, bullets, or markdown.',
   ].join('\n');
+};
+
+export type AiEditOp = 'rewrite' | 'formal' | 'concise' | 'expand' | 'translate';
+
+const AI_EDIT_INSTRUCTION: Record<AiEditOp, string> = {
+  rewrite: 'Rewrite the passage to flow more naturally while preserving every stated fact. Do not add new personal facts.',
+  formal: 'Rewrite the passage in a more formal, measured register, preserving every stated fact. Do not add new personal facts.',
+  concise: 'Tighten the passage — remove redundancy and wordiness — while preserving every stated fact. Do not add new personal facts.',
+  expand: 'Elaborate the passage with plausible historical context and everyday-life detail, clearly framed as context rather than new personal fact. Keep all existing facts.',
+  translate: 'Translate the passage faithfully into the target language, preserving every fact and all names.',
+};
+
+const editTransformCache = new BoundedCache<string>();
+
+/**
+ * AI-assisted editing: transform a passage of editable narrative (rewrite, restyle, expand, or
+ * translate) WITHOUT regenerating from facts. Operates on whatever text is in the editor — including
+ * a curator's own draft — so it complements M6/M1 AI Rewrite (which recomposes from BookChapterFacts).
+ * Graceful fallback returns the input unchanged when there's no key or on error. Roadmap M10.
+ */
+export const aiAssistedEdit = async (
+  text: string,
+  op: AiEditOp,
+  options: { language: BookLanguage; targetLanguage?: BookLanguage }
+): Promise<string> => {
+  const input = text.trim();
+  if (!input) return text;
+  const target = op === 'translate' ? (options.targetLanguage ?? 'en') : options.language;
+  const cacheKey = `edit|${op}|${target}|${input}`;
+  const cached = editTransformCache.get(cacheKey);
+  if (cached) return cached;
+
+  const fallback = () => input;
+  try {
+    const result = await withRetry(
+      () =>
+        callOpenRouter(
+          [
+            {
+              role: 'system',
+              content:
+                'You are a careful editor for a genealogy product. You adjust the style, length, or language of biographical prose without inventing personal facts.',
+            },
+            {
+              role: 'user',
+              content: `${AI_EDIT_INSTRUCTION[op]}\n\nWrite entirely in ${languageName(target)}.\nReturn plain prose only — no headings, no bullet lists, no markdown, no labels.\n\nPassage:\n${input}`,
+            },
+          ],
+          { temperature: 0.6, max_tokens: 1100, timeoutMs: 30000 }
+        ),
+      1
+    );
+    const cleaned = result && result.trim() ? result.trim() : fallback();
+    editTransformCache.set(cacheKey, cleaned);
+    return cleaned;
+  } catch (error) {
+    console.error('OpenRouter AI-edit Error:', error);
+    return fallback();
+  }
 };
 
 const biographyCache = new BoundedCache<string>();
