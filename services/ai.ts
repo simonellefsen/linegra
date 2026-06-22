@@ -413,38 +413,6 @@ const callOpenRouterRaw = async (
   return response.json() as Promise<ChatResponse>;
 };
 
-export const generateBio = async (person: Person): Promise<string> => {
-  const birthLoc = typeof person.birthPlace === 'string' ? person.birthPlace : person.birthPlace?.fullText;
-  const deathLoc = typeof person.deathPlace === 'string' ? person.deathPlace : person.deathPlace?.fullText;
-  const residenceDeath = typeof person.residenceAtDeath === 'string' ? person.residenceAtDeath : person.residenceAtDeath?.fullText;
-
-  const prompt = `
-    Write a warm, professional, and slightly narrative biography for a family tree record.
-    Name: ${person.firstName} ${person.lastName} ${person.maidenName ? `(née ${person.maidenName})` : ''}
-    Born: ${person.birthDate || 'Unknown date'} in ${birthLoc || 'Unknown location'}
-    Died: ${person.deathDate || 'Present'} ${deathLoc ? `in ${deathLoc}` : ''}
-    ${person.deathCause ? `Cause of Death: ${person.deathCause}` : ''}
-    ${person.deathCauseCategory ? `Death Category: ${person.deathCauseCategory}` : ''}
-    ${residenceDeath ? `Residence at time of death: ${residenceDeath}` : ''}
-    Occupations: ${person.occupations?.join(', ') || 'Unknown'}
-    Existing bio snippet: ${person.bio || 'None'}
-    
-    Please provide a concise 3-paragraph story including historical context of the era they lived in.
-  `;
-
-  try {
-    return await withRetry(() =>
-      callOpenRouter([
-        { role: 'system', content: 'You are a careful historical biographer for a genealogy product.' },
-        { role: 'user', content: prompt }
-      ])
-    ) || "Could not generate biography.";
-  } catch (error) {
-    console.error("OpenRouter Bio Error:", error);
-    return "Error generating AI biography. Please try again later.";
-  }
-};
-
 const placeCache = new BoundedCache<Partial<StructuredPlace>>();
 
 export const parsePlaceString = async (input: string): Promise<Partial<StructuredPlace>> => {
