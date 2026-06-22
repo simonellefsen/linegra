@@ -10,9 +10,10 @@ import {
   planBook,
   buildRelationshipMaps,
   personBiographySignature,
+  shouldReuseBiography,
 } from './bookComposer';
 import { bookStrings } from './bookI18n';
-import { BookChapterFacts, BookGenerationOptions } from '../types';
+import { BookChapterFacts, BookGenerationOptions, PersonBiography } from '../types';
 
 const person = (overrides: Partial<Person> & { id: string }): Person => ({
   treeId: 'tree-1',
@@ -312,5 +313,42 @@ describe('personBiographySignature', () => {
     expect(personBiographySignature(person, facts, { ...opts, language: 'en' })).not.toBe(base);
     expect(personBiographySignature(person, facts, { ...opts, style: 'scholarly' })).not.toBe(base);
     expect(personBiographySignature(person, facts, opts, { mediaCount: 2 })).not.toBe(base);
+  });
+});
+
+describe('shouldReuseBiography', () => {
+  const bio = (overrides: Partial<PersonBiography>): PersonBiography => ({
+    personId: 'p1',
+    language: 'da',
+    narrative: 'A life remembered.',
+    signature: 'sig-1',
+    isManual: false,
+    ...overrides,
+  });
+
+  it('reuses a matching AI biography that has not changed', () => {
+    expect(shouldReuseBiography(bio({ signature: 'sig-1' }), 'sig-1', false)).toBe(true);
+  });
+
+  it('regenerates an AI biography when the signature no longer matches', () => {
+    expect(shouldReuseBiography(bio({ signature: 'sig-1' }), 'sig-2', false)).toBe(false);
+  });
+
+  it('regenerates when forceRegenerate is set (even with a matching signature)', () => {
+    expect(shouldReuseBiography(bio({ signature: 'sig-1' }), 'sig-1', true)).toBe(false);
+  });
+
+  it('does not reuse an empty narrative', () => {
+    expect(shouldReuseBiography(bio({ narrative: '   ', signature: 'sig-1' }), 'sig-1', false)).toBe(false);
+  });
+
+  it('always reuses a manual (human-edited) biography, even when stale', () => {
+    // signature mismatch + forceRegenerate must not destroy curated human work.
+    expect(shouldReuseBiography(bio({ isManual: true, signature: 'old' }), 'new', false)).toBe(true);
+    expect(shouldReuseBiography(bio({ isManual: true, signature: 'old' }), 'new', true)).toBe(true);
+  });
+
+  it('does not treat a manual biography with empty narrative as reusable', () => {
+    expect(shouldReuseBiography(bio({ isManual: true, narrative: '', signature: 'sig-1' }), 'sig-1', false)).toBe(false);
   });
 });

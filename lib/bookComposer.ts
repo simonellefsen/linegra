@@ -15,6 +15,7 @@ import {
   BookChapterFacts,
   BookStatistics,
   BookGenerationOptions,
+  PersonBiography,
 } from '../types';
 import { extractBirthYear } from './lifespan';
 import { bookStrings } from './bookI18n';
@@ -325,6 +326,24 @@ export const personBiographySignature = (
     opts: [options.style, options.length, options.language, options.includeHistoricalContext ?? false],
   };
   return stableHash(JSON.stringify(payload));
+};
+
+/**
+ * Decide whether a stored biography should be reused as-is when (re)composing a book, instead of
+ * regenerating it. A **manual (human-edited)** biography is **always reused** — never silently
+ * overwritten by AI — even when the person's facts have changed or the book is force-regenerated.
+ * Preserving human work is policy: see wiki/decisions/ai-narrative-editing-and-grounding.md. An
+ * AI-authored biography is reused only when its signature still matches the current facts and the
+ * caller isn't forcing a full regeneration. `forceRegenerate` and a stale signature never apply to
+ * a manual bio.
+ */
+export const shouldReuseBiography = (
+  stored: PersonBiography,
+  signature: string,
+  forceRegenerate: boolean
+): boolean => {
+  if (stored.isManual && stored.narrative.trim()) return true;
+  return !forceRegenerate && !!stored.narrative.trim() && stored.signature === signature;
 };
 
 /** Apply the scope filter (all / descendants-of-proband / explicit selection), then order for reading. */

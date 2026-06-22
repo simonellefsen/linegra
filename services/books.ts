@@ -7,7 +7,7 @@
 
 import { Person, BookChapter, BookGenerationOptions, BookStatistics, BookStatus, BookLanguage, FamilyBook, PersonBiography } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { BookPlan, personBiographySignature } from '../lib/bookComposer';
+import { BookPlan, personBiographySignature, shouldReuseBiography } from '../lib/bookComposer';
 import { DEFAULT_BOOK_LANGUAGE } from '../lib/bookI18n';
 import { composeFamilyOverview, composePersonBiography, deterministicFamilyOverview } from './ai';
 
@@ -119,8 +119,10 @@ export const composeBook = async (
     const signature = personBiographySignature(person, facts, options);
     const stored = storedByPerson.get(person.id);
 
-    // Reuse the stored biography when the person hasn't changed since it was written.
-    if (!forceRegenerate && stored && stored.narrative.trim() && stored.signature === signature) {
+    // Reuse the stored biography when it's still valid: a manual (human-edited) biography is
+    // always reused and never auto-regenerated (see wiki/decisions/ai-narrative-editing-and-grounding.md);
+    // an AI biography is reused when its signature still matches the current facts.
+    if (stored && shouldReuseBiography(stored, signature, forceRegenerate)) {
       reusedCount += 1;
       done += 1;
       onProgress?.(done, total);
