@@ -16,6 +16,8 @@ import {
   BookStatistics,
   BookGenerationOptions,
   PersonBiography,
+  PersonEvent,
+  BookChapterEvent,
 } from '../types';
 import { extractBirthYear } from './lifespan';
 import { bookStrings } from './bookI18n';
@@ -270,6 +272,25 @@ const lifespanLabel = (person: Person): string => {
   return '';
 };
 
+/** Compact, prompt-friendly summary of a custom life event: "Residence · Copenhagen · 1880". */
+const eventLabel = (event: PersonEvent): string => {
+  const place = placeToText(event.place);
+  const date = event.date?.trim();
+  const detail = event.description?.trim() || event.employer?.trim();
+  const segments = [event.type || 'Event'];
+  if (detail) segments.push(detail);
+  if (place) segments.push(place);
+  if (date) segments.push(date);
+  return segments.join(' · ');
+};
+
+/** Map a person's custom life events (capped) into compact chapter events for the prompt. */
+const buildChapterEvents = (person: Person): BookChapterEvent[] =>
+  (person.events || [])
+    .filter((e) => (e.type && e.type.trim()) || e.description?.trim() || placeToText(e.place))
+    .slice(0, 8)
+    .map((e) => ({ type: (e.type || 'Event').trim(), label: eventLabel(e) }));
+
 /** Structured facts for one person chapter — the non-AI payload that drives the prompt and fallback. */
 export const buildChapterFacts = (
   person: Person,
@@ -287,6 +308,8 @@ export const buildChapterFacts = (
   parentNames: findParents(person.id, people, maps).map((p) => fullName(p)),
   childNames: findChildren(person.id, people, maps).map((c) => fullName(c)),
   siblingNames: findSiblings(person.id, people, maps).map((s) => fullName(s)),
+  events: buildChapterEvents(person),
+  sourceCount: person.sources?.length ?? 0,
 });
 
 // FNV-1a 32-bit — small, fast, dependency-free stable string hash.

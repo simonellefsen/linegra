@@ -952,6 +952,8 @@ const personBiographyPrompt = (
     facts.partnerNames?.length ? `Partner(s) (unmarried — they lived together as a couple, never married): ${joinList(facts.partnerNames)}` : null,
     facts.childNames?.length ? `Children: ${joinList(facts.childNames)}` : null,
     facts.siblingNames?.length ? `Siblings: ${joinList(facts.siblingNames)}` : null,
+    facts.events?.length ? `Life events: ${facts.events.map((e) => e.label).join('; ')}` : null,
+    facts.sourceCount ? `Evidence: ${facts.sourceCount} sourced record(s) on file` : null,
     person.bio?.trim() ? `Existing notes: ${person.bio.trim()}` : null,
   ].filter(Boolean).map((line) => `- ${line}`).join('\n');
 
@@ -1017,7 +1019,7 @@ export const composePersonBiography = async (
   facts: BookChapterFacts,
   options: BookGenerationOptions
 ): Promise<string> => {
-  const cacheKey = `bio|${person.id}|${options.style}|${options.length}|${options.language}|${facts.lifespanLabel ?? ''}|${(facts.occupations || []).join(',')}|${(facts.spouseNames || []).join(',')}|${(facts.partnerNames || []).join(',')}|${inferLivingStatus(person) ? 'living' : 'deceased'}`;
+  const cacheKey = `bio|${person.id}|${options.style}|${options.length}|${options.language}|${facts.lifespanLabel ?? ''}|${(facts.occupations || []).join(',')}|${(facts.spouseNames || []).join(',')}|${(facts.partnerNames || []).join(',')}|${(facts.events || []).map((e) => e.label).join(';')}|${facts.sourceCount ?? 0}|${inferLivingStatus(person) ? 'living' : 'deceased'}`;
   const cached = biographyCache.get(cacheKey);
   if (cached) return cached;
 

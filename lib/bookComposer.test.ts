@@ -16,7 +16,7 @@ import {
   createCustomChapter,
 } from './bookComposer';
 import { bookStrings } from './bookI18n';
-import { BookChapterFacts, BookChapter, BookGenerationOptions, PersonBiography } from '../types';
+import { BookChapterFacts, BookChapter, BookGenerationOptions, PersonBiography, PersonEvent, Source } from '../types';
 
 const person = (overrides: Partial<Person> & { id: string }): Person => ({
   treeId: 'tree-1',
@@ -212,6 +212,30 @@ describe('buildChapterFacts', () => {
 
     expect(facts.spouseNames).toEqual(['Wife']);
     expect(facts.partnerNames).toEqual(['Partner']);
+  });
+
+  it('includes compact life events and the source count (M7 richer inputs)', () => {
+    const events: PersonEvent[] = [
+      { id: 'e1', type: 'Residence', date: '1880', place: 'Copenhagen' },
+      { id: 'e2', type: 'Military', description: 'Hussar, 1870–1872' },
+      { id: 'e3', type: '   ', description: '  ' }, // no usable content — dropped
+    ];
+    const sources = [{ id: 's1' }, { id: 's2' }] as unknown as Source[];
+    const me = person({ id: 'me', firstName: 'Self', events, sources });
+    const facts = buildChapterFacts(me, [me], buildRelationshipMaps([]));
+
+    expect(facts.events).toEqual([
+      { type: 'Residence', label: 'Residence · Copenhagen · 1880' },
+      { type: 'Military', label: 'Military · Hussar, 1870–1872' },
+    ]);
+    expect(facts.sourceCount).toBe(2);
+  });
+
+  it('has empty events and zero sources when none are recorded', () => {
+    const me = person({ id: 'me', firstName: 'Self' });
+    const facts = buildChapterFacts(me, [me], buildRelationshipMaps([]));
+    expect(facts.events).toEqual([]);
+    expect(facts.sourceCount).toBe(0);
   });
 });
 

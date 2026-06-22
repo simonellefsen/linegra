@@ -357,6 +357,12 @@ export interface BookGenerationOptions {
   includeHistoricalContext?: boolean;
 }
 
+/** A compact life event for a chapter (residence, military service, education, occupation milestone…). */
+export interface BookChapterEvent {
+  type: string;          // Residence, Military, Education, Occupation, …
+  label: string;         // human-readable summary, e.g. "Residence · Copenhagen · 1880"
+}
+
 /** Structured, non-AI facts assembled for a chapter (so text can be regenerated without re-planning). */
 export interface BookChapterFacts {
   birthYear?: number | null;
@@ -370,6 +376,8 @@ export interface BookChapterFacts {
   parentNames?: string[];
   childNames?: string[];
   siblingNames?: string[];
+  events?: BookChapterEvent[]; // key life events beyond birth/death (M7 richer inputs)
+  sourceCount?: number;        // how many evidence sources are on file for this person
 }
 
 export interface BookChapter {
