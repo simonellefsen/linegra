@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Eye, Trash2, Sparkles, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { BookOpen, Eye, Trash2, Sparkles, RefreshCw, AlertCircle, CheckCircle2, Pencil } from 'lucide-react';
 import { Person, Relationship, BookGenerationOptions, BookScope, BookStyle, BookLength, BookLanguage, FamilyBook } from '../../types';
 import { planBook, extractYear } from '../../lib/bookComposer';
 import { BOOK_LANGUAGES, DEFAULT_BOOK_LANGUAGE } from '../../lib/bookI18n';
 import { composeBook, saveFamilyBook, listFamilyBooks, deleteFamilyBook } from '../../services/books';
 import { loadArchiveData } from '../../services/archive';
 import BookPrintOverlay from '../book/BookPrintOverlay';
+import BookEditor from '../book/BookEditor';
 
 interface BookComposerPanelProps {
   treeId: string | null;
@@ -70,6 +71,7 @@ const BookComposerPanel: React.FC<BookComposerPanelProps> = ({
   const [booksLoading, setBooksLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [previewBook, setPreviewBook] = useState<FamilyBook | null>(null);
+  const [editingBook, setEditingBook] = useState<FamilyBook | null>(null);
 
   // The admin panels share App's `allPeople`, which is only populated once the tree archive is
   // loaded (e.g. via Interactive Tree). Rather than require that, fetch the archive on demand so
@@ -496,6 +498,13 @@ const BookComposerPanel: React.FC<BookComposerPanelProps> = ({
                 <div className="flex shrink-0 gap-2">
                   <button
                     type="button"
+                    onClick={() => setEditingBook(book)}
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-700 hover:bg-slate-50"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setPreviewBook(book)}
                     className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-slate-800"
                   >
@@ -517,6 +526,14 @@ const BookComposerPanel: React.FC<BookComposerPanelProps> = ({
       </div>
 
       {previewBook ? <BookPrintOverlay book={previewBook} onClose={() => setPreviewBook(null)} /> : null}
+      {editingBook ? (
+        <BookEditor
+          book={editingBook}
+          actor={actor}
+          onClose={() => setEditingBook(null)}
+          onSaved={loadBooks}
+        />
+      ) : null}
     </div>
   );
 };

@@ -11,9 +11,12 @@ import {
   buildRelationshipMaps,
   personBiographySignature,
   shouldReuseBiography,
+  moveChapter,
+  removeChapter,
+  createCustomChapter,
 } from './bookComposer';
 import { bookStrings } from './bookI18n';
-import { BookChapterFacts, BookGenerationOptions, PersonBiography } from '../types';
+import { BookChapterFacts, BookChapter, BookGenerationOptions, PersonBiography } from '../types';
 
 const person = (overrides: Partial<Person> & { id: string }): Person => ({
   treeId: 'tree-1',
@@ -350,5 +353,36 @@ describe('shouldReuseBiography', () => {
 
   it('does not treat a manual biography with empty narrative as reusable', () => {
     expect(shouldReuseBiography(bio({ isManual: true, narrative: '', signature: 'sig-1' }), 'sig-1', false)).toBe(false);
+  });
+});
+
+describe('chapter editing helpers', () => {
+  const ch = (title: string): BookChapter => ({ kind: 'person', title, narrative: '' });
+  const list = () => [ch('A'), ch('B'), ch('C')];
+
+  it('moveChapter swaps a chapter with its neighbour', () => {
+    expect(moveChapter(list(), 0, 1).map((c) => c.title)).toEqual(['B', 'A', 'C']);
+    expect(moveChapter(list(), 2, -1).map((c) => c.title)).toEqual(['A', 'C', 'B']);
+  });
+
+  it('moveChapter is a no-op at the array edges (and returns the same reference)', () => {
+    const original = list();
+    expect(moveChapter(original, 0, -1)).toBe(original);
+    expect(moveChapter(original, 2, 1)).toBe(original);
+    expect(moveChapter(original, 5, -1)).toBe(original);
+  });
+
+  it('removeChapter drops the chapter at the index', () => {
+    expect(removeChapter(list(), 1).map((c) => c.title)).toEqual(['A', 'C']);
+  });
+
+  it('removeChapter is a no-op for an out-of-range index', () => {
+    const original = list();
+    expect(removeChapter(original, 9)).toBe(original);
+  });
+
+  it('createCustomChapter makes an empty custom chapter', () => {
+    expect(createCustomChapter('Intro')).toEqual({ kind: 'custom', title: 'Intro', narrative: '' });
+    expect(createCustomChapter().kind).toBe('custom');
   });
 });

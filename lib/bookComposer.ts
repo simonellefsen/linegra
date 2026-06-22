@@ -346,6 +346,38 @@ export const shouldReuseBiography = (
   return !forceRegenerate && !!stored.narrative.trim() && stored.signature === signature;
 };
 
+/**
+ * Move the chapter at `index` one slot in the given direction (-1 = up, +1 = down). No-op (returns
+ * the same array reference) at the array edges or for an out-of-range index. Used by the book
+ * editor's reorder controls; pure so it is unit-testable.
+ */
+export const moveChapter = (
+  chapters: BookChapter[],
+  index: number,
+  direction: -1 | 1
+): BookChapter[] => {
+  const target = index + direction;
+  if (index < 0 || index >= chapters.length || target < 0 || target >= chapters.length) {
+    return chapters;
+  }
+  const next = chapters.slice();
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+};
+
+/** Remove the chapter at `index`. No-op (same reference) for an out-of-range index. */
+export const removeChapter = (chapters: BookChapter[], index: number): BookChapter[] => {
+  if (index < 0 || index >= chapters.length) return chapters;
+  return chapters.filter((_, i) => i !== index);
+};
+
+/** A new user-authored chapter (introduction, photo essay, source appendix, …). */
+export const createCustomChapter = (title = 'New Chapter'): BookChapter => ({
+  kind: 'custom',
+  title,
+  narrative: '',
+});
+
 /** Apply the scope filter (all / descendants-of-proband / explicit selection), then order for reading. */
 export const selectPeopleForBook = (
   people: Person[],

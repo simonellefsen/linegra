@@ -18,8 +18,6 @@ const formatDate = (iso?: string): string => {
  * "Contents", "N lives", footer) is localized from the book's `options.language`.
  */
 const BookDocument: React.FC<{ book: FamilyBook }> = ({ book }) => {
-  const overview = book.chapters.find((c) => c.kind === 'overview');
-  const personChapters = book.chapters.filter((c) => c.kind === 'person');
   const strings = bookStrings(book.options.language ?? DEFAULT_BOOK_LANGUAGE);
 
   return (
@@ -47,15 +45,10 @@ const BookDocument: React.FC<{ book: FamilyBook }> = ({ book }) => {
       <section className="book-page-break px-12 py-12">
         <h2 className="mb-6 text-[11px] font-bold uppercase tracking-[0.3em] text-slate-400">{strings.contents}</h2>
         <ol className="space-y-2.5 font-serif text-slate-700">
-          {overview ? (
-            <li className="flex items-baseline justify-between gap-4">
-              <span className="italic">{overview.title}</span>
-            </li>
-          ) : null}
-          {personChapters.map((chapter, index) => (
-            <li key={chapter.personId ?? index} className="flex items-baseline justify-between gap-4">
-              <span>{chapter.title}</span>
-              {chapter.facts?.lifespanLabel ? (
+          {book.chapters.map((chapter, index) => (
+            <li key={chapter.personId ?? `${chapter.kind}-${index}`} className="flex items-baseline justify-between gap-4">
+              <span className={chapter.kind === 'overview' ? 'italic' : ''}>{chapter.title}</span>
+              {chapter.kind === 'person' && chapter.facts?.lifespanLabel ? (
                 <span className="shrink-0 text-sm text-slate-400">{chapter.facts.lifespanLabel}</span>
               ) : null}
             </li>
@@ -63,32 +56,28 @@ const BookDocument: React.FC<{ book: FamilyBook }> = ({ book }) => {
         </ol>
       </section>
 
-      {/* Overview chapter */}
-      {overview ? (
-        <section className="book-page-break px-12 py-12">
-          <h2 className="mb-8 font-serif text-3xl font-bold text-slate-900">{overview.title}</h2>
-          <p className="whitespace-pre-wrap font-serif text-[17px] leading-[1.85] text-slate-800">
-            {overview.narrative}
-          </p>
-        </section>
-      ) : null}
-
-      {/* Person chapters */}
-      {personChapters.map((chapter, index) => (
-        <section key={chapter.personId ?? index} className="book-page-break px-12 py-12">
-          <header className="mb-8 border-b border-slate-200 pb-4">
-            <h2 className="font-serif text-3xl font-bold text-slate-900">{chapter.title}</h2>
-            {(chapter.facts?.lifespanLabel || chapter.facts?.birthPlace) ? (
-              <p className="mt-2 font-serif italic text-slate-500">
-                {[chapter.facts?.lifespanLabel, chapter.facts?.birthPlace].filter(Boolean).join(' · ')}
-              </p>
-            ) : null}
-          </header>
-          <p className="whitespace-pre-wrap font-serif text-[17px] leading-[1.85] text-slate-800">
-            {chapter.narrative}
-          </p>
-        </section>
-      ))}
+      {/* Chapters (overview / person / custom), rendered in editable order */}
+      {book.chapters.map((chapter, index) => {
+        const isOverview = chapter.kind === 'overview';
+        const factBits = [chapter.facts?.lifespanLabel, chapter.facts?.birthPlace].filter(Boolean) as string[];
+        return (
+          <section key={chapter.personId ?? `${chapter.kind}-${index}`} className="book-page-break px-12 py-12">
+            {isOverview ? (
+              <h2 className="mb-8 font-serif text-3xl font-bold text-slate-900">{chapter.title}</h2>
+            ) : (
+              <header className="mb-8 border-b border-slate-200 pb-4">
+                <h2 className="font-serif text-3xl font-bold text-slate-900">{chapter.title}</h2>
+                {chapter.kind === 'person' && factBits.length > 0 ? (
+                  <p className="mt-2 font-serif italic text-slate-500">{factBits.join(' · ')}</p>
+                ) : null}
+              </header>
+            )}
+            <p className="whitespace-pre-wrap font-serif text-[17px] leading-[1.85] text-slate-800">
+              {chapter.narrative}
+            </p>
+          </section>
+        );
+      })}
 
       <footer className="px-12 py-10 text-center text-xs text-slate-300">
         {strings.generatedBy} · {formatDate(book.createdAt)}

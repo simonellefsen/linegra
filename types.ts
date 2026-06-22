@@ -343,7 +343,7 @@ export interface FamilyTreeSummary extends FamilyTree {
 export type BookScope = 'all' | 'descendants' | 'selected';
 export type BookStyle = 'narrative' | 'concise' | 'scholarly';
 export type BookLength = 'short' | 'medium' | 'long';
-export type BookChapterKind = 'overview' | 'person';
+export type BookChapterKind = 'overview' | 'person' | 'custom';
 export type BookStatus = 'draft' | 'complete';
 export type BookLanguage = 'da' | 'sv' | 'no' | 'en';
 
