@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Person, Relationship } from '../../types';
 import { runDataQualityChecks, DataQualityIssue, DataQualityIssueType, DataQualitySeverity } from '../../lib/dataQuality';
+import RelationshipCalculator from './RelationshipCalculator';
 
 interface AdminResearchPanelProps {
   treeId: string | null;
@@ -104,6 +105,8 @@ const AdminResearchPanel: React.FC<AdminResearchPanelProps> = ({ treeId, people,
           </>
         )}
       </div>
+
+      <RelationshipCalculator people={people} relationships={relationships} onOpenPerson={onOpenPerson} />
     </div>
   );
 };
