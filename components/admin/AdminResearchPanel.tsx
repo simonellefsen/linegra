@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Person, Relationship } from '../../types';
+import { loadArchiveData } from '../../services/archive';
 import { runDataQualityChecks, DataQualityIssue, DataQualityIssueType, DataQualitySeverity } from '../../lib/dataQuality';
 import RelationshipCalculator from './RelationshipCalculator';
 
@@ -32,7 +33,31 @@ const SEVERITY_BADGE: Record<DataQualitySeverity, string> = {
  * duplicates). Read-only for now — dismiss/convert-to-note is a follow-up. Roadmap item O.
  */
 const AdminResearchPanel: React.FC<AdminResearchPanelProps> = ({ treeId, people, relationships, onOpenPerson }) => {
-  const issues = useMemo(() => runDataQualityChecks(people, relationships), [people, relationships]);
+  // The admin panels share App's allPeople, which is only populated once the tree archive is loaded
+  // (e.g. via Interactive Tree). Fetch the archive on demand so this tab works straight from
+  // Administrator → Research — otherwise the selects are empty and the checks scan nothing. (Same
+  // pattern as BookComposerPanel; roadmap J.)
+  const [archivePeople, setArchivePeople] = useState<Person[]>([]);
+  const [archiveRelationships, setArchiveRelationships] = useState<Relationship[]>([]);
+  useEffect(() => {
+    if (!treeId || people.length > 0) return;
+    let cancelled = false;
+    loadArchiveData(treeId)
+      .then((archive) => {
+        if (cancelled) return;
+        setArchivePeople(archive.people);
+        setArchiveRelationships(archive.relationships);
+      })
+      .catch((err) => console.error('Failed to load tree archive for research panel', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [treeId, people.length]);
+
+  const effectivePeople = people.length > 0 ? people : archivePeople;
+  const effectiveRelationships = relationships.length > 0 ? relationships : archiveRelationships;
+
+  const issues = useMemo(() => runDataQualityChecks(effectivePeople, effectiveRelationships), [effectivePeople, effectiveRelationships]);
   const errors = issues.filter((i) => i.severity === 'error');
   const warnings = issues.filter((i) => i.severity === 'warning');
 
@@ -86,7 +111,7 @@ const AdminResearchPanel: React.FC<AdminResearchPanelProps> = ({ treeId, people,
         {issues.length === 0 ? (
           <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-6 text-emerald-700">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
-            <span className="text-sm font-semibold">No issues detected across {people.length} people.</span>
+            <span className="text-sm font-semibold">No issues detected across {effectivePeople.length} people.</span>
           </div>
         ) : (
           <>
@@ -106,7 +131,7 @@ const AdminResearchPanel: React.FC<AdminResearchPanelProps> = ({ treeId, people,
         )}
       </div>
 
-      <RelationshipCalculator people={people} relationships={relationships} onOpenPerson={onOpenPerson} />
+      <RelationshipCalculator people={effectivePeople} relationships={effectiveRelationships} onOpenPerson={onOpenPerson} />
     </div>
   );
 };
