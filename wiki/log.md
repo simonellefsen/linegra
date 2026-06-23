@@ -6,6 +6,112 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+> **Backfill note (reconstructed 2026-06-23):** the 2026-06-22/23 entries below were written after
+> the fact from `git log` (commits `ae0299d`→`a7f9359`, authored in a Claude Fable 5 session) — that
+> work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
+> backfill.
+
+## 2026-06-23 — DNA admin: "Resolve all matches" in one action
+
+The DNA admin panel ([../components/AdminDnaPanel.tsx](../components/AdminDnaPanel.tsx)) gained a
+**Resolve all matches** button: `handleResolveAllLineages` runs sequentially over every loaded
+shared-autosomal match for the selected person — live progress, per-match failure tolerance, a
+summary — so the `dna_support_by_person` annotations (and the pedigree DNA badges) repopulate without
+resolving one match at a time. Reuses `resolveSharedMatchLineage`/`resolveSharedTestLineage` and fires
+the same `dna-lineage-resolved` event; per-match buttons disable while a batch runs. (commit `a7f9359`)
+
+---
+
+## 2026-06-22 — DNA-aware pedigree overlay + badge scope fix (roadmap L1)
+
+DNA-confirmed lineages are now visible directly on the pedigree tree, and the DNA badges stopped
+disappearing on click.
+
+- **Emerald DNA edges (L1).** A child's incoming edge traces emerald (not the lineage pastel) when
+  the link is DNA-backed (`dnaSupportByPersonId`), with a small legend (DNA-backed / Lineage)
+  ([../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx)).
+  Complements the per-person DNA count badges with an edge-level signal. (commit `2460d54`)
+- **Badge scope + flicker fix.** `dnaSupportByPersonId` was built from `pedigreeScope.relationships`
+  (the visible subset), so badges were incomplete and vanished when clicking a person (re-centering
+  recomputes the scope). `PedigreeTree` now takes an `allRelationships` prop and builds the support
+  map from **all** tree relationships (App passes `treeRelationships`) — complete counts, stable
+  across focus changes. (commit `5168da9`)
+- **Still resolution-gated:** badges only trace matches whose lineages have been resolved (the
+  `dna_support_by_person` annotations written by `resolveSharedMatchLineage`); unbadged paths need
+  resolving in the DNA admin panel (now one click — see 06-23 above). Remaining L1: encode
+  `RelationshipConfidence` via edge style + surface shared-cM (needs a `dna_matches` join).
+
+---
+
+## 2026-06-22 — K1: DNA segment-clustering engine (triangulation)
+
+New pure [../lib/dnaClustering.ts](../lib/dnaClustering.ts) (`segmentsOverlap` +
+`clusterSharedSegments`): groups shared-segment matches by mutual genomic overlap via **union-find**,
+with a `minCentimorgans` filter; returns connected-component clusters (largest first, singletons
+omitted). No I/O — **11 tests** cover overlap rules, transitive clustering, separate clusters, the cM
+threshold, and sort order. Foundation for K1 (Leeds-style clustering) + K5 (segment painter). (commit
+`7cd7ca3`)
+
+- **Not yet wired to any UI** (the "cluster matches" view in the DNA panel is the next slice), and a
+  **correctness caveat** applies: overlapping the *kit owner's* region isn't true triangulation —
+  two matches can overlap the same region on opposite parental chromosomes (false cluster). Fold in
+  in-common-with / parental side before presenting clusters as confirmed shared-ancestor groups. (See
+  [roadmap.md](roadmap.md) K1 caveat.)
+
+---
+
+## 2026-06-22 — AI books & biographies become editable (roadmap M arc)
+
+The books pillar went from **write-once / AI-only** to **fully human-editable + grounded**, in one
+arc. Foundation policy: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narrative-editing-and-grounding.md)
+(AI output is always a first draft a human owns and can edit; grounded claims are distinguishable
+from interpolation).
+
+- **M6 — manual biography editing.** StoryTab
+  ([../components/person-profile/StoryTab.tsx](../components/person-profile/StoryTab.tsx)) gained an
+  edit mode (textarea + Save/Cancel) persisting with `is_manual=true`, a **Curated / AI draft** tag,
+  and a confirm-before-overwrite when AI-rewriting a curated bio. `composeBook` no longer silently
+  regenerates manual bios — new `shouldReuseBiography()` (6 tests) preserves human text verbatim even
+  when stale/force-regenerated. (commit `ae0299d`)
+- **M1 — in-UI book editor.** New `BookEditor` overlay
+  ([../components/book/BookEditor.tsx](../components/book/BookEditor.tsx)): edit book title/subtitle +
+  each chapter's title/narrative, reorder chapters, add/remove **custom** free-text chapters, preview,
+  save via `saveFamilyBook`. `BookChapterKind` gained `'custom'`; pure `moveChapter`/`removeChapter`/
+  `createCustomChapter` helpers (5 tests) in [../lib/bookComposer.ts](../lib/bookComposer.ts);
+  `BookDocument` renders chapters in editable array order. (commit `a0512c1`)
+- **M2 — single-chapter regeneration.** Each overview/person chapter in the editor has a Regenerate
+  button (overview → `composeFamilyOverview`, person → `composePersonBiography`, resolving the Person
+  from the tree), leaving the rest intact; custom chapters aren't regenerable. (commit `e389a1f`)
+- **M7 — richer biography inputs.** `BookChapterFacts` now carries compact **life events** (residence/
+  military/education/occupation, capped 8) + a **source count**; `buildChapterFacts` maps
+  `person.events` and feeds them into the prompt and the composition cache key (events change →
+  bio regenerates). (commit `921deb1`)
+- **M11 — fact-grounding.** New `groundingSummary(facts)` (3 tests) renders a "Grounded in: …" footer
+  on AI-draft bios (Story tab) and person chapters (printed book); curated bios omit it. The prompt
+  now instructs the model to state documented facts plainly and **hedge** inferred/contextual material
+  ("would have", "likely"). (commit `c6a69d6`)
+- **M10 — AI-assisted text ops.** New `aiAssistedEdit` ([../services/ai.ts](../services/ai.ts))
+  transforms the *current editor text* in place (rewrite / formal / concise / expand / translate) —
+  distinct from regenerate-from-facts — surfaced via a shared `components/common/AiTextOps` toolbar
+  reused by the bio editor and each book chapter; graceful no-key fallback returns the text unchanged.
+  (commit `0ca0a3d`)
+- **M12 — housekeeping.** Removed the unused legacy `generateBio` (superseded by
+  `composePersonBiography`). (commit `dd39977`)
+- Remaining in M: M3 (richer book structure — `custom` kind landed), M4 (versioning), M5 (public
+  viewer, gated by roadmap A), M8 (per-bio style controls), M9 (streaming).
+
+---
+
+## 2026-06-22 — Husky git hooks (version-controlled build gate)
+
+Broken code can no longer be committed or pushed: `.husky/pre-commit` runs lint + typecheck (fast),
+`.husky/pre-push` runs the full `npm run build` gate (lint + typecheck + tests + vite build). husky is
+a devDependency with a `prepare` script so hooks auto-install on `npm install`. Bypassable locally
+with `--no-verify`; server-side enforcement (GitHub Actions + branch protection) is the follow-up.
+(commit `00b89bd`)
+
+---
+
 ## 2026-06-21 — Structured places lost on reload (Residence at Death + event places)
 
 Manually-entered location details (the PlaceInput "Details" fields) vanished after reloading the
