@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type AdminSection = 'database' | 'trees' | 'gedcom' | 'dna' | 'books';
+export type AdminSection = 'database' | 'trees' | 'gedcom' | 'dna' | 'books' | 'research';
 
 interface AdminSectionTabsProps {
   section: AdminSection;
@@ -13,6 +13,7 @@ const TABS: Array<{ id: AdminSection; label: string }> = [
   { id: 'gedcom', label: 'GEDCOM' },
   { id: 'dna', label: 'DNA' },
   { id: 'books', label: 'Books' },
+  { id: 'research', label: 'Research' },
 ];
 
 const AdminSectionTabs: React.FC<AdminSectionTabsProps> = ({ section, onChange }) => (

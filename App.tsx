@@ -14,6 +14,7 @@ import AdminDnaPanel from './components/AdminDnaPanel';
 import AdminSectionTabs, { AdminSection } from './components/admin/AdminSectionTabs';
 import AdminDatabasePanel from './components/admin/AdminDatabasePanel';
 import AdminGedcomPanel from './components/admin/AdminGedcomPanel';
+import AdminResearchPanel from './components/admin/AdminResearchPanel';
 import BookComposerPanel from './components/admin/BookComposerPanel';
 import AdminNukeModal from './components/admin/AdminNukeModal';
 import { getAvatarForPerson } from './lib/avatar';
@@ -1362,6 +1363,14 @@ useEffect(() => {
                     relationships={treeRelationships}
                     activeTreeName={activeTree?.name}
                     actor={{ id: currentUser?.id, name: currentUser?.name }}
+                  />
+                )}
+                {adminSection === 'research' && (
+                  <AdminResearchPanel
+                    treeId={activeTree?.id || null}
+                    people={treePeople}
+                    relationships={treeRelationships}
+                    onOpenPerson={handleAdminOpenPerson}
                   />
                 )}
               </div>
