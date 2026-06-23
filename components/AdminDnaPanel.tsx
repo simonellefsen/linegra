@@ -100,6 +100,64 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
     loadMatches();
   }, [treeId, selectedPersonId, loadMatches]);
 
+  const [resolvingAll, setResolvingAll] = useState(false);
+  const [resolveAllProgress, setResolveAllProgress] = useState<{ done: number; total: number }>({
+    done: 0,
+    total: 0,
+  });
+
+  // Resolve every loaded shared-autosomal match for the selected person, one at a time, so the
+  // dna_support_by_person annotations (and thus the pedigree DNA badges) repopulate in one action.
+  // Continues past individual failures and reports a summary.
+  const handleResolveAllLineages = async () => {
+    if (!treeId || !selectedPersonId || resolvingAll || matches.length === 0) return;
+    setResolvingAll(true);
+    setError(null);
+    setResolveAllProgress({ done: 0, total: matches.length });
+    let resolved = 0;
+    let failed = 0;
+    try {
+      for (const match of matches) {
+        try {
+          const resolution =
+            match.source === 'dna_match'
+              ? await resolveSharedMatchLineage(treeId, selectedPersonId, match.dnaMatchId || match.id, actor)
+              : await resolveSharedTestLineage(
+                  treeId,
+                  selectedPersonId,
+                  match.dnaTestId || match.id.replace(/^test:/, ''),
+                  match.counterpartPersonId,
+                  actor
+                );
+          setResolutionByMatchId((prev) => ({ ...prev, [match.id]: resolution }));
+          window.dispatchEvent(
+            new CustomEvent('linegra:dna-lineage-resolved', {
+              detail: {
+                dnaTestId: match.dnaTestId || null,
+                pathPersonIds: resolution.pathPersonIds,
+                pathRelationshipIds: resolution.pathRelationshipIds,
+              },
+            })
+          );
+          resolved += 1;
+        } catch {
+          failed += 1;
+        }
+        setResolveAllProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+      }
+      await loadMatches();
+      if (failed > 0) {
+        setError(
+          `Resolved ${resolved} of ${matches.length} match${matches.length === 1 ? '' : 'es'}; ${failed} could not be linked.`
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not resolve all lineages.');
+    } finally {
+      setResolvingAll(false);
+    }
+  };
+
   const handleResolveLineage = async (matchId: string) => {
     if (!treeId || !selectedPersonId || resolvingMatchId) return;
     setResolvingMatchId(matchId);
@@ -208,9 +266,25 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
               </div>
             </div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Shared autosomal matches</p>
-                {loadingMatches && <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />}
+                <div className="flex items-center gap-3">
+                  {resolvingAll && (
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Resolving {resolveAllProgress.done}/{resolveAllProgress.total}…
+                    </span>
+                  )}
+                  {loadingMatches && <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />}
+                  <button
+                    type="button"
+                    onClick={handleResolveAllLineages}
+                    disabled={resolvingAll || matches.length === 0 || !!resolvingMatchId}
+                    className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {resolvingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    {resolvingAll ? 'Resolving…' : 'Resolve all matches'}
+                  </button>
+                </div>
               </div>
               {!selectedPersonId ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
@@ -275,7 +349,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
                               e.stopPropagation();
                               handleResolveLineage(match.id);
                             }}
-                            disabled={resolvingMatchId === match.id}
+                            disabled={resolvingMatchId === match.id || resolvingAll}
                             className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] ${
                               resolvingMatchId === match.id
                                 ? 'bg-slate-100 text-slate-400'
