@@ -32,3 +32,6 @@ yarn-error.log*
 
 # DNA csv
 *.csv
+
+# Reference specs & generated book exports (large binaries)
+*.pdf

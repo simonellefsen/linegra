@@ -6,9 +6,12 @@ picked up, move it to [log.md](log.md) on completion.
 
 ## Status snapshot
 
-Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, and OpenRouter AI
-utilities are live and working. The app is single-super-admin today. No tests exist in-repo
-(`tsc --noEmit` + eslint are the only automated gates).
+Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
+**AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
+live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
+Automated gates: **eslint + `tsc --noEmit` + Vitest (143 tests)**, wired into `npm run build` and
+into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
+git/code 2026-06-23.
 
 ## Candidate next work
 
@@ -250,6 +253,65 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
 - **Sequencing:** M6 + M1 (editing foundation, parallel) → M2 → M7 → M11 → M10 → M3/M4/M5. M9 runs
   in parallel; M12 anytime.
 
+### N. Server-side AI proxy + key protection + cost guardrails (SECURITY — flag before public scale)
+Today every OpenRouter call runs **client-side** with `Authorization: Bearer ${apiKey}`
+([../services/ai.ts](../services/ai.ts) ~L359/L395) and there is **no edge/serverless layer**
+(`supabase/functions` is absent). The key — whether from env or the admin AI settings table — reaches
+the browser, so anyone who can read the settings or sniff network traffic can exfiltrate it and spend
+against the account. There's also no per-tree usage metering or rate limit.
+- Move AI calls behind a **Supabase Edge Function** (or similar) that holds the key server-side; the
+  client sends prompts, never the key. Ties to the `admin_ai_settings` model already in the schema.
+- Add usage logging + a per-tree/day cap; surface spend in the admin Database panel.
+- Pairs with **K7** (raw-DNA never on the public path) as the security track. Until done, treat the
+  configured key as burnable and scope/rotate it.
+
+### O. Data-quality / consistency engine ("Research issues")
+A genealogy-native validation pass that surfaces likely errors as actionable items. The schema
+already has `note_type = 'Discrepancy'`/`'To-do'` and `lib/lifespan.ts` (130-yr cap) to build on.
+- Checks: parent younger than child / child born before parent; death before birth; burial before
+  death; child born >~10 mo after father's death or after mother's death; marriage/parenthood under a
+  plausible age; impossible lifespans; **duplicate-person detection** (same name + overlapping dates).
+- Surface as a tree-level **"Research issues"** panel and per-person badges; let an admin dismiss or
+  convert an issue into a `Discrepancy` note. Pure, unit-testable in a `lib/dataQuality.ts`.
+- Optional AI layer: suggest the *next record to find* given what vitals/sources are present (pairs
+  with P/§ research log).
+
+### P. Relationship calculator + path finder
+"How is A related to B?" and "show the path between A and B" across the tree. Reuse the lineage
+resolver + [../lib/pedigreeScope.ts](../lib/pedigreeScope.ts); render cousin-degree/removed labels
+(the cM-range tables in [sources/dna-cm-ranges.md](sources/dna-cm-ranges.md) already encode the
+relationship vocabulary). Feeds L (tree navigation), K2 (MRCA), and the DNA verdicts.
+
+### Q. Media intelligence (faces, tagging, OCR, per-person gallery)
+The media store + AI vision are both live (`transcribeRecordImage`, `media_person_links` with
+`event_label`). Build on them: tag people in a photo (write `media_person_links`), AI auto-caption,
+optional face-grouping, and a **per-person photo timeline/gallery**. Document images can reuse the
+transcription pipeline for searchable OCR text. New runtime deps (a face model) must be flagged.
+
+### R. Patronymic & Nordic naming intelligence (folds toward I)
+Danish/Swedish/Norwegian records are patronymic-heavy. Add: derive/validate `-sen/-son/-datter/-dotter`
+from a parent's given name, detect soldier/farm names, and normalize name variants for search and
+duplicate detection (O). Complements the historical-date work in **I** and the parish-record
+transcription already shipped. Keep raw name text verbatim (same fidelity rule as dates/places).
+
+### S. Full UI internationalization + public share surface
+Books are i18n'd (`lib/bookI18n.ts`) but the **app chrome is English-only**, while the product is
+public-first. Localize the whole UI (da default + sv/no/en, reuse the `bookI18n` pattern), add
+per-person/tree **OpenGraph share cards** and a sitemap for public trees (SEO). Pairs with M5 (public
+book viewer) and A (multi-user).
+
+### T. Data portability, backup & admin undo
+`audit_logs` already records every mutation with actor + details. Leverage it: a one-click
+**revert/undo** for recent admin actions, scheduled full-tree **JSON/GEDCOM-7 backup**, and a GDPR
+"export everything for person/tree" + hard-delete path (ties to K7's deletable-on-demand rule).
+
+## Maintenance note (2026-06-23)
+The 2026-06-22/23 work (M-series editing arc, L1, K1, husky hooks, DNA panel fixes) is **committed and
+reflected here, but `log.md` was not updated for it** — the living log's newest entry is 2026-06-21,
+so it's now behind the code. Backfill `log.md` from `git log` (commits `ae0299d`→`a7f9359`) to restore
+the "newest at top" history. Also: two untracked artifacts sit in the working tree
+(`FamilySearchGEDCOMv7.pdf`, a generated `… Hass-Jensen.pdf`) — gitignore them.
+
 ## Known stale references
 - ✅ Resolved 2026-06-20: GEDCOM *parsing* now lives in `lib/gedcomParser.ts` (extracted from
   `ImportExport.tsx`); persistence is still `importGedcomToSupabase` in `services/archive.ts`,
@@ -257,9 +319,21 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
   `AGENT.md` for any remaining `lib/gedcom/*` mentions.
 
 ## How to pick the next item
-Default recommendation: **A (multi-user auth)** for product leverage — it unblocks M5 (public book
-viewer) and live verification of the book features (the local admin can't read saved books today; see
-the RLS note). For user-facing progress on the themed groups: **wire K1 into the DNA panel** (the
-clustering engine exists in `lib/dnaClustering.ts`; it needs a UI), **finish L1** (relationship-
-confidence edge style + shared-cM on edges), or **M3** (richer book structure). Confirm priority with
-the user before large changes.
+Two lenses:
+- **If anything ships publicly soon → N (server-side AI proxy)** first. The OpenRouter key is in the
+  browser today; that has to move server-side before a wider audience can reach the app. Cheap
+  relative to its risk.
+- **For product leverage → A (multi-user auth)** — it unblocks M5 (public book viewer) and live
+  verification of the book features (the local admin can't read saved books today; see the RLS note).
+
+For user-facing progress on the themed groups (small, high-visibility wins): **wire K1 into the DNA
+panel** (the clustering engine exists in `lib/dnaClustering.ts` but is **not yet referenced by any
+UI** — see caveat below), **finish L1** (relationship-confidence edge style + shared-cM on edges),
+**M3** (richer book structure), or **O** (a data-quality panel — genealogists feel this immediately).
+Confirm priority with the user before large changes.
+
+> **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit
+> owner* on the same region. True triangulation/Leeds also requires the two matches to share that
+> segment **with each other** (in-common-with) and to be on the **same parental side** — overlapping
+> the owner's region on opposite parental chromosomes is a false cluster. Fold in ICW / parental-side
+> data before presenting clusters as confirmed shared-ancestor groups.
