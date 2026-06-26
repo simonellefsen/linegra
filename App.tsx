@@ -2,9 +2,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings } from './services/archive';
-import { Person, User, TreeLayoutType, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
+import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
-import FamilyTree from './components/FamilyTree';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
 import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
@@ -45,7 +44,6 @@ const PARENTAL_REL_TYPES: Relationship['type'][] = [
 const App: React.FC = () => {
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'tree' | 'records' | 'settings' | 'profile'>('home');
-  const [layoutType] = useState<TreeLayoutType>('pedigree');
   const [searchQuery, setSearchQuery] = useState('');
   
   const supabaseActive = isSupabaseConfigured();
@@ -1222,8 +1220,7 @@ useEffect(() => {
             {activeTab === 'tree' && (
               activeTree ? (
                 <div className="space-y-10 animate-in fade-in duration-700">
-                  {layoutType === 'pedigree' ? (
-                    treeViewReady ? (
+                  {treeViewReady ? (
                       <>
                         <div className="bg-white border border-slate-200 rounded-[28px] shadow-sm p-5 flex flex-wrap items-center gap-4 text-sm text-slate-600">
                           <div>
@@ -1294,15 +1291,7 @@ useEffect(() => {
                           Launch Pedigree View
                         </button>
                       </div>
-                    )
-                  ) : (
-                    <FamilyTree
-                      people={filteredPeople}
-                      relationships={filteredRelationships}
-                      onPersonSelect={handlePersonSelect}
-                      layout={layoutType}
-                    />
-                  )}
+                    )}
                 </div>
               ) : (
                 <div className="bg-white border border-slate-200 rounded-[32px] p-12 text-center space-y-4 shadow-sm">

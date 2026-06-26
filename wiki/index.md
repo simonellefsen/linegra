@@ -59,8 +59,8 @@ union/relationship details in the Family tab, and **AI Family Books** (narrative
 PDF export, persisted to `family_books`) — see [concepts/ai-family-books.md](concepts/ai-family-books.md).
 
 **Key open items**: see [roadmap.md](roadmap.md) — multi-user collaboration is schema-ready
-(`tree_collaborators`) but has no UI; legacy force graph (`FamilyTree.tsx`) still retained
-alongside the pedigree view; DNA name-based fallback is legacy-only.
+(`tree_collaborators`) but has no UI; the legacy force graph was removed 2026-06-26 (pedigree is the
+sole tree surface); DNA name-based fallback is legacy-only.
 
 ## Build Gate (never skip)
 

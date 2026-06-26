@@ -2,9 +2,14 @@
 
 **Decision.** The primary tree surface is a **pedigree-style, incrementally loaded** view
 ([../../components/InteractiveTree/PedigreeTree.tsx](../../components/InteractiveTree/PedigreeTree.tsx)),
-not a full-force directed graph. The older force-graph renderer
-([../../components/FamilyTree.tsx](../../components/FamilyTree.tsx)) is retained for
-compatibility/testing but is not the default.
+not a full-force directed graph.
+
+> **Updated 2026-06-26:** the older force-graph renderer (`components/FamilyTree.tsx`) was **deleted**
+> (roadmap B). It had been retained "for compatibility/testing," but it could never render —
+> `layoutType` was a constant with no setter, so the pedigree/force-graph ternary always took the
+> pedigree branch. Its one useful trait (`RelationshipConfidence` edge encoding) was ported into the
+> live pedigree view first (L1). The layout-persistence/audit subsystem it shared lineage with is
+> unrelated and was kept.
 
 ## Why
 
@@ -24,8 +29,10 @@ compatibility/testing but is not the default.
 ## Consequences
 
 - New tree-navigation features should target the pedigree component and incremental scope
-  loading, not the force graph.
-- The legacy `FamilyTree.tsx` is a candidate for removal/consolidation — see
-  [../roadmap.md](../roadmap.md) item B.
+  loading. Alternate lenses (fan / timeline / map — roadmap L2–L4) will be **new** renderers built
+  off [../../lib/pedigreeLayout.ts](../../lib/pedigreeLayout.ts), not a revival of the force graph.
+- ~~The legacy `FamilyTree.tsx` is a candidate for removal/consolidation~~ — **removed 2026-06-26**
+  (roadmap B). `TreeLayoutType` (`'pedigree' | 'fan' | 'descendant'`) stays in `types.ts` as the
+  extension point for those future views.
 
 Related: [../concepts/public-first-genealogy.md](../concepts/public-first-genealogy.md).

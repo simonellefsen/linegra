@@ -11,6 +11,22 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-26 — Retired the legacy force-graph renderer (roadmap B)
+
+Deleted [../components/FamilyTree.tsx](../components/FamilyTree.tsx) — it was unreachable.
+`layoutType` was `useState<TreeLayoutType>('pedigree')` with **no setter**, so the
+`layoutType === 'pedigree' ? <PedigreeTree/> : <FamilyTree/>` ternary in App.tsx always took the
+pedigree branch; the force-graph else-branch was dead code that could never render. Removed the
+component, its import, the dead branch, and the now-unused `layoutType` state + `TreeLayoutType`
+import. Bundle dropped **765→703 KB** (d3-force no longer in the graph). Done only after porting its
+one useful trait — `RelationshipConfidence` edge encoding — into the live pedigree view (see the L1
+entry below). The layout-persistence/audit subsystem (`persistFamilyLayout` /
+`fetchFamilyLayoutAudits`, used by the admin Database panel and `PersonProfile`) is unrelated and
+kept. Decision doc updated; `TreeLayoutType` stays in `types.ts` as the extension point for future
+fan/descendant views (L2/L3). Build green at **167 tests**.
+
+---
+
 ## 2026-06-26 — Pedigree edges encode relationship confidence (roadmap L1)
 
 The live pedigree view ([../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx))

@@ -25,10 +25,16 @@ status), and `can_read_tree`/`can_write_tree` already honor active collaborators
 - Migrate super-admin bootstrap onto a real account.
 - **Highest-leverage** item: unlocks the security model the schema was built for.
 
-### B. Retire / consolidate the legacy force graph
-`components/FamilyTree.tsx` is retained alongside the pedigree view
-([decisions/pedigree-over-force-graph.md](decisions/pedigree-over-force-graph.md)). Decide
-whether to delete it or formally keep it as a debug view; remove dead code paths either way.
+### B. Retire / consolidate the legacy force graph — DONE 2026-06-26
+Deleted [../components/FamilyTree.tsx](../components/FamilyTree.tsx). It could never render:
+`layoutType` was `useState<TreeLayoutType>('pedigree')` with **no setter**, so the
+`layoutType === 'pedigree' ? <PedigreeTree/> : <FamilyTree/>` ternary always took the pedigree branch
+— the force-graph else-branch was dead code. Removed the component, its App import, the dead branch,
+and the now-unused `layoutType` state + `TreeLayoutType` import. Bundle dropped **765→703 KB** (d3-force
+gone). Its one useful trait — `RelationshipConfidence` edge encoding — was already ported into the live
+pedigree view (L1, 2026-06-26). The layout-persistence/audit subsystem (`persistFamilyLayout` /
+`fetchFamilyLayoutAudits` → admin Database panel; `onPersistFamilyLayout` → PersonProfile) is **separate
+and retained**. Decision updated: [decisions/pedigree-over-force-graph.md](decisions/pedigree-over-force-graph.md).
 
 ### C. Test coverage — DONE 2026-06-20
 Vitest added; **54 tests** cover DNA CSV parsing (`lib/dnaRawParser.ts`), cM-classification
@@ -342,8 +348,8 @@ Two lenses:
 For user-facing progress on the themed groups (small, high-visibility wins): **finish L1's last sliver**
 (shared-cM on DNA-backed edges — needs a `dna_matches` join wired into the tree), **wire K1 into the
 DNA panel** (the clustering engine exists in `lib/dnaClustering.ts` but is **not yet referenced by any
-UI** — see caveat below), **M3** (richer book structure), or **B** (retire the legacy force graph now
-that its confidence encoding has been ported into the live pedigree view).
+UI** — see caveat below), **M3** (richer book structure), or **H P1** (the GEDCOM 7.0 structured-date
+spine — lossless dates, also fixes export round-trip ids).
 Confirm priority with the user before large changes.
 
 > **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit

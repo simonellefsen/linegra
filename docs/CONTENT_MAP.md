@@ -28,7 +28,7 @@ This catalog highlights the most relevant files for the current Linegra architec
 | Feature | Key Files | Notes |
 | --- | --- | --- |
 | Interactive pedigree tree | `components/InteractiveTree/PedigreeTree.tsx`, `lib/pedigreeScope.ts`, `App.tsx` | On-demand pedigree rendering with ancestor/descendant expansion, placeholder parent cards, bottom toolbar controls. |
-| Legacy force graph | `components/FamilyTree.tsx` | Older graph renderer retained for compatibility/testing. |
+| ~~Legacy force graph~~ | ~~`components/FamilyTree.tsx`~~ | **Removed 2026-06-26** (roadmap B) — was unreachable (`layoutType` had no setter); confidence edge encoding ported into the pedigree view first. |
 | Person profile modal | `components/PersonProfile.tsx`, `components/person-profile/*` | Tabbed profile surface (`VitalTab`, `FamilyTab`, `StoryTab`, `SourcesTab`, `MediaTab`, `DNATab`, `NotesTab`), including cause-of-death normalization in the Vital tab. `SourcesTab` models tree-wide reusable sources (one source → many event citations) with Cite Existing + merge-duplicates, an openable+editable source URL, and AI Transcribe (vision transcription of an uploaded record-page image). |
 | Family layout persistence | `components/person-profile/FamilyTab.tsx`, `services/archive.ts` (`persistFamilyLayout`, `fetchFamilyLayoutAudits`) | Drag/drop order and spouse assignment state saved to person metadata + audits. |
 | Landing page + stats | `components/TreeLandingPage.tsx`, `services/archive.ts` (`fetchTreeStatistics`, widgets fetchers) | Active tree hero, benchmark cards, public stats, highlights modules. |
