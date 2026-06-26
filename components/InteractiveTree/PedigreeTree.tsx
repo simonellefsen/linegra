@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Person, Relationship } from '../../types';
+import { Person, Relationship, RelationshipConfidence } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
 import { getAvatarForPerson } from '../../lib/avatar';
 import {
@@ -56,7 +56,27 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2;
 const ZOOM_STEP = 0.15;
 const MIN_ROW_GAP = 1;
-const EDGE_COLORS = ['#CBD5F5', '#C7D2FE', '#BFDBFE', '#A7F3D0', '#FDE68A', '#FBCFE8'];
+// Edge styling (roadmap L1): DNA-backed lineages trace emerald; otherwise the stroke encodes the
+// parental relationship's `confidence` (Confirmed bold indigo → Speculative faint dashed). Unset
+// confidence falls back to the default lineage indigo so the common, unsourced case doesn't regress.
+// Mirrors the confidence encoding in the legacy force graph (components/FamilyTree.tsx getLinkStroke)
+// so the two views agree on what each link style means.
+const CONFIDENCE_STROKE: Record<
+  RelationshipConfidence,
+  { color: string; width: number; dash: string; opacity: number }
+> = {
+  Confirmed: { color: '#4f46e5', width: 3, dash: 'none', opacity: 0.95 },
+  Probable: { color: '#6366f1', width: 2.5, dash: 'none', opacity: 0.9 },
+  Assumed: { color: '#94a3b8', width: 2, dash: 'none', opacity: 0.8 },
+  Speculative: { color: '#cbd5e1', width: 2, dash: '5,4', opacity: 0.7 },
+  Unknown: { color: '#cbd5e1', width: 1.5, dash: '1,5', opacity: 0.55 },
+};
+const DEFAULT_LINEAGE_STROKE = { color: '#a5b4fc', width: 2, dash: 'none', opacity: 0.9 };
+const DNA_STROKE = { color: '#059669', width: 3, dash: 'none', opacity: 1 };
+const PLACEHOLDER_OVERRIDE = { dash: '6,5', width: 2, opacity: 0.5 };
+
+const strokeForConfidence = (conf?: RelationshipConfidence) =>
+  conf ? CONFIDENCE_STROKE[conf] : DEFAULT_LINEAGE_STROKE;
 
 const extractYear = (value?: string) => {
   if (!value) return null;
@@ -83,14 +103,6 @@ const getDnaSupportMatchIds = (metadata?: Record<string, unknown>) => {
     }
   });
   return Array.from(ids);
-};
-
-const getEdgeColor = (childId: string) => {
-  let hash = 0;
-  for (let i = 0; i < childId.length; i += 1) {
-    hash = (hash * 31 + childId.charCodeAt(i)) >>> 0;
-  }
-  return EDGE_COLORS[hash % EDGE_COLORS.length];
 };
 
 const PedigreeTree: React.FC<PedigreeTreeProps> = ({
@@ -231,6 +243,19 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     return supportMap;
   }, [allRelationships, relationships]);
 
+  // Parental relationship keyed `${parent}->${child}`, built from ALL tree relationships, so each
+  // pedigree edge can look up its `confidence` regardless of the visible scope (same scope rule as
+  // the DNA-support map above).
+  const parentalRelByKey = useMemo(() => {
+    const source = allRelationships ?? relationships;
+    const map = new Map<string, Relationship>();
+    for (const rel of source) {
+      if (!rel.personId || !rel.relatedId) continue;
+      map.set(`${rel.personId}->${rel.relatedId}`, rel);
+    }
+    return map;
+  }, [allRelationships, relationships]);
+
   useEffect(() => {
     if (!pendingHomeRecenter || !focusId) return;
     const container = scrollContainerRef.current;
@@ -257,9 +282,12 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
 
   return (
     <div className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
-      <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex items-center gap-3 rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 shadow-sm backdrop-blur">
-        <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 rounded-full bg-emerald-600" />DNA-backed</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 rounded-full bg-indigo-300" />Lineage</span>
+      <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-white/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 shadow-sm backdrop-blur max-w-[72%]">
+        <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-emerald-600" />DNA-backed</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-indigo-600" />Confirmed</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-[2px] w-4 rounded-full bg-slate-400" />Assumed</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-slate-300" />Speculative</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-[2px] w-4 rounded-full bg-indigo-300" />Lineage</span>
       </div>
       <div ref={scrollContainerRef} className="w-full h-full overflow-auto pb-20">
         <div style={{ width: scaledWidth, height: scaledHeight }} className="relative min-h-full min-w-full">
@@ -271,12 +299,32 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             {Array.from(childEdgeGroups.entries()).map(([childId, edges]) => {
               const childRect = nodeRects.get(childId);
               if (!childRect) return null;
-              // DNA-aware overlay (roadmap L1): when a child's lineage is backed by DNA evidence,
-              // trace the edge in emerald instead of the lineage pastel, so DNA-confirmed links pop.
+              // DNA-aware overlay (roadmap L1): a child whose lineage is backed by DNA evidence traces
+              // emerald. Otherwise each parental edge encodes its `confidence` (Confirmed bold indigo →
+              // Speculative faint dashed); unset confidence keeps the default lineage indigo so the
+              // common, unsourced case is unchanged. The shared union bar + drop use the group style.
               const childDnaCount = dnaSupportByPersonId.get(childId)?.size ?? 0;
-              const strokeColor = childDnaCount > 0 ? '#059669' : getEdgeColor(childId);
+              const isDna = childDnaCount > 0;
+              const groupStroke = isDna ? DNA_STROKE : DEFAULT_LINEAGE_STROKE;
               const isHighlighted = !highlightedChildId || highlightedChildId === childId;
               const edgeOpacity = isHighlighted ? 1 : 0.2;
+              const edgeConfidence = (fromId: string, toId: string): RelationshipConfidence | undefined =>
+                parentalRelByKey.get(`${fromId}->${toId}`)?.confidence;
+              const parentStroke = (parent: {
+                node: typeof layout.nodes[number];
+                edge: typeof layout.edges[number];
+              }) =>
+                parent.node.placeholder
+                  ? { ...groupStroke, ...PLACEHOLDER_OVERRIDE }
+                  : isDna
+                  ? DNA_STROKE
+                  : strokeForConfidence(edgeConfidence(parent.edge.fromId, parent.edge.toId));
+              const edgeTitle = (fromId: string, toId: string) => {
+                const label = isDna
+                  ? 'parent → child · DNA-backed'
+                  : `parent → child${edgeConfidence(fromId, toId) ? ` · ${edgeConfidence(fromId, toId)}` : ''}`;
+                return label;
+              };
               if (edges.length >= 2) {
                 const parents = edges
                   .map((edge) => {
@@ -299,17 +347,19 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                   const toX = childRect.left + cardWidth / 2;
                   const toY = childRect.top;
                   const midY = (fromY + toY) / 2;
-                  const dash = fallbackEdge.node.placeholder ? '6,5' : 'none';
+                  const s = parentStroke(fallbackEdge);
                   return (
                     <path
                       key={`${fallbackEdge.edge.id}-single`}
                       d={`M${fromX},${fromY} L${fromX},${midY} L${toX},${midY} L${toX},${toY}`}
-                      stroke={strokeColor}
-                      strokeWidth={2}
+                      stroke={s.color}
+                      strokeWidth={s.width}
                       fill="none"
-                      strokeDasharray={dash}
-                      opacity={edgeOpacity}
-                    />
+                      strokeDasharray={s.dash}
+                      opacity={s.opacity * edgeOpacity}
+                    >
+                      <title>{edgeTitle(fallbackEdge.edge.fromId, fallbackEdge.edge.toId)}</title>
+                    </path>
                   );
                 }
                 parents.sort((a, b) => a.rect.left - b.rect.left);
@@ -321,54 +371,59 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                 const childJoinY = Math.max(unionY + 12, childRect.top - 18);
                 return (
                   <g key={`${childId}-union`}>
-                    {parents.map((parent, idx) => (
-                      <line
-                        key={`${childId}-parent-${idx}`}
-                        x1={parent.rect.left + cardWidth / 2}
-                        y1={parent.rect.top + cardHeight}
-                        x2={parent.rect.left + cardWidth / 2}
-                        y2={unionY}
-                        stroke={strokeColor}
-                        strokeWidth={2}
-                        strokeDasharray={parent.node.placeholder ? '6,5' : 'none'}
-                        opacity={edgeOpacity}
-                      />
-                    ))}
+                    {parents.map((parent, idx) => {
+                      const s = parentStroke(parent);
+                      return (
+                        <line
+                          key={`${childId}-parent-${idx}`}
+                          x1={parent.rect.left + cardWidth / 2}
+                          y1={parent.rect.top + cardHeight}
+                          x2={parent.rect.left + cardWidth / 2}
+                          y2={unionY}
+                          stroke={s.color}
+                          strokeWidth={s.width}
+                          strokeDasharray={s.dash}
+                          opacity={s.opacity * edgeOpacity}
+                        >
+                          <title>{edgeTitle(parent.edge.fromId, parent.edge.toId)}</title>
+                        </line>
+                      );
+                    })}
                     <line
                       x1={Math.min(...parentXs)}
                       x2={Math.max(...parentXs)}
                       y1={unionY}
                       y2={unionY}
-                      stroke={strokeColor}
-                      strokeWidth={2}
-                      opacity={edgeOpacity}
+                      stroke={groupStroke.color}
+                      strokeWidth={groupStroke.width}
+                      opacity={groupStroke.opacity * edgeOpacity}
                     />
                     <line
                       x1={midX}
                       x2={midX}
                       y1={unionY}
                       y2={childJoinY}
-                      stroke={strokeColor}
-                      strokeWidth={2}
-                      opacity={edgeOpacity}
+                      stroke={groupStroke.color}
+                      strokeWidth={groupStroke.width}
+                      opacity={groupStroke.opacity * edgeOpacity}
                     />
                     <line
                       x1={midX}
                       x2={toX}
                       y1={childJoinY}
                       y2={childJoinY}
-                      stroke={strokeColor}
-                      strokeWidth={2}
-                      opacity={edgeOpacity}
+                      stroke={groupStroke.color}
+                      strokeWidth={groupStroke.width}
+                      opacity={groupStroke.opacity * edgeOpacity}
                     />
                     <line
                       x1={toX}
                       x2={toX}
                       y1={childJoinY}
                       y2={childRect.top}
-                      stroke={strokeColor}
-                      strokeWidth={2}
-                      opacity={edgeOpacity}
+                      stroke={groupStroke.color}
+                      strokeWidth={groupStroke.width}
+                      opacity={groupStroke.opacity * edgeOpacity}
                     />
                   </g>
                 );
@@ -382,17 +437,23 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
               const toX = childRect.left + cardWidth / 2;
               const toY = childRect.top;
               const midY = (fromY + toY) / 2;
-              const dash = parentNode.placeholder ? '6,5' : 'none';
+              const s = parentNode.placeholder
+                ? { ...groupStroke, ...PLACEHOLDER_OVERRIDE }
+                : isDna
+                ? DNA_STROKE
+                : strokeForConfidence(edgeConfidence(edge.fromId, edge.toId));
               return (
                 <path
                   key={edge.id}
                   d={`M${fromX},${fromY} L${fromX},${midY} L${toX},${midY} L${toX},${toY}`}
-                  stroke={strokeColor}
-                  strokeWidth={2}
+                  stroke={s.color}
+                  strokeWidth={s.width}
                   fill="none"
-                  strokeDasharray={dash}
-                  opacity={edgeOpacity}
-                />
+                  strokeDasharray={s.dash}
+                  opacity={s.opacity * edgeOpacity}
+                >
+                  <title>{edgeTitle(edge.fromId, edge.toId)}</title>
+                </path>
               );
             })}
           </svg>

@@ -11,6 +11,24 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-26 — Pedigree edges encode relationship confidence (roadmap L1)
+
+The live pedigree view ([../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx))
+now encodes `RelationshipConfidence` on its edges instead of a meaningless per-child pastel:
+**Confirmed** → bold indigo, **Probable** → indigo, **Assumed** → slate, **Speculative** → faint
+dashed slate, **Unknown** → dotted; **unset** confidence falls back to the default lineage indigo so
+the common (unsourced) case doesn't regress. DNA-backed lineages still trace emerald and override the
+confidence style. Each edge has a hover `<title>` (e.g. "parent → child · Confirmed") and the legend
+now lists every style. Mirrors the confidence encoding the legacy force graph already had
+(`components/FamilyTree.tsx` `getLinkStroke`). Built a `parentalRelationshipByKey` map from all tree
+relationships so edges look up their confidence regardless of visible scope (same fix pattern as the
+DNA-support map). **L1 remaining:** shared-cM on DNA-backed edges — needs a `dna_matches` join not yet
+wired into the tree. Also marked roadmap **O** (data-quality engine) and **P** (relationship
+calculator) DONE — both shipped 2026-06-23 but the roadmap still listed them open. Build green at
+**167 tests**.
+
+---
+
 ## 2026-06-23 — DNA admin: "Resolve all matches" in one action
 
 The DNA admin panel ([../components/AdminDnaPanel.tsx](../components/AdminDnaPanel.tsx)) gained a

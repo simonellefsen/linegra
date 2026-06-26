@@ -9,9 +9,9 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (143 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (167 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
-git/code 2026-06-23.
+git/code 2026-06-26.
 
 ## Candidate next work
 
@@ -157,11 +157,13 @@ Extends SPEC §7 (performance); new UI views are new SPEC ground. The pedigree v
 solid but single-mode. These add alternate lenses (DNA-aware, spatial, chronological) without
 replacing the layout engine in [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.ts).
 
-> **Done 2026-06-22 — L1 (partial):** DNA-backed pedigree edges now trace emerald (with a legend) in
-> [../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx), so
-> DNA-confirmed lineages are visible at a glance. Remaining: encode `RelationshipConfidence` via edge
-> style, and surface shared-cM on DNA-backed edges (cM needs a `dna_matches` join not yet wired to
-> the tree).
+> **Done 2026-06-22 — L1 (DNA edges); 2026-06-26 — confidence edges:** DNA-backed pedigree edges trace
+> emerald, and non-DNA edges now encode `RelationshipConfidence` (Confirmed bold indigo → Speculative
+> faint dashed; unset confidence keeps the default lineage indigo so the common case is unchanged) with
+> hover tooltips and an expanded legend — all in
+> [../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx).
+> Remaining: surface **shared-cM** on DNA-backed edges — needs a `dna_matches` join not yet wired to
+> the tree.
 
 - **L1. DNA-aware tree overlay (highest leverage; ships immediately).** Color edges by
   `RelationshipConfidence` and surface shared-cM on edges where `dna_support_by_person` is set.
@@ -265,7 +267,13 @@ against the account. There's also no per-tree usage metering or rate limit.
 - Pairs with **K7** (raw-DNA never on the public path) as the security track. Until done, treat the
   configured key as burnable and scope/rotate it.
 
-### O. Data-quality / consistency engine ("Research issues")
+### O. Data-quality / consistency engine ("Research issues") — DONE 2026-06-26
+The pure engine + admin panel shipped: [../lib/dataQuality.ts](../lib/dataQuality.ts) runs
+death-before-birth / burial-before-death / implausible-lifespan / parent-age / child-after-death /
+duplicate-person checks (unit-tested), surfaced read-only in **Administrator → Research**
+([../components/admin/AdminResearchPanel.tsx](../components/admin/AdminResearchPanel.tsx)). On the real
+2148-person tree it flags ~10 errors. **Remaining:** dismiss / convert-to-`Discrepancy`-note actions,
+and the optional "suggest next record to find" AI layer.
 A genealogy-native validation pass that surfaces likely errors as actionable items. The schema
 already has `note_type = 'Discrepancy'`/`'To-do'` and `lib/lifespan.ts` (130-yr cap) to build on.
 - Checks: parent younger than child / child born before parent; death before birth; burial before
@@ -276,7 +284,12 @@ already has `note_type = 'Discrepancy'`/`'To-do'` and `lib/lifespan.ts` (130-yr 
 - Optional AI layer: suggest the *next record to find* given what vitals/sources are present (pairs
   with P/§ research log).
 
-### P. Relationship calculator + path finder
+### P. Relationship calculator + path finder — DONE 2026-06-26
+Shipped: [../lib/relationshipCalculator.ts](../lib/relationshipCalculator.ts) finds the MRCA, derives
+the label (parent / grandparent / sibling / half-sibling / aunt-uncle / niece-nephew / cousin with
+degree + removed) and reconstructs the A→B path (unit-tested). Rendered as a card in **Administrator →
+Research** ([../components/admin/RelationshipCalculator.tsx](../components/admin/RelationshipCalculator.tsx))
+with two person pickers (self-loads the archive). Feeds L (tree nav) and is reusable for K2 (MRCA).
 "How is A related to B?" and "show the path between A and B" across the tree. Reuse the lineage
 resolver + [../lib/pedigreeScope.ts](../lib/pedigreeScope.ts); render cousin-degree/removed labels
 (the cM-range tables in [sources/dna-cm-ranges.md](sources/dna-cm-ranges.md) already encode the
@@ -326,10 +339,11 @@ Two lenses:
 - **For product leverage → A (multi-user auth)** — it unblocks M5 (public book viewer) and live
   verification of the book features (the local admin can't read saved books today; see the RLS note).
 
-For user-facing progress on the themed groups (small, high-visibility wins): **wire K1 into the DNA
-panel** (the clustering engine exists in `lib/dnaClustering.ts` but is **not yet referenced by any
-UI** — see caveat below), **finish L1** (relationship-confidence edge style + shared-cM on edges),
-**M3** (richer book structure), or **O** (a data-quality panel — genealogists feel this immediately).
+For user-facing progress on the themed groups (small, high-visibility wins): **finish L1's last sliver**
+(shared-cM on DNA-backed edges — needs a `dna_matches` join wired into the tree), **wire K1 into the
+DNA panel** (the clustering engine exists in `lib/dnaClustering.ts` but is **not yet referenced by any
+UI** — see caveat below), **M3** (richer book structure), or **B** (retire the legacy force graph now
+that its confidence encoding has been ported into the live pedigree view).
 Confirm priority with the user before large changes.
 
 > **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit
