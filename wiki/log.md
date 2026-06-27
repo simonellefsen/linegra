@@ -11,6 +11,27 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-27 — Lossless structured-date parser, the GEDCOM date spine (roadmap H/P1)
+
+The date portion of P1. New [../lib/gedcomDate.ts](../lib/gedcomDate.ts) interprets GEDCOM 5.5.1/7
+dates into a lossless `StructuredDate` — `raw` verbatim (round-trip exact) + `calendar`
+(GREGORIAN/JULIAN/FRENCH_R/HEBREW) + `qualifier` (about/calculated/estimated/before/after/between/
+from/to/from-to) + range bounds (`yearFrom`/`yearTo`) + BCE + parenthesized `phrase`. Handles
+`ABT 1807`, `BET 1800 AND 1805`, `FROM 1880 TO 1890`, `30 FEB 1712` (real Swedish-calendar date),
+`1700 B.C.`, French/Hebrew month names, and an explicit `JULIAN` keyword. Gregorian month names are
+not calendar-authoritative (shared with Julian) — only French/Hebrew names and an explicit keyword
+are. 19 parser tests, incl. legacy-parity cases.
+
+Adopted in `extractBirthYear` ([../lib/lifespan.ts](../lib/lifespan.ts)): it now delegates to
+`dateYear` (representative year = range start, so behavior is unchanged for every existing input)
+while quietly gaining qualifier/BCE/calendar awareness — so lifespan inference, the data-quality
+checks, book chapter facts/ordering, and admin tree listing all parse dates properly with **zero
+test regressions**. Foundation for roadmap **I** (Julian↔Gregorian keyed off calendar+place).
+Remaining P1: persisting the structured form (schema), NAME parts/TYPE/TRAN, full event detail,
+QUAY, UID/EXID/REFN. Build green at **194 tests** (+19).
+
+---
+
 ## 2026-06-27 — Shared-cM on DNA-backed pedigree edges (roadmap L1 complete)
 
 The last sliver of L1: DNA-backed pedigree edges now show how strong the DNA evidence is. Each DNA
