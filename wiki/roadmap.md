@@ -9,9 +9,9 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (167 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (168 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
-git/code 2026-06-26.
+git/code 2026-06-27.
 
 ## Candidate next work
 
@@ -202,12 +202,12 @@ biographies are AI-generate-only in the StoryTab (no manual text editing). The s
 structured for editing, so M makes human editing first-class and deepens generation quality. Policy
 foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narrative-editing-and-grounding.md).
 
-> **Done 2026-06-22 — editing + grounding arc:** M6 (manual biography editing), M1 (in-UI book
-> editor), M2 (single-chapter regen), M7 (richer inputs: life events + sources), M11 (fact-grounding
-> footers + hedged prose), M10 (AI-assisted text ops: rewrite/formal/concise/expand/translate), M12
-> (retire legacy `generateBio`). Remaining: M3 (richer book structure — the `custom` chapter kind
-> already landed via M1), M4 (versioning); M5 (public viewer) is gated by roadmap **A** (multi-user
-> auth).
+> **Done 2026-06-22 — editing + grounding arc; 2026-06-27 — M3:** M6 (manual biography editing), M1
+> (in-UI book editor), M2 (single-chapter regen), M7 (richer inputs: life events + sources), M11
+> (fact-grounding footers + hedged prose), M10 (AI-assisted text ops), M12 (retire legacy
+> `generateBio`), and M3 (richer book structure: `section` divider kind, per-chapter `status`
+> draft/edited/locked with a lock toggle, and a section-aware TOC + divider pages). Remaining: M4
+> (versioning); M5 (public viewer) is gated by roadmap **A** (multi-user auth).
 
 *Book creation & editing:*
 
@@ -220,9 +220,11 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
   "regenerate" (and "regenerate with different style/length") via `composePersonBiography` /
   `composeFamilyOverview` in [../services/ai.ts](../services/ai.ts). The composer already works
   chapter-by-chapter — just expose one chapter.
-- **M3. Richer book structure.** `BookChapterKind` is only `'overview' | 'person'` today. Extend to
-  `section`/`custom` (intros, era context, surname origin, photo plates, source appendix) +
-  auto-TOC; add a per-chapter `status` (draft/edited/locked).
+- **M3. Richer book structure — DONE 2026-06-27.** `BookChapterKind` is now `'overview' | 'person' |
+  'custom' | 'section'` (the `section` kind is a structural Part divider); each chapter carries an
+  optional `status` (`'draft' | 'edited' | 'locked'`) that the editor surfaces as a badge + lock
+  toggle (locking freezes the text + Regenerate), and the print/preview TOC groups chapters under
+  section headers with divider pages. `status` rides the existing `chapters` jsonb — no migration.
 - **M4. Book versioning + draft/publish.** `status` exists (`draft`/`complete`) but there's no real
   history. Add version snapshots of `chapters` (a `family_book_versions` table or jsonb snapshots)
   + a publish flow that fixes a viewer-facing snapshot.
@@ -348,8 +350,8 @@ Two lenses:
 For user-facing progress on the themed groups (small, high-visibility wins): **finish L1's last sliver**
 (shared-cM on DNA-backed edges — needs a `dna_matches` join wired into the tree), **wire K1 into the
 DNA panel** (the clustering engine exists in `lib/dnaClustering.ts` but is **not yet referenced by any
-UI** — see caveat below), **M3** (richer book structure), or **H P1** (the GEDCOM 7.0 structured-date
-spine — lossless dates, also fixes export round-trip ids).
+UI** — see caveat below), or **H P1** (the GEDCOM 7.0 structured-date spine — lossless dates, also
+fixes export round-trip ids).
 Confirm priority with the user before large changes.
 
 > **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit

@@ -14,6 +14,7 @@ import {
   moveChapter,
   removeChapter,
   createCustomChapter,
+  createSectionChapter,
   groundingSummary,
 } from './bookComposer';
 import { bookStrings } from './bookI18n';
@@ -406,9 +407,14 @@ describe('chapter editing helpers', () => {
     expect(removeChapter(original, 9)).toBe(original);
   });
 
-  it('createCustomChapter makes an empty custom chapter', () => {
-    expect(createCustomChapter('Intro')).toEqual({ kind: 'custom', title: 'Intro', narrative: '' });
+  it('createCustomChapter makes an empty custom chapter (draft)', () => {
+    expect(createCustomChapter('Intro')).toEqual({ kind: 'custom', title: 'Intro', narrative: '', status: 'draft' });
     expect(createCustomChapter().kind).toBe('custom');
+  });
+
+  it('createSectionChapter makes an empty section divider (draft)', () => {
+    expect(createSectionChapter('Part I')).toEqual({ kind: 'section', title: 'Part I', narrative: '', status: 'draft' });
+    expect(createSectionChapter().kind).toBe('section');
   });
 });
 

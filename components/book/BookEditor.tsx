@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, ArrowDown, Plus, Trash2, Save, Loader2, Eye, X, AlertCircle, RefreshCw } from 'lucide-react';
-import { FamilyBook, BookChapter, BookChapterKind, Person } from '../../types';
+import { ArrowUp, ArrowDown, Plus, Trash2, Save, Loader2, Eye, X, AlertCircle, RefreshCw, Lock, Unlock } from 'lucide-react';
+import { FamilyBook, BookChapter, BookChapterKind, BookChapterStatus, Person } from '../../types';
 import { saveFamilyBook } from '../../services/books';
 import { composePersonBiography, composeFamilyOverview } from '../../services/ai';
-import { moveChapter, removeChapter, createCustomChapter } from '../../lib/bookComposer';
+import { moveChapter, removeChapter, createCustomChapter, createSectionChapter } from '../../lib/bookComposer';
 import BookPrintOverlay from './BookPrintOverlay';
 import AiTextOps from '../common/AiTextOps';
 
@@ -21,13 +21,29 @@ const KIND_LABEL: Record<BookChapterKind, string> = {
   overview: 'Overview',
   person: 'Person',
   custom: 'Custom',
+  section: 'Section',
 };
 
 const KIND_BADGE: Record<BookChapterKind, string> = {
   overview: 'bg-sky-100 text-sky-700',
   person: 'bg-slate-100 text-slate-600',
   custom: 'bg-emerald-100 text-emerald-700',
+  section: 'bg-violet-100 text-violet-700',
 };
+
+const STATUS_LABEL: Record<BookChapterStatus, string> = {
+  draft: 'Draft',
+  edited: 'Edited',
+  locked: 'Locked',
+};
+
+const STATUS_BADGE: Record<BookChapterStatus, string> = {
+  draft: 'bg-slate-100 text-slate-500',
+  edited: 'bg-amber-100 text-amber-700',
+  locked: 'bg-rose-100 text-rose-700',
+};
+
+const isRegenerable = (kind: BookChapterKind) => kind === 'overview' || kind === 'person';
 
 /**
  * Full-screen editor for a saved family book. Edits title/subtitle and each chapter's title +
@@ -64,7 +80,22 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
   );
 
   const updateChapter = useCallback((index: number, patch: Partial<BookChapter>) => {
-    setChapters((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+    setChapters((prev) =>
+      prev.map((c, i) => {
+        if (i !== index) return c;
+        const merged = { ...c, ...patch };
+        // Editing the title or narrative marks the chapter human-edited — unless the caller set an
+        // explicit `status` (e.g. regenerate resets to 'draft') or the chapter is locked.
+        if (!('status' in patch) && ('narrative' in patch || 'title' in patch) && c.status !== 'locked') {
+          merged.status = 'edited';
+        }
+        return merged;
+      })
+    );
+  }, []);
+
+  const setChapterStatus = useCallback((index: number, status: BookChapterStatus) => {
+    setChapters((prev) => prev.map((c, i) => (i === index ? { ...c, status } : c)));
   }, []);
 
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
@@ -74,7 +105,7 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
   const handleRegenerate = useCallback(
     async (index: number) => {
       const chapter = chapters[index];
-      if (!chapter || chapter.kind === 'custom') return;
+      if (!chapter || !isRegenerable(chapter.kind)) return;
       setRegeneratingIndex(index);
       setError(null);
       try {
@@ -88,7 +119,7 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
           }
           narrative = await composePersonBiography(person, chapter.facts ?? {}, book.options);
         }
-        updateChapter(index, { narrative });
+        updateChapter(index, { narrative, status: 'draft' });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not regenerate this chapter.');
       } finally {
@@ -190,17 +221,21 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
               <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.15em] ${KIND_BADGE[chapter.kind]}`}>
                 {KIND_LABEL[chapter.kind]}
               </span>
+              <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.15em] ${STATUS_BADGE[chapter.status ?? 'draft']}`}>
+                {STATUS_LABEL[chapter.status ?? 'draft']}
+              </span>
               <input
                 value={chapter.title}
+                readOnly={chapter.status === 'locked'}
                 onChange={(e) => updateChapter(index, { title: e.target.value })}
-                className="min-w-0 flex-1 rounded-lg border border-transparent px-2 py-1 font-serif text-base font-bold text-slate-900 outline-none hover:border-slate-200 focus:border-slate-400"
+                className="min-w-0 flex-1 rounded-lg border border-transparent px-2 py-1 font-serif text-base font-bold text-slate-900 outline-none hover:border-slate-200 focus:border-slate-400 read-only:bg-slate-50"
               />
-              {chapter.kind !== 'custom' ? (
+              {isRegenerable(chapter.kind) ? (
                 <button
                   type="button"
                   onClick={() => handleRegenerate(index)}
-                  disabled={regeneratingIndex !== null}
-                  title="Regenerate this chapter with AI"
+                  disabled={regeneratingIndex !== null || chapter.status === 'locked'}
+                  title={chapter.status === 'locked' ? 'Unlock to regenerate' : 'Regenerate this chapter with AI'}
                   className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-600 hover:bg-blue-50 disabled:opacity-50"
                 >
                   {regeneratingIndex === index ? (
@@ -212,6 +247,14 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
                 </button>
               ) : null}
               <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setChapterStatus(index, chapter.status === 'locked' ? 'edited' : 'locked')}
+                  title={chapter.status === 'locked' ? 'Unlock chapter' : 'Lock chapter (freeze text + regenerate)'}
+                  className={`rounded-lg p-1.5 hover:bg-slate-100 ${chapter.status === 'locked' ? 'text-rose-500' : 'text-slate-400 hover:text-slate-700'}`}
+                >
+                  {chapter.status === 'locked' ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                </button>
                 <button
                   type="button"
                   onClick={() => setChapters((prev) => moveChapter(prev, index, -1))}
@@ -242,27 +285,39 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
             </div>
             <textarea
               value={chapter.narrative}
+              readOnly={chapter.status === 'locked'}
               onChange={(e) => updateChapter(index, { narrative: e.target.value })}
-              placeholder="Chapter text…"
-              className="min-h-[180px] w-full resize-y rounded-xl border border-slate-200 p-3 font-serif text-[15px] leading-relaxed text-slate-800 outline-none focus:border-slate-400"
+              placeholder={chapter.kind === 'section' ? 'Optional blurb under the section divider…' : 'Chapter text…'}
+              className={`${chapter.kind === 'section' ? 'min-h-[80px]' : 'min-h-[180px]'} w-full resize-y rounded-xl border border-slate-200 p-3 font-serif text-[15px] leading-relaxed text-slate-800 outline-none focus:border-slate-400 read-only:bg-slate-50`}
             />
-            <div className="mt-2">
-              <AiTextOps
-                value={chapter.narrative}
-                onApply={(t) => updateChapter(index, { narrative: t })}
-                language={book.options.language}
-              />
-            </div>
+            {chapter.status !== 'locked' ? (
+              <div className="mt-2">
+                <AiTextOps
+                  value={chapter.narrative}
+                  onApply={(t) => updateChapter(index, { narrative: t })}
+                  language={book.options.language}
+                />
+              </div>
+            ) : null}
           </div>
         ))}
 
-        <button
-          type="button"
-          onClick={() => setChapters((prev) => [...prev, createCustomChapter()])}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/50 py-4 text-xs font-bold uppercase tracking-widest text-slate-500 transition hover:border-slate-400 hover:text-slate-800"
-        >
-          <Plus className="h-4 w-4" /> Add custom chapter
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => setChapters((prev) => [...prev, createSectionChapter()])}
+            className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-dashed border-violet-300 bg-violet-50/40 py-4 text-xs font-bold uppercase tracking-widest text-violet-600 transition hover:border-violet-400 hover:text-violet-800"
+          >
+            <Plus className="h-4 w-4" /> Add section divider
+          </button>
+          <button
+            type="button"
+            onClick={() => setChapters((prev) => [...prev, createCustomChapter()])}
+            className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/50 py-4 text-xs font-bold uppercase tracking-widest text-slate-500 transition hover:border-slate-400 hover:text-slate-800"
+          >
+            <Plus className="h-4 w-4" /> Add custom chapter
+          </button>
+        </div>
 
         <p className="pb-4 text-center text-[11px] text-slate-400">
           Changes are saved only when you press <span className="font-bold">Save</span>. Close discards unsaved edits.

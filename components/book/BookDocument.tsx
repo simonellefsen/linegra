@@ -20,6 +20,7 @@ const formatDate = (iso?: string): string => {
  */
 const BookDocument: React.FC<{ book: FamilyBook }> = ({ book }) => {
   const strings = bookStrings(book.options.language ?? DEFAULT_BOOK_LANGUAGE);
+  const hasSections = book.chapters.some((c) => c.kind === 'section');
 
   return (
     <div className="mx-auto max-w-[820px] bg-white text-slate-900">
@@ -46,19 +47,42 @@ const BookDocument: React.FC<{ book: FamilyBook }> = ({ book }) => {
       <section className="book-page-break px-12 py-12">
         <h2 className="mb-6 text-[11px] font-bold uppercase tracking-[0.3em] text-slate-400">{strings.contents}</h2>
         <ol className="space-y-2.5 font-serif text-slate-700">
-          {book.chapters.map((chapter, index) => (
-            <li key={chapter.personId ?? `${chapter.kind}-${index}`} className="flex items-baseline justify-between gap-4">
-              <span className={chapter.kind === 'overview' ? 'italic' : ''}>{chapter.title}</span>
-              {chapter.kind === 'person' && chapter.facts?.lifespanLabel ? (
-                <span className="shrink-0 text-sm text-slate-400">{chapter.facts.lifespanLabel}</span>
-              ) : null}
-            </li>
-          ))}
+          {book.chapters.map((chapter, index) => {
+            // Section dividers are TOC group headers; other chapters indent under them when any
+            // section exists, so the contents read as grouped Parts. (M3 richer book structure.)
+            if (chapter.kind === 'section') {
+              return (
+                <li key={`${chapter.kind}-${index}`} className="mt-4 border-t border-slate-200 pt-3 font-serif text-sm font-bold uppercase tracking-[0.2em] text-slate-500">
+                  {chapter.title}
+                </li>
+              );
+            }
+            return (
+              <li key={chapter.personId ?? `${chapter.kind}-${index}`} className={`flex items-baseline justify-between gap-4 ${hasSections ? 'pl-4' : ''}`}>
+                <span className={chapter.kind === 'overview' ? 'italic' : ''}>{chapter.title}</span>
+                {chapter.kind === 'person' && chapter.facts?.lifespanLabel ? (
+                  <span className="shrink-0 text-sm text-slate-400">{chapter.facts.lifespanLabel}</span>
+                ) : null}
+              </li>
+            );
+          })}
         </ol>
       </section>
 
-      {/* Chapters (overview / person / custom), rendered in editable order */}
+      {/* Chapters (overview / person / custom / section), rendered in editable order */}
       {book.chapters.map((chapter, index) => {
+        // Section dividers render as a centered break page (title + optional blurb), distinct from
+        // the narrative chapters. (M3 richer book structure.)
+        if (chapter.kind === 'section') {
+          return (
+            <section key={`${chapter.kind}-${index}`} className="book-page-break flex min-h-[55vh] flex-col items-center justify-center rounded-xl bg-slate-50 px-12 py-16 text-center">
+              <h2 className="font-serif text-4xl font-bold uppercase tracking-[0.15em] text-slate-700">{chapter.title}</h2>
+              {chapter.narrative ? (
+                <p className="mt-5 max-w-xl whitespace-pre-wrap font-serif text-[15px] italic leading-relaxed text-slate-500">{chapter.narrative}</p>
+              ) : null}
+            </section>
+          );
+        }
         const isOverview = chapter.kind === 'overview';
         const factBits = [chapter.facts?.lifespanLabel, chapter.facts?.birthPlace].filter(Boolean) as string[];
         return (

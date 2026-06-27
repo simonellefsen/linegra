@@ -343,7 +343,8 @@ export interface FamilyTreeSummary extends FamilyTree {
 export type BookScope = 'all' | 'descendants' | 'selected';
 export type BookStyle = 'narrative' | 'concise' | 'scholarly';
 export type BookLength = 'short' | 'medium' | 'long';
-export type BookChapterKind = 'overview' | 'person' | 'custom';
+export type BookChapterKind = 'overview' | 'person' | 'custom' | 'section';
+export type BookChapterStatus = 'draft' | 'edited' | 'locked';
 export type BookStatus = 'draft' | 'complete';
 export type BookLanguage = 'da' | 'sv' | 'no' | 'en';
 
@@ -386,6 +387,7 @@ export interface BookChapter {
   personId?: string;
   narrative: string;             // AI (or deterministic-fallback) text
   facts?: BookChapterFacts;
+  status?: BookChapterStatus;    // per-chapter workflow state (M3); absent ≈ 'draft'
 }
 
 export interface BookStatistics {

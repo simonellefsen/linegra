@@ -11,6 +11,28 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-27 — Richer book structure: section dividers + per-chapter status (roadmap M3)
+
+Family books gained two structural features in
+[../components/book/BookEditor.tsx](../components/book/BookEditor.tsx) /
+[BookDocument.tsx](../components/book/BookDocument.tsx):
+
+- **`section` chapter kind** — a structural Part divider ("Part I · The Old Country") with a title +
+  optional blurb, rendered as a centered break page in print and as a group header in the TOC (other
+  chapters indent under it when any section exists). Added via `createSectionChapter` in
+  [../lib/bookComposer.ts](../lib/bookComposer.ts); the editor's "Add section divider" button.
+- **Per-chapter `status`** (`draft` / `edited` / `locked`) on `BookChapter`. The editor shows it as a
+  badge; editing title/narrative flips `draft → edited`; a per-card lock toggle freezes the text
+  (readOnly) and disables Regenerate; regenerating resets to `draft`. `BookChapterStatus` lives on
+  `BookChapter`, riding the existing `chapters` jsonb — **no migration**, round-trips through
+  `services/books.ts` unchanged.
+
+Types: `BookChapterKind` is now `'overview' | 'person' | 'custom' | 'section'`. Build green at **168
+tests** (+1 for `createSectionChapter`). Live-verified in the editor: status badges render, both add
+buttons work, the section card's blurb placeholder shows, and typing flips a chapter `Draft → Edited`.
+
+---
+
 ## 2026-06-26 — Retired the legacy force-graph renderer (roadmap B)
 
 Deleted [../components/FamilyTree.tsx](../components/FamilyTree.tsx) — it was unreachable.

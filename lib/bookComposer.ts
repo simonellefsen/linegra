@@ -420,6 +420,17 @@ export const createCustomChapter = (title = 'New Chapter'): BookChapter => ({
   kind: 'custom',
   title,
   narrative: '',
+  status: 'draft',
+});
+
+/** A structural divider that groups chapters into Parts ("Part I · The Old Country", …). Renders as a
+ *  section break in the book and as a group header in the TOC; its optional `narrative` is a short
+ *  blurb under the divider title. Roadmap M3. */
+export const createSectionChapter = (title = 'New Section'): BookChapter => ({
+  kind: 'section',
+  title,
+  narrative: '',
+  status: 'draft',
 });
 
 /** Apply the scope filter (all / descendants-of-proband / explicit selection), then order for reading. */
@@ -478,6 +489,7 @@ export const planBook = (
       kind: 'overview',
       title: strings.theFamily(surname),
       narrative: '',
+      status: 'draft',
     },
     ...selected.map((person) => ({
       kind: 'person' as const,
@@ -485,6 +497,7 @@ export const planBook = (
       personId: person.id,
       narrative: '',
       facts: buildChapterFacts(person, selected, maps),
+      status: 'draft' as const,
     })),
   ];
 
