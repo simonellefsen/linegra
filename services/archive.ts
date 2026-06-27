@@ -1715,6 +1715,26 @@ export const listSharedMatchesForAutosomalPerson = async (
   return results.sort((a, b) => (b.sharedCM ?? 0) - (a.sharedCM ?? 0));
 };
 
+/** `shared_cm` keyed by `dna_matches.id`, for the given match ids. Used to surface cM on DNA-backed
+ *  pedigree edges (roadmap L1). `dna_matches` has no `tree_id` (its RLS policy scopes through
+ *  `persons`), so callers pass the match ids referenced by `relationships.metadata.dna_support_by_person`
+ *  (collected via lib/dnaSupport.ts). Empty ids or unset Supabase → empty map. */
+export const fetchDnaMatchCm = async (matchIds: string[]): Promise<Map<string, number>> => {
+  const map = new Map<string, number>();
+  const ids = Array.from(new Set((matchIds || []).filter(Boolean)));
+  if (!ids.length || !isSupabaseConfigured()) return map;
+  const { data, error } = await supabase.from('dna_matches').select('id, shared_cm').in('id', ids);
+  if (error) {
+    console.error('Failed to load DNA match cM', error.message);
+    return map;
+  }
+  for (const row of data || []) {
+    const cm = toNumberOrNull(row.shared_cm);
+    if (row.id && cm != null) map.set(row.id as string, cm);
+  }
+  return map;
+};
+
 const updateRelationshipDnaSupport = async (
   relationshipIds: string[],
   focusPersonId: string,

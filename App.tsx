@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings } from './services/archive';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm } from './services/archive';
 import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
+import { collectDnaSupportMatchIds } from './lib/dnaSupport';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
 import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
@@ -54,6 +55,7 @@ const App: React.FC = () => {
   const [activeTree, setActiveTree] = useState<FamilyTreeType | null>(null);
   const [allPeople, setAllPeople] = useState<Person[]>([]);
   const [allRelationships, setAllRelationships] = useState<Relationship[]>([]);
+  const [dnaMatchCmById, setDnaMatchCmById] = useState<Map<string, number>>(new Map());
   const [graphTreeId, setGraphTreeId] = useState<string | null>(null);
 
   const [showTreeSelector, setShowTreeSelector] = useState(false);
@@ -435,6 +437,30 @@ useEffect(() => {
         (canViewPrivate || (visibleIds.has(r.personId) && visibleIds.has(r.relatedId)))
     );
   }, [allRelationships, activeTreeId, canViewPrivate, treePeople]);
+
+  // shared_cm for the DNA matches that back this tree's resolved lineages, keyed by dna_matches.id.
+  // Joined onto pedigree edges to surface cM (roadmap L1). dna_matches has no tree_id, so we fetch by
+  // the match ids stamped on relationships.metadata.dna_support_by_person (lib/dnaSupport.ts). Refetched
+  // only when that match-id set actually changes.
+  const dnaSupportMatchIdKey = useMemo(
+    () => collectDnaSupportMatchIds(treeRelationships).sort().join(','),
+    [treeRelationships]
+  );
+  useEffect(() => {
+    if (!dnaSupportMatchIdKey) {
+      setDnaMatchCmById(new Map());
+      return;
+    }
+    let cancelled = false;
+    fetchDnaMatchCm(dnaSupportMatchIdKey.split(','))
+      .then((map) => {
+        if (!cancelled) setDnaMatchCmById(map);
+      })
+      .catch((err) => console.error('Failed to load DNA match cM', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [dnaSupportMatchIdKey]);
 
   const filteredPeople = useMemo(() => treePeople, [treePeople]);
 
@@ -1234,6 +1260,7 @@ useEffect(() => {
                           people={pedigreeScope.people}
                           relationships={pedigreeScope.relationships}
                           allRelationships={treeRelationships}
+                          dnaMatchCmById={dnaMatchCmById}
                           focusId={focusPersonId}
                           selectedPersonId={selectedPerson?.id}
                           onPersonSelect={handlePersonSelect}

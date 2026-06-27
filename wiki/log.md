@@ -11,6 +11,26 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-27 — Shared-cM on DNA-backed pedigree edges (roadmap L1 complete)
+
+The last sliver of L1: DNA-backed pedigree edges now show how strong the DNA evidence is. Each DNA
+badge gained the **strongest backing shared-cM** beneath the match count (e.g. `5` over `1116cM`), and
+the edge hover tooltip reads `parent → child · DNA-backed · 116 cM`. Changes:
+- New pure [../lib/dnaSupport.ts](../lib/dnaSupport.ts) — extracts the `dna_matches.id` values stamped
+  on `relationships.metadata.dna_support_by_person` (tolerates the legacy `string[]` and structured
+  `{ match_ids }` shapes). DRY: shared by App and PedigreeTree (7 unit tests).
+- [../services/archive.ts](../services/archive.ts) `fetchDnaMatchCm(matchIds)` → `Map<id, shared_cm>`.
+  `dna_matches` has **no `tree_id`** (its RLS scopes via `persons`), so cM is fetched by the match-id
+  set, not per tree.
+- App collects the tree's backing match ids and fetches cM once (re-fetches only when that id set
+  changes), threading a `dnaMatchCmById` prop into
+  [../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx).
+
+Live-verified on Gether-Nielsen: badges render count + cM, tooltips carry the cM. **L1 is complete.**
+Build green at **175 tests** (+7).
+
+---
+
 ## 2026-06-27 — Richer book structure: section dividers + per-chapter status (roadmap M3)
 
 Family books gained two structural features in

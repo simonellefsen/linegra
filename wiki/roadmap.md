@@ -9,7 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (168 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (175 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-06-27.
 
@@ -163,18 +163,21 @@ Extends SPEC §7 (performance); new UI views are new SPEC ground. The pedigree v
 solid but single-mode. These add alternate lenses (DNA-aware, spatial, chronological) without
 replacing the layout engine in [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.ts).
 
-> **Done 2026-06-22 — L1 (DNA edges); 2026-06-26 — confidence edges:** DNA-backed pedigree edges trace
-> emerald, and non-DNA edges now encode `RelationshipConfidence` (Confirmed bold indigo → Speculative
-> faint dashed; unset confidence keeps the default lineage indigo so the common case is unchanged) with
-> hover tooltips and an expanded legend — all in
-> [../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx).
-> Remaining: surface **shared-cM** on DNA-backed edges — needs a `dna_matches` join not yet wired to
-> the tree.
+> **Done 2026-06-22 — L1 (DNA edges); 2026-06-26 — confidence edges; 2026-06-27 — shared-cM (L1
+> complete):** DNA-backed pedigree edges trace emerald; non-DNA edges encode `RelationshipConfidence`
+> (Confirmed bold indigo → Speculative faint dashed; unset keeps the default lineage indigo); and each
+> DNA badge now shows the **strongest backing shared-cM** beneath the match count, with the cM repeated
+> in the edge hover tooltip — all in
+> [../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx). The
+> cM join: App collects the match ids stamped on `relationships.metadata.dna_support_by_person`
+> ([../lib/dnaSupport.ts](../lib/dnaSupport.ts)) and fetches `dna_matches.shared_cm` by id
+> ([../services/archive.ts](../services/archive.ts) `fetchDnaMatchCm`) — `dna_matches` has no `tree_id`
+> (RLS scopes via `persons`), so it's fetched by id set, not per tree. **L1 is complete.**
 
-- **L1. DNA-aware tree overlay (highest leverage; ships immediately).** Color edges by
-  `RelationshipConfidence` and surface shared-cM on edges where `dna_support_by_person` is set.
-  Reuse the existing confidence enum (`types.ts`) + `relationships.metadata.dna_support_by_person`.
-  Extends D.
+- **L1. DNA-aware tree overlay — DONE 2026-06-27 (complete).** Edges encode `RelationshipConfidence`
+  (color/style) and DNA-backed edges surface **shared-cM** on the badge + hover tooltip, joined from
+  `dna_matches.shared_cm` by the match ids in `dna_support_by_person`. Reused the existing confidence
+  enum + `relationships.metadata.dna_support_by_person`. Extends D.
 - **L2. Fan / pedigree-compact view.** Alternate renderer for 8+ ancestor generations. Reuse
   [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.ts) +
   [../lib/pedigreeScope.ts](../lib/pedigreeScope.ts) (ancestor depth already capped at 8).
@@ -347,11 +350,10 @@ Two lenses:
 - **For product leverage → A (multi-user auth)** — it unblocks M5 (public book viewer) and live
   verification of the book features (the local admin can't read saved books today; see the RLS note).
 
-For user-facing progress on the themed groups (small, high-visibility wins): **finish L1's last sliver**
-(shared-cM on DNA-backed edges — needs a `dna_matches` join wired into the tree), **wire K1 into the
-DNA panel** (the clustering engine exists in `lib/dnaClustering.ts` but is **not yet referenced by any
-UI** — see caveat below), or **H P1** (the GEDCOM 7.0 structured-date spine — lossless dates, also
-fixes export round-trip ids).
+For user-facing progress on the themed groups (small, high-visibility wins): **wire K1 into the DNA
+panel** (the clustering engine exists in `lib/dnaClustering.ts` but is **not yet referenced by any UI**
+— see caveat below), or **H P1** (the GEDCOM 7.0 structured-date spine — lossless dates, also fixes
+export round-trip ids).
 Confirm priority with the user before large changes.
 
 > **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit

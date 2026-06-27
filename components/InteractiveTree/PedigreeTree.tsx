@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Person, Relationship, RelationshipConfidence } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
+import { dnaSupportMatchIds } from '../../lib/dnaSupport';
 import { getAvatarForPerson } from '../../lib/avatar';
 import {
   ChevronDown,
@@ -21,6 +22,9 @@ interface PedigreeTreeProps {
   /** All tree relationships (scope-independent) — DNA-support badges are built from this so they stay
       complete and stable regardless of the visible pedigree scope or focus. Defaults to `relationships`. */
   allRelationships?: Relationship[];
+  /** shared_cm keyed by dna_matches.id — used to surface the strongest backing cM on DNA badges +
+   *  edge tooltips (roadmap L1). Optional; when absent, badges show only the match count. */
+  dnaMatchCmById?: Map<string, number>;
   focusId?: string;
   onPersonSelect: (person: Person) => void;
   maxAncestors?: number;
@@ -84,31 +88,11 @@ const extractYear = (value?: string) => {
   return match ? match[1] : null;
 };
 
-const getDnaSupportMatchIds = (metadata?: Record<string, unknown>) => {
-  if (!metadata || typeof metadata !== 'object') return [];
-  const byPerson = (metadata as Record<string, unknown>).dna_support_by_person;
-  if (!byPerson || typeof byPerson !== 'object' || Array.isArray(byPerson)) return [];
-  const ids = new Set<string>();
-  Object.values(byPerson as Record<string, unknown>).forEach((entry) => {
-    if (Array.isArray(entry)) {
-      entry.forEach((matchId) => {
-        if (typeof matchId === 'string' && matchId) ids.add(matchId);
-      });
-      return;
-    }
-    if (entry && typeof entry === 'object' && Array.isArray((entry as Record<string, unknown>).match_ids)) {
-      ((entry as Record<string, unknown>).match_ids as unknown[]).forEach((matchId) => {
-        if (typeof matchId === 'string' && matchId) ids.add(matchId);
-      });
-    }
-  });
-  return Array.from(ids);
-};
-
 const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   people,
   relationships,
   allRelationships,
+  dnaMatchCmById,
   focusId,
   onPersonSelect,
   maxAncestors = 4,
@@ -229,7 +213,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     const source = allRelationships ?? relationships;
     const supportMap = new Map<string, Set<string>>();
     source.forEach((relationship) => {
-      const matchIds = getDnaSupportMatchIds(
+      const matchIds = dnaSupportMatchIds(
         relationship.metadata as Record<string, unknown> | undefined
       );
       if (!matchIds.length) return;
@@ -242,6 +226,23 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     });
     return supportMap;
   }, [allRelationships, relationships]);
+
+  // Strongest (max) shared cM backing each person's lineage — joined from dnaMatchCmById across the
+  // supporting match ids. Shown on the DNA badge + edge tooltip so the strength of the DNA evidence is
+  // visible at a glance (roadmap L1). Empty when no cM map is supplied.
+  const dnaCmByPersonId = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!dnaMatchCmById || dnaMatchCmById.size === 0) return map;
+    dnaSupportByPersonId.forEach((matchIds, personId) => {
+      let max = 0;
+      matchIds.forEach((mid) => {
+        const cm = dnaMatchCmById.get(mid);
+        if (cm && cm > max) max = cm;
+      });
+      if (max > 0) map.set(personId, max);
+    });
+    return map;
+  }, [dnaSupportByPersonId, dnaMatchCmById]);
 
   // Parental relationship keyed `${parent}->${child}`, built from ALL tree relationships, so each
   // pedigree edge can look up its `confidence` regardless of the visible scope (same scope rule as
@@ -320,10 +321,13 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                   ? DNA_STROKE
                   : strokeForConfidence(edgeConfidence(parent.edge.fromId, parent.edge.toId));
               const edgeTitle = (fromId: string, toId: string) => {
-                const label = isDna
-                  ? 'parent → child · DNA-backed'
-                  : `parent → child${edgeConfidence(fromId, toId) ? ` · ${edgeConfidence(fromId, toId)}` : ''}`;
-                return label;
+                if (isDna) {
+                  const cm = dnaCmByPersonId.get(toId);
+                  return cm
+                    ? `parent → child · DNA-backed · ${Math.round(cm)} cM`
+                    : 'parent → child · DNA-backed';
+                }
+                return `parent → child${edgeConfidence(fromId, toId) ? ` · ${edgeConfidence(fromId, toId)}` : ''}`;
               };
               if (edges.length >= 2) {
                 const parents = edges
@@ -486,6 +490,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             const dnaSupportCount = node.person
               ? dnaSupportByPersonId.get(node.person.id)?.size ?? 0
               : 0;
+            const dnaCm = node.person ? dnaCmByPersonId.get(node.person.id) : undefined;
             const cardClasses = [
               'absolute',
               'rounded-[24px]',
@@ -535,9 +540,14 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                 )}
                 <div className="flex h-full flex-col items-center text-center">
                   {node.person && dnaSupportCount > 0 && (
-                    <div className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5">
-                      <Dna className="w-3 h-3" />
-                      <span className="text-[9px] font-black leading-none">{dnaSupportCount}</span>
+                    <div className="absolute top-2 right-2 inline-flex flex-col items-center justify-center gap-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5">
+                      <span className="inline-flex items-center gap-1">
+                        <Dna className="w-3 h-3" />
+                        <span className="text-[9px] font-black leading-none">{dnaSupportCount}</span>
+                      </span>
+                      {dnaCm ? (
+                        <span className="text-[8px] font-bold leading-none opacity-80">{Math.round(dnaCm)}cM</span>
+                      ) : null}
                     </div>
                   )}
                   <div
