@@ -11,6 +11,15 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-29 — NAME.TRAN transliteration capture (roadmap H/P1)
+
+`NAME.TRAN` — a transliteration/translation of a name (e.g. `Иван /Смирнов/` → `Ivan /Smirnov/`) — is
+now captured on import as an `Anglicized Name` alternate name. It round-trips via the alternate-name
+export added in the prior commit (`2 TYPE immigrant`). **P1 name structure is complete** (NAME parts
++ TYPE + TRAN). Round-trip tests; build green at **213 tests**.
+
+---
+
 ## 2026-06-29 — NAME TYPE + alternate-name export round-trip (roadmap H/P1)
 
 Structured names. Two gaps closed in [../lib/gedcomParser.ts](../lib/gedcomParser.ts):

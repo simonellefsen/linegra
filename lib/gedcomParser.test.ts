@@ -547,4 +547,27 @@ describe('NAME TYPE / NICK / alternate-name round-trip (H/P1)', () => {
     const reparsed = parseGedcom(serializeGedcom(original, [])).people[0];
     expect(reparsed.alternateNames).toEqual([{ type: 'Married Name', firstName: 'A', lastName: 'C' }]);
   });
+
+  it('captures NAME.TRAN (transliteration) as an Anglicized Name alternate', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @I1@ INDI',
+      '1 NAME Иван /Смирнов/',
+      '2 TRAN Ivan /Smirnov/',
+      '0 TRLR',
+    ].join('\n');
+    const p = parseGedcom(ged).people[0];
+    expect(p.alternateNames).toEqual([{ type: 'Anglicized Name', firstName: 'Ivan', lastName: 'Smirnov' }]);
+  });
+
+  it('round-trips a transliterated name (export emits TYPE immigrant)', () => {
+    const original = [{
+      id: '1', firstName: 'A', lastName: 'B', gender: 'F',
+      alternateNames: [{ type: 'Anglicized Name', firstName: 'Aw', lastName: 'Bw' }],
+    } as unknown as Person];
+    const ged = serializeGedcom(original, []);
+    expect(ged).toContain('2 TYPE immigrant');
+    const reparsed = parseGedcom(ged).people[0];
+    expect(reparsed.alternateNames).toContainEqual({ type: 'Anglicized Name', firstName: 'Aw', lastName: 'Bw' });
+  });
 });

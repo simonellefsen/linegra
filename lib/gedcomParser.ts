@@ -436,6 +436,17 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           if (!names.some((n) => n.type === 'Nickname' && n.firstName === value)) {
             names.push({ type: 'Nickname', firstName: value, lastName: '' });
           }
+        } else if (tag === 'TRAN' && value && currentNameContext && level > currentNameLevel) {
+          // NAME.TRAN — a transliteration/translation of the name (e.g. Cyrillic -> Latin). Modeled as
+          // an Anglicized Name alternate; the TRAN value carries the /surname/ slashes, so parseNameValue
+          // suffices for the parts. Round-trips as a sibling NAME with TYPE immigrant (H/P1).
+          const { firstName, lastName } = parseNameValue(value);
+          const names = ensureAlternateNames(p);
+          const first = firstName || p.firstName || '';
+          const last = lastName || '';
+          if (!names.some((n) => n.type === 'Anglicized Name' && n.firstName === first && n.lastName === last)) {
+            names.push({ type: 'Anglicized Name', firstName: first, lastName: last });
+          }
         } else if (tag === '_AKA' && value) {
           const { firstName, lastName } = parseNameValue(value);
           const names = ensureAlternateNames(p);
