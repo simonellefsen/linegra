@@ -2,6 +2,7 @@ import { Person, Relationship, PersonEvent, Source, Citation, StructuredPlace, A
 import { isImplausiblyOld } from './lifespan';
 import { tokenizeGedcom, VOID_POINTER } from './gedcomTokenizer';
 import { parseQuay } from './sourceQuality';
+import { gedcomNameTypeToAlternate, alternateTypeToGedcomNameType } from './nameTypes';
 
 export interface GedcomParseResult {
   people: Person[];
@@ -424,6 +425,16 @@ export const parseGedcom = (text: string): GedcomParseResult => {
               if (tag === 'GIVN') alt.firstName = value;
               else alt.lastName = value;
             }
+          }
+        } else if (tag === 'TYPE' && currentNameContext?.target === 'alternate' && currentNameContext.index !== undefined && level > currentNameLevel && value) {
+          // GEDCOM 7 NAME.TYPE on an alternate name — set its real type (was hard-coded "Also Known As").
+          const alt = ensureAlternateNames(p)[currentNameContext.index];
+          if (alt) alt.type = gedcomNameTypeToAlternate(value);
+        } else if (tag === 'NICK' && value && currentNameContext && level > currentNameLevel) {
+          // Nickname NAME part -> a Nickname alternate name (deduped).
+          const names = ensureAlternateNames(p);
+          if (!names.some((n) => n.type === 'Nickname' && n.firstName === value)) {
+            names.push({ type: 'Nickname', firstName: value, lastName: '' });
           }
         } else if (tag === '_AKA' && value) {
           const { firstName, lastName } = parseNameValue(value);
@@ -1088,6 +1099,14 @@ export const serializeGedcom = (people: Person[], relationships: Relationship[])
       emitText(out, 1, 'NAME', `/${p.maidenName}/`);
       out.push('2 TYPE MAIDEN');
     }
+    // Alternate names (AKA / married / nickname / …) — each as its own NAME + TYPE. Previously these
+    // were dropped on export (only the maiden survived). Skip one that duplicates the maiden above.
+    (p.alternateNames || []).forEach((alt) => {
+      if (p.maidenName && alt.lastName === p.maidenName) return;
+      const nameVal = `${alt.firstName || ''} /${alt.lastName || ''}/`.trim();
+      emitText(out, 1, 'NAME', nameVal);
+      out.push(`2 TYPE ${alternateTypeToGedcomNameType(alt.type)}`);
+    });
     out.push(`1 SEX ${toGedcom7Sex(p.gender)}`);
     if (p.isPrivate) out.push('1 RESN PRIVACY');
     if (p.isLiving === true) out.push('1 _LIVING Y');

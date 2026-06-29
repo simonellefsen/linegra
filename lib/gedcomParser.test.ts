@@ -499,3 +499,52 @@ describe('UID / EXID / REFN round-trip (H/P1)', () => {
     expect(reparsed.metadata?.refns).toEqual([{ value: '7' }]);
   });
 });
+
+describe('NAME TYPE / NICK / alternate-name round-trip (H/P1)', () => {
+  it('captures NAME.TYPE and NICK on import (instead of hard-coding "Also Known As")', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @I1@ INDI',
+      '1 NAME First /Last/',
+      '2 NICK Bud',
+      '1 NAME First /Married/',
+      '2 TYPE married',
+      '1 NAME First /Other/',
+      '2 TYPE aka',
+      '0 TRLR',
+    ].join('\n');
+    const p = parseGedcom(ged).people[0];
+    expect(p.firstName).toBe('First');
+    expect(p.lastName).toBe('Last');
+    expect(p.alternateNames).toEqual([
+      { type: 'Nickname', firstName: 'Bud', lastName: '' },
+      { type: 'Married Name', firstName: 'First', lastName: 'Married' },
+      { type: 'Also Known As', firstName: 'First', lastName: 'Other' },
+    ]);
+  });
+
+  it('emits alternate names as NAME + TYPE on export', () => {
+    const ged = serializeGedcom(
+      [{
+        id: '1', firstName: 'A', lastName: 'B', gender: 'F',
+        alternateNames: [
+          { type: 'Married Name', firstName: 'A', lastName: 'C' },
+          { type: 'Nickname', firstName: 'Bob', lastName: '' },
+        ],
+      } as unknown as Person],
+      [],
+    );
+    expect(ged).toContain('1 NAME A /C/');
+    expect(ged).toContain('2 TYPE married');
+    expect(ged).toContain('2 TYPE nickname');
+  });
+
+  it('round-trips alternate names with their type (export -> parse)', () => {
+    const original = [{
+      id: '1', firstName: 'A', lastName: 'B', gender: 'F',
+      alternateNames: [{ type: 'Married Name', firstName: 'A', lastName: 'C' }],
+    } as unknown as Person];
+    const reparsed = parseGedcom(serializeGedcom(original, [])).people[0];
+    expect(reparsed.alternateNames).toEqual([{ type: 'Married Name', firstName: 'A', lastName: 'C' }]);
+  });
+});

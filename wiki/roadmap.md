@@ -9,7 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (204 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (211 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-06-29.
 
@@ -88,8 +88,13 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
   > [../lib/sourceQuality.ts](../lib/sourceQuality.ts) `parseQuay`/labels, 5 tests) and **surfaced as a
   > Certainty selector in the Sources tab** ([../components/person-profile/SourcesTab.tsx](../components/person-profile/SourcesTab.tsx)).
   > The data already round-tripped via the `quality` column + the exporter's `1 QUAY`; this adds the
-  > typed field, validates 0–3, and lets a curator set it per citation. **Remaining P1:** persisting the
-  > structured date (schema), `NAME` parts/`TYPE`/`TRAN`, full event detail (`AGE`/`CAUS`/`AGNC`).
+  > typed field, validates 0–3, and lets a curator set it per citation.
+  > **Done 2026-06-29 — P1 NAME TYPE:** [../lib/nameTypes.ts](../lib/nameTypes.ts) maps GEDCOM 7
+  > `NAME.TYPE` ↔ `AlternateNameType` (aka/birth/maiden/married/immigrant/name-changed/nickname/…).
+  > Import now captures `2 TYPE` under a NAME (was hard-coded "Also Known As") and `2 NICK` (nickname),
+  > and export emits **every** alternate name as `NAME` + `2 TYPE` (previously only the maiden was
+  > emitted — alternates were dropped on export). Round-trip tests. **Remaining P1:** persisting the
+  > structured date (schema), `TRAN` (name transliteration), full event detail (`AGE`/`CAUS`/`AGNC`).
 - **P2:** new records — `REPO`, `SNOTE`, `OBJE`/MIME multi-file, `ASSO` associations.
 - **P3:** compliant GEDCOM 7.0 exporter + `SCHMA` extension declarations + round-trip tests.
 - Cross-cutting: keep raw GEDCOM payload for lossless round-trip; capture `gedcom_version` per import.

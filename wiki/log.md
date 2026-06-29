@@ -11,6 +11,22 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-29 — NAME TYPE + alternate-name export round-trip (roadmap H/P1)
+
+Structured names. Two gaps closed in [../lib/gedcomParser.ts](../lib/gedcomParser.ts):
+- **Import dropped `NAME.TYPE`** — every alternate name was hard-coded to "Also Known As". Now `2 TYPE`
+  under a NAME sets the real type via new [../lib/nameTypes.ts](../lib/nameTypes.ts) (GEDCOM 7
+  `aka`/`birth`/`maiden`/`married`/`immigrant`/`name-changed`/`nickname`/… ↔ `AlternateNameType`),
+  and `2 NICK` is captured as a Nickname alternate name.
+- **Export dropped alternate names** — only the maiden (`2 TYPE MAIDEN`) was emitted; AKA / married /
+  nickname alternates were silently lost. Now every alternate name is emitted as `1 NAME` + `2 TYPE`,
+  so the name set round-trips (skipping one that duplicates the maiden).
+
+Round-trip + mapping tests (7). Build green at **211 tests**. Remaining P1: persist structured date
+(schema), `TRAN` (name transliteration), full event detail (`AGE`/`CAUS`/`AGNC`).
+
+---
+
 ## 2026-06-29 — QUAY source-certainty: typed + surfaced in the Sources tab (roadmap H/P1)
 
 QUAY (the GEDCOM 0–3 source-citation certainty) was already round-tripping as a free-text string
