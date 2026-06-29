@@ -102,6 +102,9 @@ export const parseGedcom = (text: string): GedcomParseResult => {
     let currentType: 'INDI' | 'FAM' | 'SOUR' | null = null;
     let currentTag = '';
     let currentEvent: PersonEvent | null = null;
+    // The most-recent EXID/REFN identifier captured on this INDI — a following level-2 TYPE attaches
+    // to it (EXID.TYPE / REFN TYPE). Cleared when a new level-1 identifier or event is seen.
+    let currentIdentifier: { value: string; type?: string } | null = null;
     const supportedIndividualTags = new Set([
       'NAME',
       'SEX',
@@ -118,6 +121,8 @@ export const parseGedcom = (text: string): GedcomParseResult => {
       '_MARNM',
       'TITL',
       'RFN',
+      'EXID',
+      'REFN',
       'EMAIL',
       'SUBM',
       'ADDR',
@@ -450,6 +455,30 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           const metadata = ensureMetadata(p);
           const rfns: string[] = metadata.recordFileNumbers || (metadata.recordFileNumbers = []);
           if (value && !rfns.includes(value)) rfns.push(value);
+        } else if (tag === 'UID') {
+          // GEDCOM 7 persistent record id — preserve verbatim for lossless round-trip (H/P1).
+          if (value) ensureMetadata(p).gedcomUid = value;
+          currentIdentifier = null;
+        } else if (tag === 'EXID') {
+          // External id (+ optional EXID.TYPE). GEDCOM 7. May repeat.
+          const exids: Array<{ value: string; type?: string }> = ensureMetadata(p).exids || (ensureMetadata(p).exids = []);
+          if (value) {
+            const entry = { value };
+            exids.push(entry);
+            currentIdentifier = entry;
+          } else {
+            currentIdentifier = null;
+          }
+        } else if (tag === 'REFN') {
+          // User reference number (+ optional TYPE). GEDCOM 5.5.1/7. May repeat.
+          const refns: Array<{ value: string; type?: string }> = ensureMetadata(p).refns || (ensureMetadata(p).refns = []);
+          if (value) {
+            const entry = { value };
+            refns.push(entry);
+            currentIdentifier = entry;
+          } else {
+            currentIdentifier = null;
+          }
         } else if (tag === 'SUBM') {
           const metadata = ensureMetadata(p);
           const submitters: string[] = metadata.submitterIds || (metadata.submitterIds = []);
@@ -459,14 +488,17 @@ export const parseGedcom = (text: string): GedcomParseResult => {
         } else if (tag === 'BIRT') {
           currentTag = 'BIRT';
           currentEvent = null;
+          currentIdentifier = null;
           currentEventLabel = GEDCOM_EVENT_LABELS[tag];
         } else if (tag === 'DEAT') {
           currentTag = 'DEAT';
           currentEvent = null;
+          currentIdentifier = null;
           currentEventLabel = GEDCOM_EVENT_LABELS[tag];
         } else if (tag === 'BURI') {
           currentTag = 'BURI';
           currentEvent = null;
+          currentIdentifier = null;
           currentEventLabel = GEDCOM_EVENT_LABELS[tag];
         } else if (tag === 'FAMC') {
           const famId = value.replace(/@/g, '');
@@ -658,6 +690,9 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           currentEvent.description = currentEvent.description
             ? `${currentEvent.description}\nType: ${typeText}`
             : `Type: ${typeText}`;
+        } else if (tag === 'TYPE' && level === 2 && currentIdentifier && value) {
+          // EXID.TYPE / REFN TYPE — attaches to the most-recent identifier (H/P1).
+          currentIdentifier.type = value;
         } else if (tag === 'NOTE' && level === 1) {
           appendNote(value, currentEventLabel || 'General');
         } else if (level === 1 && !supportedIndividualTags.has(tag)) {
@@ -1025,7 +1060,24 @@ export const serializeGedcom = (people: Person[], relationships: Relationship[])
   // ---- Individuals ----
   people.forEach((p) => {
     out.push(`0 ${personXref.get(p.id)} INDI`);
-    if (p.id) out.push(`1 UID ${p.id}`);
+    // Preserve the original source UID when we captured one (lossless round-trip); otherwise mint a
+    // UID from the internal id. Then re-emit EXID (+TYPE) and REFN (+TYPE) if present (H/P1).
+    const personMeta = (p.metadata as Record<string, unknown> | undefined) ?? {};
+    const gedcomUid = typeof personMeta.gedcomUid === 'string' ? personMeta.gedcomUid : undefined;
+    if (gedcomUid) out.push(`1 UID ${gedcomUid}`);
+    else if (p.id) out.push(`1 UID ${p.id}`);
+    if (Array.isArray(personMeta.exids)) {
+      (personMeta.exids as Array<{ value: string; type?: string }>).forEach((exid) => {
+        emitText(out, 1, 'EXID', exid.value);
+        if (exid.type) emitText(out, 2, 'TYPE', exid.type);
+      });
+    }
+    if (Array.isArray(personMeta.refns)) {
+      (personMeta.refns as Array<{ value: string; type?: string }>).forEach((refn) => {
+        emitText(out, 1, 'REFN', refn.value);
+        if (refn.type) emitText(out, 2, 'TYPE', refn.type);
+      });
+    }
     emitText(out, 1, 'NAME', `${p.firstName || ''} /${p.lastName || ''}/`.trim());
     if (p.firstName) emitText(out, 2, 'GIVN', p.firstName);
     if (p.lastName) emitText(out, 2, 'SURN', p.lastName);

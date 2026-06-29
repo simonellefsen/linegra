@@ -11,6 +11,20 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-29 — UID/EXID/REFN capture + emit, GEDCOM round-trip identity (roadmap H/P1)
+
+The identity portion of P1. [../lib/gedcomParser.ts](../lib/gedcomParser.ts) now captures `UID`,
+`EXID` (+`EXID.TYPE`), and `REFN` (+`TYPE`) from INDI records into `person.metadata` (the existing
+jsonb column — **no migration**) on import, and re-emits them on export. Previously export minted
+`1 UID <internal-uuid>`, discarding the source's UID; now the **original source UID is preserved
+verbatim** (falling back to the internal id only when none was captured), so import → export → import
+keeps record identity. EXID/REFN (which can repeat, each with a TYPE) round-trip too. Added `EXID`/
+`REFN` to the supported-tags set (no more "ignored tag" warnings for them) and a small
+`currentIdentifier` tracker so a level-2 `TYPE` attaches to the right EXID/REFN. 5 round-trip tests.
+Build green at **199 tests**.
+
+---
+
 ## 2026-06-27 — Lossless structured-date parser, the GEDCOM date spine (roadmap H/P1)
 
 The date portion of P1. New [../lib/gedcomDate.ts](../lib/gedcomDate.ts) interprets GEDCOM 5.5.1/7

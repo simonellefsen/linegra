@@ -425,3 +425,77 @@ describe.skipIf(gedFixtures.length === 0)('parseGedcom — real .ged fixtures (l
     }
   });
 });
+
+describe('UID / EXID / REFN round-trip (H/P1)', () => {
+  it('captures UID, EXID (+TYPE), and REFN (+TYPE) into person metadata on import', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @I1@ INDI',
+      '1 NAME Anne /Bee/',
+      '1 UID 7f3c2e1a-1234-4abc-9def-000000000001',
+      '1 EXID ABC-123',
+      '2 TYPE familysearch',
+      '1 EXID SECOND',
+      '1 REFN 42',
+      '2 TYPE church',
+      '0 TRLR',
+    ].join('\n');
+    const p = parseGedcom(ged).people[0];
+    expect(p.metadata?.gedcomUid).toBe('7f3c2e1a-1234-4abc-9def-000000000001');
+    expect(p.metadata?.exids).toEqual([
+      { value: 'ABC-123', type: 'familysearch' },
+      { value: 'SECOND' },
+    ]);
+    expect(p.metadata?.refns).toEqual([{ value: '42', type: 'church' }]);
+  });
+
+  it('emits the captured UID on export (not the internal id)', () => {
+    const ged = serializeGedcom(
+      [{ id: 'internal-1', firstName: 'A', lastName: 'B', gender: 'F', metadata: { gedcomUid: 'ORIGINAL-UID' } } as unknown as Person],
+      [],
+    );
+    expect(ged).toContain('1 UID ORIGINAL-UID');
+    expect(ged).not.toContain('1 UID internal-1');
+  });
+
+  it('falls back to the internal id as UID when no captured UID exists', () => {
+    const ged = serializeGedcom(
+      [{ id: 'internal-9', firstName: 'A', lastName: 'B', gender: 'M' } as unknown as Person],
+      [],
+    );
+    expect(ged).toContain('1 UID internal-9');
+  });
+
+  it('emits EXID (+TYPE) and REFN (+TYPE)', () => {
+    const ged = serializeGedcom(
+      [{
+        id: '1', firstName: 'A', lastName: 'B', gender: 'F',
+        metadata: {
+          exids: [{ value: 'X1', type: 'myheritage' }, { value: 'X2' }],
+          refns: [{ value: '99', type: 'census' }],
+        },
+      } as unknown as Person],
+      [],
+    );
+    expect(ged).toContain('1 EXID X1');
+    expect(ged).toContain('2 TYPE myheritage');
+    expect(ged).toContain('1 EXID X2');
+    expect(ged).toContain('1 REFN 99');
+    expect(ged).toContain('2 TYPE census');
+  });
+
+  it('round-trips identifiers through export -> parse', () => {
+    const original = [{
+      id: '1', firstName: 'A', lastName: 'B', gender: 'F',
+      metadata: {
+        gedcomUid: 'UID-KEEP',
+        exids: [{ value: 'EXT', type: 'ancestry' }],
+        refns: [{ value: '7' }],
+      },
+    } as unknown as Person];
+    const reparsed = parseGedcom(serializeGedcom(original, [])).people[0];
+    expect(reparsed.metadata?.gedcomUid).toBe('UID-KEEP');
+    expect(reparsed.metadata?.exids).toEqual([{ value: 'EXT', type: 'ancestry' }]);
+    expect(reparsed.metadata?.refns).toEqual([{ value: '7' }]);
+  });
+});

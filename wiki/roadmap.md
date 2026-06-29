@@ -9,9 +9,9 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (194 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (199 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
-git/code 2026-06-27.
+git/code 2026-06-29.
 
 ## Candidate next work
 
@@ -78,9 +78,13 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
   > parses GEDCOM 5.5.1/7 dates losslessly into a `StructuredDate` (`raw` verbatim + calendar +
   > qualifier + range bounds + BCE + phrase; `representativeYear`/`formatStructuredDate`). Adopted in
   > `extractBirthYear` (range → start year, behavior-preserving) so lifespan/data-quality/books all
-  > gain structured interpretation with zero test regressions (19 parser tests). **Remaining P1:**
-  > persisting the structured form (schema), `NAME` parts/`TYPE`/`TRAN`, full event detail, `QUAY`,
-  > `UID`/`EXID`/`REFN`.
+  > gain structured interpretation with zero test regressions (19 parser tests).
+  > **Done 2026-06-29 — P1 UID/EXID/REFN:** [../lib/gedcomParser.ts](../lib/gedcomParser.ts) now
+  > captures `UID`, `EXID` (+`EXID.TYPE`), and `REFN` (+`TYPE`) from INDI records into
+  > `person.metadata` (jsonb — no migration) and re-emits them on export; the original source `UID`
+  > is preserved verbatim instead of being overwritten with the internal id, so import→export keeps
+  > identity (5 round-trip tests). **Remaining P1:** persisting the structured date (schema), `NAME`
+  > parts/`TYPE`/`TRAN`, full event detail (`AGE`/`CAUS`/`AGNC`), `QUAY`.
 - **P2:** new records — `REPO`, `SNOTE`, `OBJE`/MIME multi-file, `ASSO` associations.
 - **P3:** compliant GEDCOM 7.0 exporter + `SCHMA` extension declarations + round-trip tests.
 - Cross-cutting: keep raw GEDCOM payload for lossless round-trip; capture `gedcom_version` per import.
