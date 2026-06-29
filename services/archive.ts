@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { deriveMatchConfidence, supportsRelationshipHops, relationshipPredictionLabel } from '../lib/dnaClassification';
 import { inferLivingStatus } from '../lib/lifespan';
+import { parseQuay } from '../lib/sourceQuality';
 import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
@@ -2177,6 +2178,7 @@ export const fetchPersonDetails = async (personId: string): Promise<Person> => {
         dataDate: citation.data_date || extra.data_date || undefined,
         dataText: citation.data_text || extra.data_text || undefined,
         quality: citation.quality || extra.quality || undefined,
+        quay: parseQuay(citation.quality || extra.quality) ?? undefined,
         extra
       };
       citationMap[personId]!.push(entry);
@@ -2496,7 +2498,7 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
         page_text: citation.page || null,
         data_date: citation.dataDate || citation.extra?.data_date || null,
         data_text: citation.dataText || citation.extra?.data_text || null,
-        quality: citation.quality || citation.extra?.quality || null,
+        quality: citation.quality || citation.extra?.quality || (citation.quay != null ? String(citation.quay) : null),
         extra: citation.extra || {}
       });
     });

@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Library, Link, Trash2, Plus, Merge, X, Search, ExternalLink, Sparkles } from 'lucide-react';
 import DetailEdit from './DetailEdit';
 import { SOURCE_TYPES } from './constants';
-import { Citation, Source } from '../../types';
+import { Citation, Source, Quay } from '../../types';
 import { listTreeSources, mergeSources } from '../../services/archive';
+import { QUAY_VALUES, QUAY_LABELS } from '../../lib/sourceQuality';
 
 interface SourcesTabProps {
   canEdit: boolean;
@@ -369,6 +370,26 @@ const SourcesTab: React.FC<SourcesTabProps> = ({
                       <div className="grid grid-cols-2 gap-2">
                         <DetailEdit label="Page / Reference" value={citation.page || ''} onChange={(v) => onUpdateCitation(citation.id, { page: v })} disabled={readOnly} />
                         <DetailEdit label="Record Date" value={citation.dataDate || ''} onChange={(v) => onUpdateCitation(citation.id, { dataDate: v })} disabled={readOnly} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] shrink-0">Certainty</label>
+                        <select
+                          value={citation.quay != null ? String(citation.quay) : ''}
+                          onChange={(e) =>
+                            onUpdateCitation(citation.id, {
+                              quay: e.target.value === '' ? undefined : (Number(e.target.value) as Quay),
+                              quality: e.target.value === '' ? undefined : e.target.value,
+                            })
+                          }
+                          disabled={readOnly}
+                          className="text-[11px] text-slate-700 border border-slate-100 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-100 bg-white disabled:opacity-50"
+                          title="GEDCOM QUAY — source-citation certainty"
+                        >
+                          <option value="">Not rated</option>
+                          {QUAY_VALUES.map((q) => (
+                            <option key={q} value={String(q)}>{q} · {QUAY_LABELS[q]}</option>
+                          ))}
+                        </select>
                       </div>
                       {citation.dataText && !readOnly ? (
                         <textarea

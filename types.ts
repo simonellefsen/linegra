@@ -438,6 +438,10 @@ export interface User {
 }
 
 export type TreeLayoutType = 'pedigree' | 'fan' | 'descendant';
+/** GEDCOM QUAY — source-citation certainty (0–3). 0 = unreliable/estimated, 1 = questionable,
+ *  2 = secondary evidence, 3 = primary/direct evidence. */
+export type Quay = 0 | 1 | 2 | 3;
+
 export interface Citation {
   id: string;
   sourceId: string;
@@ -450,5 +454,7 @@ export interface Citation {
   dataDate?: string;
   dataText?: string;
   quality?: string;
+  /** Typed certainty 0–3 (mirrors `quality` when it's a valid QUAY). Roadmap H/P1. */
+  quay?: Quay;
   extra?: Record<string, unknown>;
 }

@@ -11,6 +11,24 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-29 — QUAY source-certainty: typed + surfaced in the Sources tab (roadmap H/P1)
+
+QUAY (the GEDCOM 0–3 source-citation certainty) was already round-tripping as a free-text string
+through the `citations.quality` column and the exporter's `1 QUAY` line — the gap was that it wasn't
+typed or visible. Now:
+- New `Quay` type (0–3) on `Citation` + [../lib/sourceQuality.ts](../lib/sourceQuality.ts)
+  (`parseQuay` validates 0–3, `QUAY_LABELS`: Unreliable/Questionable/Secondary/Primary). 5 tests.
+- Import sets `citation.quay`; `mapDbCitation` derives it from the persisted `quality`; the DB write
+  falls back to `quay` so a curator-set certainty persists even with no text quality.
+- **Sources tab** ([../components/person-profile/SourcesTab.tsx](../components/person-profile/SourcesTab.tsx)):
+  each citation gains a Certainty selector (Not rated / 0–3 with labels).
+
+Live click-through was blocked by an agent-browser/Playwright harness outage, but the dev server
+stayed healthy (HTTP 200) and Vite HMR'd SourcesTab with no transform errors. Build green at **204
+tests** (+5).
+
+---
+
 ## 2026-06-29 — UID/EXID/REFN capture + emit, GEDCOM round-trip identity (roadmap H/P1)
 
 The identity portion of P1. [../lib/gedcomParser.ts](../lib/gedcomParser.ts) now captures `UID`,

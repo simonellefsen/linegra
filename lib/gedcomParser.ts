@@ -1,6 +1,7 @@
 import { Person, Relationship, PersonEvent, Source, Citation, StructuredPlace, AlternateName } from '../types';
 import { isImplausiblyOld } from './lifespan';
 import { tokenizeGedcom, VOID_POINTER } from './gedcomTokenizer';
+import { parseQuay } from './sourceQuality';
 
 export interface GedcomParseResult {
   people: Person[];
@@ -612,6 +613,8 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           }
         } else if (tag === 'QUAY' && currentCitation) {
           currentCitation.quality = value;
+          const quay = parseQuay(value);
+          if (quay != null) currentCitation.quay = quay;
           currentCitation.extra = { ...(currentCitation.extra || {}), quality: value };
         } else if (tag === 'DATA' && currentCitation) {
           currentCitationDataLevel = level;
