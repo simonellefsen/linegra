@@ -11,6 +11,20 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-30 — SNOTE shared-note resolution on import (roadmap H/P2)
+
+`1 NOTE @N1@` pointer references — common in FamilySearch/Ancestry exports that share one note across
+many records — were stored as the literal string `@N1@`, losing the note's text. Fixed in
+[../lib/gedcomParser.ts](../lib/gedcomParser.ts): level-0 shared-note records (`0 @N1@ SNOTE` in
+GEDCOM 7, `0 @N1@ NOTE` in 5.5.1) are captured into a `parsedSharedNotes` map (the tokenizer already
+merges CONT/CONC into the value, so multi-line text is captured), and `appendNote` now defers
+`@N1@` pointer references to a `pendingNoteRefs` list that is resolved **after** the parse pass — so
+forward references (SNOTE record appearing after the person who cites it) work. Unresolved pointers
+are dropped silently. Export still emits notes inline (valid GEDCOM; dedup back into shared SNOTE
+records is a follow-up). 5 tests; build green at **237 tests**.
+
+---
+
 ## 2026-06-30 — Book versioning: history + restore + publish (roadmap M4)
 
 The book editor ([../components/book/BookEditor.tsx](../components/book/BookEditor.tsx)) now keeps a

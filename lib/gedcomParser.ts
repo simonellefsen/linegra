@@ -107,12 +107,19 @@ export const parseGedcom = (text: string): GedcomParseResult => {
     const parsedSources: Record<string, Source & { abbreviation?: string; callNumber?: string }> = {};
     const familyChildRoles: Record<string, Record<string, { father?: string; mother?: string; overall?: string }>> = {};
     const warnings: string[] = [];
+    // Shared-note records (0 @N1@ SNOTE / NOTE) keyed by id, and pending NOTE @N1@ pointer
+    // references collected during the pass and resolved after it (so forward refs work). Roadmap H/P2.
+    const parsedSharedNotes: Record<string, string> = {};
+    const pendingNoteRefs: Array<{ personId: string; label: string; pointerId: string }> = [];
+    const NOTE_POINTER = /^@.+@$/;
+    const notePointerId = (val: string): string | null =>
+      NOTE_POINTER.test(val) ? val.slice(1, -1) : null;
     // Whether this export uses the `_LIVING` convention (TNG-style). When it does, a person
     // without a `_LIVING Y` tag is treated as deceased rather than defaulting to living.
     let usesLivingTag = false;
 
     let currentId = '';
-    let currentType: 'INDI' | 'FAM' | 'SOUR' | null = null;
+    let currentType: 'INDI' | 'FAM' | 'SOUR' | 'SNOTE' | null = null;
     let currentTag = '';
     let currentEvent: PersonEvent | null = null;
     // The most-recent EXID/REFN identifier captured on this INDI — a following level-2 TYPE attaches
@@ -376,12 +383,26 @@ export const parseGedcom = (text: string): GedcomParseResult => {
             reliability: 1,
             actualText: ''
           };
+        } else if (pointerToken && (tag === 'SNOTE' || tag === 'NOTE')) {
+          // Shared note record (`0 @N1@ SNOTE` in GEDCOM 7, `0 @N1@ NOTE` in 5.5.1). The tokenizer has
+          // already merged CONT/CONC into `value`, so this captures the full text. Resolved later when
+          // a `NOTE @N1@` reference points at it (H/P2).
+          currentId = pointerId;
+          currentType = 'SNOTE';
+          parsedSharedNotes[pointerId] = value;
         } else {
           currentType = null;
         }
       } else if (currentType === 'INDI' && parsedPeople[currentId]) {
         const p = parsedPeople[currentId];
         const appendNote = (text: string, label: string) => {
+          // A `NOTE @N1@` pointer reference: defer resolution until after the pass (the SNOTE record
+          // may not have been seen yet). Otherwise append the inline text. Roadmap H/P2.
+          const refId = notePointerId(text);
+          if (refId) {
+            pendingNoteRefs.push({ personId: currentId, label: label || 'General', pointerId: refId });
+            return;
+          }
           const notesArr = p.notes || (p.notes = []);
           notesArr.push({
             id: `note-${currentId}-${notesArr.length + 1}`,
@@ -819,6 +840,22 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           `Family ${famId} lists ${fam.children.length} child(ren) but no parents. The GEDCOM export omitted HUSB/WIFE or matching FAMS tags.`
         );
       }
+    });
+
+    // Resolve deferred `NOTE @N1@` pointer references now that every SNOTE record has been seen
+    // (handles forward references). Unresolved pointers (missing SNOTE) are dropped silently. (H/P2)
+    pendingNoteRefs.forEach((ref) => {
+      const text = parsedSharedNotes[ref.pointerId];
+      if (!text) return;
+      const person = parsedPeople[ref.personId];
+      if (!person) return;
+      const notesArr = person.notes || (person.notes = []);
+      notesArr.push({
+        id: `note-${ref.personId}-ref-${ref.pointerId}-${notesArr.length + 1}`,
+        text,
+        type: 'Research Note',
+        event: ref.label
+      });
     });
 
     const finalPeople: Person[] = Object.values(parsedPeople).map((p) => {

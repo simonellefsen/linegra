@@ -9,7 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (232 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (237 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-06-30.
 
@@ -109,6 +109,12 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
   > round-trips with its calendar intact instead of being silently re-inferred as Gregorian. 4 tests.
   > **P1 is complete.**
 - **P2:** new records — `REPO`, `SNOTE`, `OBJE`/MIME multi-file, `ASSO` associations.
+  > **Done 2026-06-30 — P2 SNOTE (import):** shared-note records (`0 @N1@ SNOTE` / `0 @N1@ NOTE`) are
+  > captured, and `1 NOTE @N1@` pointer references resolve to their text — including forward references
+  > (resolved after the parse pass) and multi-line text (CONT merged by the tokenizer). Previously these
+  > references were stored as literal `@N1@`, losing the note. Export still emits notes inline (valid
+  > GEDCOM; dedup back into shared SNOTE records is a follow-up). 5 tests. **Remaining P2:** `REPO`,
+  > `OBJE`/MIME media, `ASSO` associations.
 - **P3:** compliant GEDCOM 7.0 exporter + `SCHMA` extension declarations + round-trip tests.
   > **Done 2026-06-30 — P3 (exporter gap + round-trip harness):** non-vital events (OCCU/RESI/EVEN/…)
   > are now exported (`emitCustomEvent` emits DATE/PLAC + the AGE/CAUS/AGNC from event metadata) — they

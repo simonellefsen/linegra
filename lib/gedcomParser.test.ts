@@ -680,3 +680,61 @@ describe('round-trip — events + full P1 person (H/P3)', () => {
     expect(reparsed.alternateNames).toContainEqual({ type: 'Also Known As', firstName: 'Jack', lastName: 'Smith' });
   });
 });
+
+describe('SNOTE shared-note resolution (H/P2)', () => {
+  it('resolves a 1 NOTE @N1@ pointer to the SNOTE text (forward reference)', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @I1@ INDI',
+      '1 NAME John /Smith/',
+      '1 NOTE @N1@',
+      '0 @N1@ SNOTE This is a shared note',
+      '0 TRLR',
+    ].join('\n');
+    const p = parseGedcom(ged).people[0];
+    expect(p.notes).toHaveLength(1);
+    expect(p.notes[0].text).toBe('This is a shared note');
+  });
+
+  it('shares one SNOTE across multiple people', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @I1@ INDI',
+      '1 NAME A /X/',
+      '1 NOTE @N1@',
+      '0 @I2@ INDI',
+      '1 NAME B /Y/',
+      '1 NOTE @N1@',
+      '0 @N1@ SNOTE Shared text',
+      '0 TRLR',
+    ].join('\n');
+    const people = parseGedcom(ged).people;
+    expect(people).toHaveLength(2);
+    expect(people[0].notes[0].text).toBe('Shared text');
+    expect(people[1].notes[0].text).toBe('Shared text');
+  });
+
+  it('preserves multi-line SNOTE text (CONT merged by the tokenizer)', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @N1@ SNOTE Line one',
+      '1 CONT Line two',
+      '0 @I1@ INDI',
+      '1 NAME A /X/',
+      '1 NOTE @N1@',
+      '0 TRLR',
+    ].join('\n');
+    const p = parseGedcom(ged).people[0];
+    expect(p.notes[0].text).toBe('Line one\nLine two');
+  });
+
+  it('leaves inline NOTE text untouched (no pointer)', () => {
+    const p = parseGedcom('0 HEAD\n0 @I1@ INDI\n1 NAME A /X/\n1 NOTE An inline note\n0 TRLR').people[0];
+    expect(p.notes[0].text).toBe('An inline note');
+  });
+
+  it('drops an unresolved pointer silently (no crash)', () => {
+    const p = parseGedcom('0 HEAD\n0 @I1@ INDI\n1 NAME A /X/\n1 NOTE @MISSING@\n0 TRLR').people[0];
+    expect(p.notes || []).toEqual([]);
+  });
+});
