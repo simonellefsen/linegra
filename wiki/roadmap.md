@@ -9,7 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (224 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (232 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-06-30.
 
@@ -269,9 +269,15 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
   optional `status` (`'draft' | 'edited' | 'locked'`) that the editor surfaces as a badge + lock
   toggle (locking freezes the text + Regenerate), and the print/preview TOC groups chapters under
   section headers with divider pages. `status` rides the existing `chapters` jsonb — no migration.
-- **M4. Book versioning + draft/publish.** `status` exists (`draft`/`complete`) but there's no real
-  history. Add version snapshots of `chapters` (a `family_book_versions` table or jsonb snapshots)
-  + a publish flow that fixes a viewer-facing snapshot.
+- **M4. Book versioning + draft/publish — DONE 2026-06-30 (client-side slice).** The book editor now
+  keeps a **version history**: each Save/Publish records a snapshot of the title/subtitle/chapters
+  (deduped + capped at 25), browsable via a History panel with one-click Restore (non-destructive; a
+  restore becomes a draft until Saved). A **Publish** action saves with `status: 'complete'`. Logic is
+  pure + tested in [../lib/bookVersions.ts](../lib/bookVersions.ts) (8 tests); persistence is
+  browser-localStorage ([../lib/bookVersionStore.ts](../lib/bookVersionStore.ts)) — **no migration**, works
+  immediately. **Deferred to M5:** server-side snapshots (a `family_book_versions` table +
+  `published_chapters` column via migration) for cross-device history and a viewer-facing published
+  snapshot the public viewer reads.
 - **M5. Public book sharing viewer.** `is_public` + an RLS policy already exist but there's no
   public viewer UI. Build the read-only viewer route + shareable link; print-to-PDF already works.
 

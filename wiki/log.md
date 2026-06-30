@@ -11,6 +11,25 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-30 — Book versioning: history + restore + publish (roadmap M4)
+
+The book editor ([../components/book/BookEditor.tsx](../components/book/BookEditor.tsx)) now keeps a
+**version history**. Each Save/Publish records a snapshot (title + subtitle + chapters), deduped
+against the latest (no snapshot when nothing changed) and capped at 25. A new **History** panel lists
+snapshots with timestamps + chapter counts and a one-click **Restore** (non-destructive — it loads the
+snapshot as an editable draft; the source snapshot stays pristine). A **Publish** button saves with
+`status: 'complete'` and records a Publish-tagged snapshot; the toolbar shows a "Published" chip when
+the book is complete.
+
+Logic is pure + unit-tested in new [../lib/bookVersions.ts](../lib/bookVersions.ts) (8 tests:
+snapshot/deep-copy, dedup, cap, restore-non-destructive, draft-on-restore). Persistence is
+browser-localStorage in [../lib/bookVersionStore.ts](../lib/bookVersionStore.ts) — **no migration**,
+works immediately per-browser. Deferred to M5: server-side snapshots (`family_book_versions` table +
+`published_chapters` column) for cross-device history and a viewer-facing published snapshot. Build
+green at **232 tests**.
+
+---
+
 ## 2026-06-30 — Non-vital event export + lossless round-trip harness (roadmap H/P3)
 
 The exporter dropped non-vital events entirely (OCCU/RESI/EVEN/CHR/…), so all the event data the

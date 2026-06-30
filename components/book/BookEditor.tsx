@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, ArrowDown, Plus, Trash2, Save, Loader2, Eye, X, AlertCircle, RefreshCw, Lock, Unlock } from 'lucide-react';
-import { FamilyBook, BookChapter, BookChapterKind, BookChapterStatus, Person } from '../../types';
+import { ArrowUp, ArrowDown, Plus, Trash2, Save, Loader2, Eye, X, AlertCircle, RefreshCw, Lock, Unlock, History, Upload } from 'lucide-react';
+import { FamilyBook, BookChapter, BookChapterKind, BookChapterStatus, BookStatus, Person } from '../../types';
 import { saveFamilyBook } from '../../services/books';
 import { composePersonBiography, composeFamilyOverview } from '../../services/ai';
 import { moveChapter, removeChapter, createCustomChapter, createSectionChapter } from '../../lib/bookComposer';
+import { createBookVersion, recordVersion, matchesVersion, restoreVersion, BookVersion } from '../../lib/bookVersions';
+import { loadVersionHistory, saveVersionHistory } from '../../lib/bookVersionStore';
 import BookPrintOverlay from './BookPrintOverlay';
 import AiTextOps from '../common/AiTextOps';
 
@@ -59,6 +61,8 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<BookVersion[]>(() => loadVersionHistory(book.id));
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -129,30 +133,60 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
     [chapters, book, treeName, people, updateChapter]
   );
 
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      await saveFamilyBook({
-        bookId: book.id,
-        treeId: book.treeId,
-        title: title.trim() || book.title,
-        subtitle: subtitle.trim() || null,
-        status: book.status,
-        options: book.options,
-        chapters,
-        statistics: book.statistics,
-        isPublic: book.isPublic,
-        actor,
-      });
-      onSaved();
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the book.');
-    } finally {
-      setSaving(false);
-    }
-  }, [book, title, subtitle, chapters, actor, onSaved, onClose]);
+  // Persist the book with a given status, then record a version snapshot of what was saved (M4).
+  // `label` ('Save' | 'Publish') tags the history entry. Versions dedup against the latest, so an
+  // unchanged save is a no-op in history.
+  const persist = useCallback(
+    async (nextStatus: BookStatus, label: 'Save' | 'Publish') => {
+      setSaving(true);
+      setError(null);
+      try {
+        await saveFamilyBook({
+          bookId: book.id,
+          treeId: book.treeId,
+          title: title.trim() || book.title,
+          subtitle: subtitle.trim() || null,
+          status: nextStatus,
+          options: book.options,
+          chapters,
+          statistics: book.statistics,
+          isPublic: book.isPublic,
+          actor,
+        });
+        const snapshot = createBookVersion(
+          { title: title.trim() || book.title, subtitle: subtitle.trim() || null, chapters },
+          label,
+          { id: `v-${Date.now()}`, createdAt: new Date().toISOString() }
+        );
+        setHistory((prev) => {
+          const next = recordVersion(prev, snapshot);
+          saveVersionHistory(book.id, next);
+          return next;
+        });
+        onSaved();
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not save the book.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [book, title, subtitle, chapters, actor, onSaved, onClose]
+  );
+
+  const handleSave = useCallback(() => persist(book.status, 'Save'), [persist, book.status]);
+  const handlePublish = useCallback(() => persist('complete', 'Publish'), [persist]);
+
+  const handleRestore = useCallback(
+    (version: BookVersion) => {
+      const restored = restoreVersion(book, version);
+      setTitle(restored.title);
+      setSubtitle(restored.subtitle ?? '');
+      setChapters(restored.chapters);
+      setHistoryOpen(false);
+    },
+    [book]
+  );
 
   const node = (
     <div className="fixed inset-0 z-[100] overflow-auto bg-slate-100">
@@ -161,7 +195,30 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
           <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">Edit Book</p>
           <p className="truncate font-bold">{title.trim() || book.title}</p>
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 items-center gap-2">
+          {book.status === 'complete' ? (
+            <span className="hidden rounded-full bg-emerald-500/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-300 sm:inline">
+              Published
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handlePublish}
+              disabled={saving}
+              title="Save and mark this book as a published version"
+              className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-emerald-500 disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" /> Publish
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setHistoryOpen((v) => !v)}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-slate-600 disabled:opacity-50"
+          >
+            <History className="h-4 w-4" /> History
+          </button>
           <button
             type="button"
             onClick={() => setPreview(true)}
@@ -211,6 +268,65 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
           <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{error}</span>
+          </div>
+        ) : null}
+
+        {/* Version history (M4) — snapshots recorded on each Save/Publish; restore loads one as a draft. */}
+        {historyOpen ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Version history</p>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {history.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">
+                No saved versions yet. Saving or publishing records a snapshot you can restore here.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {history.map((v) => {
+                  const current = matchesVersion(
+                    { title: title.trim() || book.title, subtitle: subtitle.trim() || null, chapters },
+                    v
+                  );
+                  return (
+                    <li key={v.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-800">
+                          {v.label}
+                          {v.label === 'Publish' ? (
+                            <span className="ml-2 text-[9px] font-black uppercase tracking-widest text-emerald-600">Published</span>
+                          ) : null}
+                          {current ? (
+                            <span className="ml-2 text-[9px] font-black uppercase tracking-widest text-blue-600">Editing</span>
+                          ) : null}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          {new Date(v.createdAt).toLocaleString()} · {v.chapters.length} chapters
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRestore(v)}
+                        disabled={current}
+                        className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+                      >
+                        Restore
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="mt-3 text-[10px] italic text-slate-400">
+              Versions are stored in this browser. A restored version becomes a draft until you Save.
+            </p>
           </div>
         ) : null}
 
