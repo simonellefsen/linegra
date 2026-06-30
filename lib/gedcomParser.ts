@@ -49,6 +49,11 @@ const EVENT_TYPE_TO_TAG: Record<string, string> = (() => {
   return m;
 })();
 
+/** A GEDCOM multimedia object (OBJE) — its file reference, MIME form, and title. Captured losslessly
+ *  on import into person.metadata.media; the binary itself is not fetched (FILE is usually a local
+ *  path the browser can't read). Roadmap H/P2. */
+type GedcomMedium = { file?: string; form?: string; title?: string };
+
 /**
  * GEDCOM 7.x models a couple only as a FAM/HUSB/WIFE record with a MARR event — there is no
  * dedicated "cohabiting partner" union. A marriage that was not formalized is conventionally marked
@@ -119,12 +124,17 @@ export const parseGedcom = (text: string): GedcomParseResult => {
     // repository's name. Roadmap H/P2.
     const parsedRepositories: Record<string, { name: string }> = {};
     const pendingRepoRefs: Array<{ sourceId: string; repoId: string }> = [];
+    // Multimedia objects (0 @M1@ OBJE records + inline `1 OBJE`) keyed by id, and pending `1 OBJE @M1@`
+    // references. We capture the metadata (FILE/FORM/TITL) losslessly into person.metadata.media — we
+    // do NOT fetch the binary (FILE usually points at a local path the browser can't read). Roadmap H/P2.
+    const parsedMediaObjects: Record<string, GedcomMedium> = {};
+    const pendingMediaRefs: Array<{ personId: string; mediaId: string }> = [];
     // Whether this export uses the `_LIVING` convention (TNG-style). When it does, a person
     // without a `_LIVING Y` tag is treated as deceased rather than defaulting to living.
     let usesLivingTag = false;
 
     let currentId = '';
-    let currentType: 'INDI' | 'FAM' | 'SOUR' | 'SNOTE' | 'REPO' | null = null;
+    let currentType: 'INDI' | 'FAM' | 'SOUR' | 'SNOTE' | 'REPO' | 'OBJE' | null = null;
     let currentTag = '';
     let currentEvent: PersonEvent | null = null;
     // The most-recent EXID/REFN identifier captured on this INDI — a following level-2 TYPE attaches
@@ -133,6 +143,8 @@ export const parseGedcom = (text: string): GedcomParseResult => {
     // The most-recent ASSO association captured on this INDI — a following level-2 RELA attaches to
     // it (the role of the target person relative to this person). Cleared when a new ASSO is seen.
     let currentAssociation: { personId: string; rela?: string } | null = null;
+    // The most-recent inline OBJE on this INDI — level-2 FILE/FORM/TITL attach to it (H/P2).
+    let currentMedium: GedcomMedium | null = null;
     const supportedIndividualTags = new Set([
       'NAME',
       'SEX',
@@ -152,6 +164,7 @@ export const parseGedcom = (text: string): GedcomParseResult => {
       'EXID',
       'REFN',
       'ASSO',
+      'OBJE',
       'EMAIL',
       'SUBM',
       'ADDR',
@@ -405,6 +418,12 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           currentId = pointerId;
           currentType = 'REPO';
           parsedRepositories[pointerId] = { name: value || '' };
+        } else if (pointerToken && tag === 'OBJE') {
+          // Multimedia object record (`0 @M1@ OBJE`); its FILE/FORM/TITL are captured below. A
+          // person's `1 OBJE @M1@` pointer resolves to this (H/P2).
+          currentId = pointerId;
+          currentType = 'OBJE';
+          parsedMediaObjects[pointerId] = {};
         } else {
           currentType = null;
         }
@@ -513,7 +532,7 @@ export const parseGedcom = (text: string): GedcomParseResult => {
             firstName: baseFirst,
             lastName: value
           });
-        } else if (tag === 'TITL') {
+        } else if (tag === 'TITL' && level === 1) {
           p.title = value;
         } else if (tag === 'SEX') {
           p.gender = value === 'F' ? 'F' : (value === 'M' ? 'M' : 'O');
@@ -566,6 +585,19 @@ export const parseGedcom = (text: string): GedcomParseResult => {
             currentAssociation = entry;
           } else {
             currentAssociation = null;
+          }
+        } else if (tag === 'OBJE' && level === 1) {
+          // Multimedia object on this person. A pointer (`1 OBJE @M1@`) is deferred to a media record
+          // seen later; an inline OBJE captures its FILE/FORM/TITL substructures directly (H/P2).
+          const pointerId = notePointerId(value);
+          if (pointerId) {
+            pendingMediaRefs.push({ personId: currentId, mediaId: pointerId });
+            currentMedium = null;
+          } else {
+            const list = ensureMetadata(p).media || (ensureMetadata(p).media = []);
+            const entry: GedcomMedium = {};
+            list.push(entry);
+            currentMedium = entry;
           }
         } else if (tag === 'BIRT') {
           currentTag = 'BIRT';
@@ -794,6 +826,12 @@ export const parseGedcom = (text: string): GedcomParseResult => {
         } else if (tag === 'RELA' && level === 2 && currentAssociation && value) {
           // ASSO.RELA — the target person's role relative to this person (godparent, witness, …). H/P2.
           currentAssociation.rela = value;
+        } else if (tag === 'FILE' && level === 2 && currentMedium && value) {
+          currentMedium.file = value;
+        } else if (tag === 'FORM' && level === 2 && currentMedium && value) {
+          currentMedium.form = value;
+        } else if (tag === 'TITL' && level === 2 && currentMedium && value) {
+          currentMedium.title = value;
         } else if (tag === 'TYPE' && level === 2 && currentIdentifier && value) {
           // EXID.TYPE / REFN TYPE — attaches to the most-recent identifier (H/P1).
           currentIdentifier.type = value;
@@ -873,6 +911,12 @@ export const parseGedcom = (text: string): GedcomParseResult => {
       } else if (currentType === 'REPO' && parsedRepositories[currentId]) {
         // Repository record body: `1 NAME <archive name>` (the REPO line value is a fallback).
         if (tag === 'NAME' && value) parsedRepositories[currentId].name = value;
+      } else if (currentType === 'OBJE' && parsedMediaObjects[currentId]) {
+        // Multimedia record body: `1 FILE` / `1 FORM` / `1 TITL` (H/P2).
+        const medium = parsedMediaObjects[currentId];
+        if (tag === 'FILE' && value) medium.file = value;
+        else if (tag === 'FORM' && value) medium.form = value;
+        else if (tag === 'TITL' && value) medium.title = value;
       }
     });
 
@@ -915,6 +959,18 @@ export const parseGedcom = (text: string): GedcomParseResult => {
         const base = parsedSources[src.externalId];
         if (base?.repository) src.repository = base.repository;
       });
+    });
+
+    // Resolve deferred `1 OBJE @M1@` references into person.metadata.media now that every multimedia
+    // record has been seen. Missing media records are dropped silently. (H/P2)
+    pendingMediaRefs.forEach((ref) => {
+      const medium = parsedMediaObjects[ref.mediaId];
+      const person = parsedPeople[ref.personId];
+      if (!medium || !person) return;
+      const md = person.metadata || (person.metadata = {});
+      const list: GedcomMedium[] = Array.isArray(md.media) ? (md.media as GedcomMedium[]) : [];
+      list.push({ ...medium });
+      md.media = list;
     });
 
     const finalPeople: Person[] = Object.values(parsedPeople).map((p) => {
@@ -1272,6 +1328,16 @@ export const serializeGedcom = (people: Person[], relationships: Relationship[])
         if (!targetXref) return;
         out.push(`1 ASSO ${targetXref}`);
         if (asso.rela) emitText(out, 2, 'RELA', asso.rela);
+      });
+    }
+    // Multimedia objects (`1 OBJE` + FILE/FORM/TITL) captured as metadata. Emitted inline — the
+    // binary isn't re-fetched, only the reference/MIME/title round-trip (H/P2).
+    if (Array.isArray(personMeta.media)) {
+      (personMeta.media as Array<{ file?: string; form?: string; title?: string }>).forEach((m) => {
+        out.push('1 OBJE');
+        if (m.file) emitText(out, 2, 'FILE', m.file);
+        if (m.form) emitText(out, 2, 'FORM', m.form);
+        if (m.title) emitText(out, 2, 'TITL', m.title);
       });
     }
     emitText(out, 1, 'NAME', `${p.firstName || ''} /${p.lastName || ''}/`.trim());

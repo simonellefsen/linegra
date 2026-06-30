@@ -9,7 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (244 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (248 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-06-30.
 
@@ -121,7 +121,14 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
   > **Done 2026-06-30 — P2 REPO:** repository records (`0 @R1@ REPO` + `1 NAME`) are parsed, and a
   > source's `1 REPO @R1@` pointer resolves to the repository name (deferred, so forward refs work;
   > AUTH takes precedence). Resolved repositories are re-flowed into the person-level source copies,
-  > which now also carry `callNumber`/`abbreviation`. 3 tests. **Remaining P2:** `OBJE`/MIME media.
+  > which now also carry `callNumber`/`abbreviation`. 3 tests.
+  > **Done 2026-06-30 — P2 OBJE:** multimedia objects — both inline `1 OBJE` (+ `2 FILE`/`2 FORM`/
+  > `2 TITL`) and `0 @M1@ OBJE` records referenced by `1 OBJE @M1@` (forward refs resolved after the
+  > pass) — are captured losslessly into `person.metadata.media`. The binary itself is **not** fetched
+  > (`FILE` usually points at a local path the browser can't read); only the reference/MIME/title
+  > round-trip. (Also gated the person `1 TITL` handler to level 1 so `2 TITL` under OBJE is no longer
+  > swallowed.) 4 tests. **P2 is complete — and with it, all of GEDCOM 7 (roadmap H): P0, Export, P1,
+  > P2, P3.**
 - **P3:** compliant GEDCOM 7.0 exporter + `SCHMA` extension declarations + round-trip tests.
   > **Done 2026-06-30 — P3 (exporter gap + round-trip harness):** non-vital events (OCCU/RESI/EVEN/…)
   > are now exported (`emitCustomEvent` emits DATE/PLAC + the AGE/CAUS/AGNC from event metadata) — they

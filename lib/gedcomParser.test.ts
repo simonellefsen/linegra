@@ -840,3 +840,59 @@ describe('REPO repository records (H/P2)', () => {
     expect(src?.repository || '').toBe('');
   });
 });
+
+describe('OBJE multimedia objects (H/P2)', () => {
+  it('captures an inline 1 OBJE + FILE/FORM/TITL into person.metadata.media', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @I1@ INDI',
+      '1 NAME A /B/',
+      '1 OBJE',
+      '2 FILE photos/portrait.jpg',
+      '2 FORM image/jpeg',
+      '2 TITL Portrait of A',
+      '0 TRLR',
+    ].join('\n');
+    const media = parseGedcom(ged).people[0].metadata?.media;
+    expect(media).toEqual([{ file: 'photos/portrait.jpg', form: 'image/jpeg', title: 'Portrait of A' }]);
+  });
+
+  it('resolves a 1 OBJE @M1@ pointer to the multimedia record (forward ref)', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @I1@ INDI',
+      '1 NAME A /B/',
+      '1 OBJE @M1@',
+      '0 @M1@ OBJE',
+      '1 FILE scan.tif',
+      '1 FORM image/tiff',
+      '1 TITL Census scan',
+      '0 TRLR',
+    ].join('\n');
+    const media = parseGedcom(ged).people[0].metadata?.media;
+    expect(media).toEqual([{ file: 'scan.tif', form: 'image/tiff', title: 'Census scan' }]);
+  });
+
+  it('emits 1 OBJE + FILE/FORM/TITL on export', () => {
+    const ged = serializeGedcom(
+      [{
+        id: '1', firstName: 'A', lastName: 'B', gender: 'M',
+        metadata: { media: [{ file: 'p.jpg', form: 'image/jpeg', title: 'Portrait' }] },
+      } as unknown as Person],
+      [],
+    );
+    expect(ged).toContain('1 OBJE');
+    expect(ged).toContain('2 FILE p.jpg');
+    expect(ged).toContain('2 FORM image/jpeg');
+    expect(ged).toContain('2 TITL Portrait');
+  });
+
+  it('round-trips an inline multimedia object (export -> parse)', () => {
+    const original = [{
+      id: '1', firstName: 'A', lastName: 'B', gender: 'M',
+      metadata: { media: [{ file: 'p.jpg', form: 'image/jpeg', title: 'Portrait' }] },
+    } as unknown as Person];
+    const reparsed = parseGedcom(serializeGedcom(original, [])).people[0];
+    expect(reparsed.metadata?.media).toEqual([{ file: 'p.jpg', form: 'image/jpeg', title: 'Portrait' }]);
+  });
+});

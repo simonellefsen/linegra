@@ -11,6 +11,21 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-30 — OBJE multimedia objects — P2 complete, GEDCOM 7 (roadmap H) done
+
+The last P2 record type. Multimedia objects — both inline (`1 OBJE` + `2 FILE`/`2 FORM`/`2 TITL`) and
+`0 @M1@ OBJE` records referenced by `1 OBJE @M1@` (forward refs resolved after the pass) — are now
+captured losslessly into `person.metadata.media` ([../lib/gedcomParser.ts](../lib/gedcomParser.ts)).
+The binary itself is **not** fetched — `FILE` usually points at a local path the browser can't read,
+so only the reference/MIME/title round-trip (export emits them back inline). Side-fix: gated the
+person `1 TITL` handler to level 1 so `2 TITL` under OBJE was no longer swallowed into the person's
+title field. 4 tests. Build green at **248 tests**.
+
+**P2 is complete** (SNOTE, ASSO, REPO, OBJE). With P0, Export, P1, and P3 already done, **all of
+GEDCOM 7 alignment (roadmap H) is now shipped.**
+
+---
+
 ## 2026-06-30 — REPO repository records + source-pointer resolution (roadmap H/P2)
 
 Repository records (`0 @R1@ REPO` + `1 NAME <archive>`) and a source's `1 REPO @R1@` pointer reference
