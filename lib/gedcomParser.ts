@@ -3,6 +3,7 @@ import { isImplausiblyOld } from './lifespan';
 import { tokenizeGedcom, VOID_POINTER } from './gedcomTokenizer';
 import { parseQuay } from './sourceQuality';
 import { gedcomNameTypeToAlternate, alternateTypeToGedcomNameType } from './nameTypes';
+import { parseGedcomDate } from './gedcomDate';
 
 export interface GedcomParseResult {
   people: Person[];
@@ -838,13 +839,21 @@ export const parseGedcom = (text: string): GedcomParseResult => {
       if (isLiving !== false && !p.deathDate && !p.burialDate && isImplausiblyOld(p.birthDate)) {
         isLiving = false;
       }
+      // Persist the parsed StructuredDate for each vital (calendar/qualifier/range/BCE/phrase) into
+      // metadata jsonb so it survives the DB round-trip and is available to read-side consumers
+      // (roadmap I calendar logic, qualifier display) without re-parsing. No migration — metadata
+      // round-trips through persons.metadata (H/P1 lossless dates).
+      const structuredDates: Record<string, unknown> = {};
+      if (p.birthDate) structuredDates.birthDateStructured = parseGedcomDate(p.birthDate);
+      if (p.deathDate) structuredDates.deathDateStructured = parseGedcomDate(p.deathDate);
+      if (p.burialDate) structuredDates.burialDateStructured = parseGedcomDate(p.burialDate);
       return {
         ...p,
         isLiving,
         events: (p.events || []).filter((evt) => !['Birth', 'Death', 'Burial'].includes(evt.type || '')),
         sources: mergedSources,
         citations: p.citations || [],
-        metadata: p.metadata || {}
+        metadata: { ...(p.metadata || {}), ...structuredDates }
       } as Person;
     });
 
@@ -957,7 +966,17 @@ const toGedcom7Sex = (gender?: string): 'M' | 'F' | 'X' | 'U' =>
 
 // GEDCOM 7 dates use upper-case month abbreviations and keywords (e.g. "9 JUL 1903", "ABT 1807",
 // "BEF 1850"). Our stored date text is often title-case, so normalize on export.
-const toGedcom7Date = (raw: string): string => raw.toUpperCase();
+const toGedcom7Date = (raw: string): string => {
+  const upper = raw.toUpperCase();
+  // Emit the GEDCOM 7 calendar keyword for non-Gregorian dates so the calendar round-trips explicitly
+  // (a Julian "3 MAR 1712" would otherwise be re-inferred as Gregorian). Skip when the value already
+  // leads with the keyword (H/P1 lossless dates).
+  const { calendar } = parseGedcomDate(raw);
+  if (calendar && calendar !== 'GREGORIAN' && !upper.startsWith(calendar)) {
+    return `${calendar} ${upper}`;
+  }
+  return upper;
+};
 
 // A leading @ in a line value must be doubled (GEDCOM 7 §lineStr).
 const escapeLineVal = (value: string): string => (value.startsWith('@') ? `@${value}` : value);

@@ -9,7 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (218 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (222 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-06-30.
 
@@ -100,8 +100,14 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
   > **Done 2026-06-30 — P1 event detail:** `AGE` / `CAUS` / `AGNC` are captured — `DEAT.CAUS` routes to
   > `person.deathCause` (re-emitted as `2 CAUS` on export); AGE lands on the event's `metadata` (custom
   > events) or `person.metadata.{birt|deat|buri}Age` (vitals); `AGNC` on event metadata. 5 tests.
-  > **All no-migration P1 fields are done.** **Remaining P1:** persist the structured date (schema — the
-  > one piece that needs a DB migration).
+  > **All no-migration P1 fields are done.**
+  > **Done 2026-06-30 — P1 structured-date persistence (P1 complete):** the parsed `StructuredDate` for
+  > each vital is now persisted into `person.metadata` jsonb (`birthDateStructured`/`deathDateStructured`/
+  > `burialDateStructured`) at import — **no migration** (the roadmap had flagged this as needing one; the
+  > jsonb approach makes it unnecessary, same as UID/EXID/REFN). And the exporter now emits the **GEDCOM 7
+  > calendar keyword** for non-Gregorian dates (`JULIAN 3 MAR 1712`), so a Julian/French/Hebrew date
+  > round-trips with its calendar intact instead of being silently re-inferred as Gregorian. 4 tests.
+  > **P1 is complete.**
 - **P2:** new records — `REPO`, `SNOTE`, `OBJE`/MIME multi-file, `ASSO` associations.
 - **P3:** compliant GEDCOM 7.0 exporter + `SCHMA` extension declarations + round-trip tests.
 - Cross-cutting: keep raw GEDCOM payload for lossless round-trip; capture `gedcom_version` per import.

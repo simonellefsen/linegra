@@ -607,3 +607,33 @@ describe('event detail AGE / CAUS / AGNC (H/P1)', () => {
     expect(reparsed.deathCause).toBe('Pneumonia');
   });
 });
+
+describe('structured-date persistence (H/P1)', () => {
+  it('persists the parsed StructuredDate for vitals into person.metadata on import', () => {
+    const p = parseGedcom('0 HEAD\n0 @I1@ INDI\n1 NAME A /B/\n1 BIRT\n2 DATE ABT 1880\n1 DEAT\n2 DATE 1920\n0 TRLR').people[0];
+    expect(p.metadata?.birthDateStructured).toMatchObject({ qualifier: 'about', year: 1880, calendar: 'GREGORIAN' });
+    expect(p.metadata?.deathDateStructured).toMatchObject({ year: 1920 });
+  });
+
+  it('emits the GEDCOM 7 calendar keyword for non-Gregorian dates on export', () => {
+    const ged = serializeGedcom(
+      [{ id: '1', firstName: 'A', lastName: 'B', gender: 'M', deathDate: 'JULIAN 3 MAR 1712' } as unknown as Person],
+      [],
+    );
+    expect(ged).toContain('2 DATE JULIAN 3 MAR 1712');
+  });
+
+  it('does not prefix Gregorian dates with a calendar keyword', () => {
+    const ged = serializeGedcom(
+      [{ id: '1', firstName: 'A', lastName: 'B', gender: 'M', birthDate: '12 MAR 1850' } as unknown as Person],
+      [],
+    );
+    expect(ged).toMatch(/2 DATE 12 MAR 1850\b/);
+  });
+
+  it('round-trips a Julian date with its calendar (export -> parse)', () => {
+    const original = [{ id: '1', firstName: 'A', lastName: 'B', gender: 'M', deathDate: 'JULIAN 3 MAR 1712' } as unknown as Person];
+    const reparsed = parseGedcom(serializeGedcom(original, [])).people[0];
+    expect(reparsed.metadata?.deathDateStructured).toMatchObject({ calendar: 'JULIAN', year: 1712 });
+  });
+});

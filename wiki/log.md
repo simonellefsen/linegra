@@ -11,6 +11,23 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-30 — Structured-date persistence + calendar round-trip — P1 complete (roadmap H)
+
+The final P1 piece. Two changes in [../lib/gedcomParser.ts](../lib/gedcomParser.ts):
+- **Persist the parsed `StructuredDate`** for each vital into `person.metadata` jsonb
+  (`birthDateStructured` / `deathDateStructured` / `burialDateStructured`) at import. The roadmap had
+  flagged this as needing a DB migration; it doesn't — `persons.metadata` already round-trips
+  (`mapDbPerson` returns the whole object), so no migration, same pattern as UID/EXID/REFN. The
+  structured form (calendar/qualifier/range/BCE/phrase) is now available post-load without re-parsing.
+- **Emit the GEDCOM 7 calendar keyword** for non-Gregorian dates on export (`toGedcom7Date` now prefixes
+  `JULIAN`/`FRENCH_R`/`HEBREW`), so a Julian `3 MAR 1712` round-trips with its calendar intact instead of
+  being silently re-inferred as Gregorian — the concrete fidelity win.
+
+4 tests incl. Julian calendar round-trip. Build green at **222 tests**. **P1 (schema spine) is
+complete** — structured dates, UID/EXID/REFN, QUAY, NAME parts/TYPE/TRAN, AGE/CAUS/AGNC all shipped.
+
+---
+
 ## 2026-06-30 — Event detail AGE/CAUS/AGNC (roadmap H/P1)
 
 The last no-migration P1 slice. [../lib/gedcomParser.ts](../lib/gedcomParser.ts) now captures event
