@@ -9,9 +9,9 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (213 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (218 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
-git/code 2026-06-29.
+git/code 2026-06-30.
 
 ## Candidate next work
 
@@ -96,8 +96,12 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
   > emitted — alternates were dropped on export). Round-trip tests.
   > **Done 2026-06-29 — P1 TRAN:** `NAME.TRAN` (name transliteration, e.g. Cyrillic→Latin) is captured
   > as an `Anglicized Name` alternate and round-trips via `2 TYPE immigrant`. **P1 name structure is
-  > complete** (NAME parts + TYPE + TRAN). **Remaining P1:** persisting the structured date (schema —
-  > needs a migration), full event detail (`AGE`/`CAUS`/`AGNC`).
+  > complete** (NAME parts + TYPE + TRAN).
+  > **Done 2026-06-30 — P1 event detail:** `AGE` / `CAUS` / `AGNC` are captured — `DEAT.CAUS` routes to
+  > `person.deathCause` (re-emitted as `2 CAUS` on export); AGE lands on the event's `metadata` (custom
+  > events) or `person.metadata.{birt|deat|buri}Age` (vitals); `AGNC` on event metadata. 5 tests.
+  > **All no-migration P1 fields are done.** **Remaining P1:** persist the structured date (schema — the
+  > one piece that needs a DB migration).
 - **P2:** new records — `REPO`, `SNOTE`, `OBJE`/MIME multi-file, `ASSO` associations.
 - **P3:** compliant GEDCOM 7.0 exporter + `SCHMA` extension declarations + round-trip tests.
 - Cross-cutting: keep raw GEDCOM payload for lossless round-trip; capture `gedcom_version` per import.

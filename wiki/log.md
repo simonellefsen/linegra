@@ -11,6 +11,23 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-30 — Event detail AGE/CAUS/AGNC (roadmap H/P1)
+
+The last no-migration P1 slice. [../lib/gedcomParser.ts](../lib/gedcomParser.ts) now captures event
+substructures that were previously dropped:
+- **`CAUS`** — `DEAT.CAUS` (the canonical cause of death) routes to `person.deathCause`, and
+  `emitVital` now re-emits it as `2 CAUS` on export (it was silently dropped before). Other events
+  keep their cause in `event.metadata.cause`.
+- **`AGE`** — age at the event: custom events store it on `event.metadata.age`; vitals (which have no
+  event row) store it on `person.metadata.{birt|deat|buri}Age`.
+- **`AGNC`** — responsible agency/institution → `event.metadata.agency`.
+
+5 tests (incl. deathCause round-trip). Build green at **218 tests**. **All no-migration P1 fields are
+now done** (structured-date spine, UID/EXID/REFN, QUAY, NAME parts/TYPE/TRAN, AGE/CAUS/AGNC). The sole
+remaining P1 piece is persisting the structured date, which needs a DB migration.
+
+---
+
 ## 2026-06-29 — NAME.TRAN transliteration capture (roadmap H/P1)
 
 `NAME.TRAN` — a transliteration/translation of a name (e.g. `Иван /Смирнов/` → `Ivan /Smirnov/`) — is

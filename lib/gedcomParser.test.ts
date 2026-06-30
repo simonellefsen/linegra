@@ -571,3 +571,39 @@ describe('NAME TYPE / NICK / alternate-name round-trip (H/P1)', () => {
     expect(reparsed.alternateNames).toContainEqual({ type: 'Anglicized Name', firstName: 'Aw', lastName: 'Bw' });
   });
 });
+
+describe('event detail AGE / CAUS / AGNC (H/P1)', () => {
+  it('routes DEAT.CAUS to person.deathCause', () => {
+    const p = parseGedcom('0 HEAD\n0 @I1@ INDI\n1 NAME A /B/\n1 DEAT\n2 DATE 1900\n2 CAUS Heart failure\n0 TRLR').people[0];
+    expect(p.deathDate).toBe('1900');
+    expect(p.deathCause).toBe('Heart failure');
+  });
+
+  it('captures AGE/CAUS/AGNC on a custom event into its metadata', () => {
+    const p = parseGedcom(
+      '0 HEAD\n0 @I1@ INDI\n1 NAME A /B/\n1 OCCU Blacksmith\n2 AGE 43y\n2 CAUS apprenticeship ended\n2 AGNC Guild of Smiths\n0 TRLR',
+    ).people[0];
+    const occu = p.events.find((e) => e.type === 'Occupation');
+    expect(occu?.metadata).toMatchObject({ age: '43y', cause: 'apprenticeship ended', agency: 'Guild of Smiths' });
+  });
+
+  it('stores vital AGE on person.metadata (vitals have no event row)', () => {
+    const p = parseGedcom('0 HEAD\n0 @I1@ INDI\n1 NAME A /B/\n1 DEAT\n2 AGE 75y\n0 TRLR').people[0];
+    expect(p.metadata?.deatAge).toBe('75y');
+  });
+
+  it('emits 2 CAUS for deathCause on export', () => {
+    const ged = serializeGedcom(
+      [{ id: '1', firstName: 'A', lastName: 'B', gender: 'M', deathDate: '1900', deathCause: 'Old age' } as unknown as Person],
+      [],
+    );
+    expect(ged).toContain('1 DEAT');
+    expect(ged).toContain('2 CAUS Old age');
+  });
+
+  it('round-trips deathCause through export -> parse', () => {
+    const original = [{ id: '1', firstName: 'A', lastName: 'B', gender: 'M', deathDate: '1900', deathCause: 'Pneumonia' } as unknown as Person];
+    const reparsed = parseGedcom(serializeGedcom(original, [])).people[0];
+    expect(reparsed.deathCause).toBe('Pneumonia');
+  });
+});

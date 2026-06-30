@@ -715,6 +715,21 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           currentEvent.description = currentEvent.description
             ? `${currentEvent.description}\nType: ${typeText}`
             : `Type: ${typeText}`;
+        } else if (tag === 'AGE' && level === 2 && value) {
+          // Age at the event. Custom events store it on the event; vitals (BIRT/DEAT/BURI have no
+          // event row) store it on the person so it isn't lost (H/P1).
+          if (currentEvent) (currentEvent.metadata || (currentEvent.metadata = {})).age = value;
+          else if (currentTag === 'BIRT' || currentTag === 'DEAT' || currentTag === 'BURI') {
+            (p.metadata || (p.metadata = {}))[`${currentTag.toLowerCase()}Age`] = value;
+          }
+        } else if (tag === 'CAUS' && level === 2 && value) {
+          // DEAT.CAUS is the canonical cause-of-death → person.deathCause; any other event keeps its
+          // cause in that event's metadata (H/P1).
+          if (currentTag === 'DEAT') p.deathCause = value;
+          else if (currentEvent) (currentEvent.metadata || (currentEvent.metadata = {})).cause = value;
+        } else if (tag === 'AGNC' && currentEvent && value) {
+          // Agency/institution responsible for the event's data (H/P1).
+          (currentEvent.metadata || (currentEvent.metadata = {})).agency = value;
         } else if (tag === 'TYPE' && level === 2 && currentIdentifier && value) {
           // EXID.TYPE / REFN TYPE — attaches to the most-recent identifier (H/P1).
           currentIdentifier.type = value;
@@ -1043,14 +1058,16 @@ export const serializeGedcom = (people: Person[], relationships: Relationship[])
     tag: string,
     date: string | undefined,
     place: string | StructuredPlace | undefined,
-    personCitations: Citation[]
+    personCitations: Citation[],
+    cause?: string | null
   ): void => {
-    const hasEvent = !!date || !!placeText(place) || (typeof place === 'object' && place?.lat != null);
+    const hasEvent = !!date || !!placeText(place) || (typeof place === 'object' && place?.lat != null) || !!cause;
     const matching = personCitations.filter((c) => vitalTagForLabel(c.eventLabel) === tag);
     if (!hasEvent && matching.length === 0) return;
     out.push(`1 ${tag}`);
     if (date) emitText(out, 2, 'DATE', toGedcom7Date(date));
     emitPlace(out, 2, place);
+    if (cause) emitText(out, 2, 'CAUS', cause);
     matching.forEach((c) => {
       const x = xrefForSourceId(c.sourceId);
       if (x) emitSourceCitation(out, 2, x, c);
@@ -1123,7 +1140,7 @@ export const serializeGedcom = (people: Person[], relationships: Relationship[])
     if (p.isLiving === true) out.push('1 _LIVING Y');
     const personCitations = p.citations || [];
     emitVital('BIRT', p.birthDate, p.birthPlace, personCitations);
-    emitVital('DEAT', p.deathDate, p.deathPlace, personCitations);
+    emitVital('DEAT', p.deathDate, p.deathPlace, personCitations, p.deathCause);
     emitVital('BURI', p.burialDate, p.burialPlace, personCitations);
     // Sources cited only at the vital-event level above are already referenced; any remaining source
     // (or every source when citations aren't loaded) is attached at the person level.
