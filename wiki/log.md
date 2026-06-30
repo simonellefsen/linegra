@@ -11,6 +11,22 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-30 — Non-vital event export + lossless round-trip harness (roadmap H/P3)
+
+The exporter dropped non-vital events entirely (OCCU/RESI/EVEN/CHR/…), so all the event data the
+importer captures — including the AGE/CAUS/AGNC from P1 — couldn't round-trip. Fixed: new
+`emitCustomEvent` in [../lib/gedcomParser.ts](../lib/gedcomParser.ts) emits each non-vital event as
+its GEDCOM tag (`1 OCCU Blacksmith`, or `1 EVEN` + `2 TYPE` for unknown types) with `2 DATE` / `2 PLAC`
+/ `2 AGE` / `2 CAUS` / `2 AGNC`. Birth/Death/Burial stay on `emitVital`.
+
+Plus a comprehensive **lossless round-trip test**: a richly-populated person (dates incl. Julian
+calendar, UID/EXID/REFN, alternate names, deathCause, structured dates, an event with AGE/CAUS/AGNC)
+survives export → import field-for-field. This locks in all of P1 as a regression guard. Build green
+at **224 tests**. P3's exporter + round-trip goals are met; P2 (new record types REPO/SNOTE/OBJE/ASSO)
+remains.
+
+---
+
 ## 2026-06-30 — Structured-date persistence + calendar round-trip — P1 complete (roadmap H)
 
 The final P1 piece. Two changes in [../lib/gedcomParser.ts](../lib/gedcomParser.ts):

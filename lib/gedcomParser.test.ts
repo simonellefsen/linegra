@@ -637,3 +637,46 @@ describe('structured-date persistence (H/P1)', () => {
     expect(reparsed.metadata?.deathDateStructured).toMatchObject({ calendar: 'JULIAN', year: 1712 });
   });
 });
+
+describe('round-trip — events + full P1 person (H/P3)', () => {
+  it('round-trips a non-vital event with DATE/PLAC/AGE/CAUS/AGNC (events were previously dropped on export)', () => {
+    const original = [{
+      id: '1', firstName: 'A', lastName: 'B', gender: 'M',
+      events: [{
+        id: 'e1', type: 'Occupation', date: '1900', place: { fullText: 'London' },
+        description: 'Blacksmith', metadata: { age: '43y', cause: 'retirement', agency: 'Guild of Smiths' },
+      }],
+    } as unknown as Person];
+    const reparsed = parseGedcom(serializeGedcom(original, [])).people[0];
+    const occu = reparsed.events.find((e) => e.type === 'Occupation');
+    expect(occu).toMatchObject({ date: '1900', description: 'Blacksmith' });
+    expect(placeText(occu?.place)).toBe('London');
+    expect(occu?.metadata).toMatchObject({ age: '43y', cause: 'retirement', agency: 'Guild of Smiths' });
+  });
+
+  it('round-trips a richly-populated person (all P1 fields) losslessly', () => {
+    const original = [{
+      id: '1', firstName: 'John', lastName: 'Smith', gender: 'M',
+      birthDate: 'ABT 1850',
+      deathDate: 'JULIAN 3 MAR 1910',
+      deathCause: 'Old age',
+      metadata: {
+        gedcomUid: 'ORIG-UID',
+        exids: [{ value: 'EXT', type: 'fs' }],
+        refns: [{ value: '7' }],
+      },
+      alternateNames: [{ type: 'Also Known As', firstName: 'Jack', lastName: 'Smith' }],
+    } as unknown as Person];
+    const reparsed = parseGedcom(serializeGedcom(original, [])).people[0];
+    expect(reparsed.firstName).toBe('John');
+    expect(reparsed.birthDate).toBe('ABT 1850');
+    expect(reparsed.deathDate).toBe('JULIAN 3 MAR 1910');
+    expect(reparsed.deathCause).toBe('Old age');
+    expect(reparsed.metadata?.gedcomUid).toBe('ORIG-UID');
+    expect(reparsed.metadata?.exids).toEqual([{ value: 'EXT', type: 'fs' }]);
+    expect(reparsed.metadata?.refns).toEqual([{ value: '7' }]);
+    expect(reparsed.metadata?.birthDateStructured).toMatchObject({ qualifier: 'about', year: 1850 });
+    expect(reparsed.metadata?.deathDateStructured).toMatchObject({ calendar: 'JULIAN', year: 1910 });
+    expect(reparsed.alternateNames).toContainEqual({ type: 'Also Known As', firstName: 'Jack', lastName: 'Smith' });
+  });
+});

@@ -9,7 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (222 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (224 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-06-30.
 
@@ -110,6 +110,13 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
   > **P1 is complete.**
 - **P2:** new records — `REPO`, `SNOTE`, `OBJE`/MIME multi-file, `ASSO` associations.
 - **P3:** compliant GEDCOM 7.0 exporter + `SCHMA` extension declarations + round-trip tests.
+  > **Done 2026-06-30 — P3 (exporter gap + round-trip harness):** non-vital events (OCCU/RESI/EVEN/…)
+  > are now exported (`emitCustomEvent` emits DATE/PLAC + the AGE/CAUS/AGNC from event metadata) — they
+  > were **dropped entirely** before, so event data couldn't round-trip. Plus a comprehensive lossless
+  > round-trip test asserting a richly-populated person (dates + calendar, UID/EXID/REFN, alternate
+  > names, deathCause, structured dates, events) survives export → import. `SCHMA` (for `_LIVING`) was
+  > already emitted in the Export phase. **P3's exporter + round-trip goals are met;** P2 (new record
+  > types) remains.
 - Cross-cutting: keep raw GEDCOM payload for lossless round-trip; capture `gedcom_version` per import.
 
 ### F. AI utilities — DONE 2026-06-20

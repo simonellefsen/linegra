@@ -39,6 +39,16 @@ const GEDCOM_EVENT_MAP: Record<string, PersonEvent['type']> = {
   EVEN: 'Other'
 };
 
+// Reverse map for export: event type -> GEDCOM tag. Burial is excluded (it's a vital emitted via
+// emitVital), and Birth/Death aren't in the map at all (also vitals). Unknown types fall back to EVEN.
+const EVENT_TYPE_TO_TAG: Record<string, string> = (() => {
+  const m: Record<string, string> = {};
+  for (const [tag, type] of Object.entries(GEDCOM_EVENT_MAP)) {
+    if (tag !== 'BURI') m[type] = tag;
+  }
+  return m;
+})();
+
 /**
  * GEDCOM 7.x models a couple only as a FAM/HUSB/WIFE record with a MARR event — there is no
  * dedicated "cohabiting partner" union. A marriage that was not formalized is conventionally marked
@@ -1093,6 +1103,25 @@ export const serializeGedcom = (people: Person[], relationships: Relationship[])
     });
   };
 
+  // Emit a non-vital event (OCCU/RESI/EVEN/…) with its DATE/PLAC and the AGE/CAUS/AGNC captured in
+  // its metadata. Previously these were dropped on export entirely (roadmap H/P3 round-trip).
+  const emitCustomEvent = (event: PersonEvent): void => {
+    const knownTag = EVENT_TYPE_TO_TAG[event.type];
+    const value = event.description && !event.description.includes('\n') ? event.description : '';
+    if (knownTag) {
+      emitText(out, 1, knownTag, value || undefined);
+    } else {
+      emitText(out, 1, 'EVEN', value || undefined);
+      if (event.type && event.type !== 'Other') emitText(out, 2, 'TYPE', event.type);
+    }
+    if (event.date) emitText(out, 2, 'DATE', toGedcom7Date(event.date));
+    emitPlace(out, 2, event.place);
+    const meta = (event.metadata || {}) as Record<string, unknown>;
+    if (meta.age) emitText(out, 2, 'AGE', String(meta.age));
+    if (meta.cause) emitText(out, 2, 'CAUS', String(meta.cause));
+    if (meta.agency) emitText(out, 2, 'AGNC', String(meta.agency));
+  };
+
   // ---- Header ----
   out.push('0 HEAD');
   out.push('1 GEDC');
@@ -1161,6 +1190,10 @@ export const serializeGedcom = (people: Person[], relationships: Relationship[])
     emitVital('BIRT', p.birthDate, p.birthPlace, personCitations);
     emitVital('DEAT', p.deathDate, p.deathPlace, personCitations, p.deathCause);
     emitVital('BURI', p.burialDate, p.burialPlace, personCitations);
+    // Non-vital events (OCCU/RESI/EVEN/…). Skip Birth/Death/Burial — they're emitted as vitals above.
+    (p.events || [])
+      .filter((e) => !['Birth', 'Death', 'Burial'].includes(e.type || ''))
+      .forEach((e) => emitCustomEvent(e));
     // Sources cited only at the vital-event level above are already referenced; any remaining source
     // (or every source when citations aren't loaded) is attached at the person level.
     const vitalCitedSourceIds = new Set(
