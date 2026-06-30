@@ -786,3 +786,57 @@ describe('ASSO associations (H/P2)', () => {
     expect(ged).not.toContain('1 ASSO');
   });
 });
+
+describe('REPO repository records (H/P2)', () => {
+  it("resolves a source's 1 REPO @R1@ pointer to the repository name + CALN", () => {
+    const ged = [
+      '0 HEAD',
+      '0 @S1@ SOUR',
+      '1 TITL Birth Record',
+      '1 REPO @R1@',
+      '2 CALN 12345',
+      '0 @R1@ REPO',
+      '1 NAME National Archives',
+      '0 @I1@ INDI',
+      '1 NAME A /B/',
+      '1 SOUR @S1@',
+      '0 TRLR',
+    ].join('\n');
+    const src = parseGedcom(ged).people[0].sources?.find((s) => /Birth Record/.test(s.title || ''));
+    expect(src?.repository).toBe('National Archives');
+    expect(src?.callNumber).toBe('12345');
+  });
+
+  it('does not overwrite a repository already set from AUTH', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @S1@ SOUR',
+      '1 TITL X',
+      '1 AUTH The Author',
+      '1 REPO @R1@',
+      '0 @R1@ REPO',
+      '1 NAME The Archive',
+      '0 @I1@ INDI',
+      '1 NAME A /B/',
+      '1 SOUR @S1@',
+      '0 TRLR',
+    ].join('\n');
+    const src = parseGedcom(ged).people[0].sources?.find((s) => s.title === 'X');
+    expect(src?.repository).toBe('The Author');
+  });
+
+  it('drops an unresolved REPO pointer silently (no crash)', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @S1@ SOUR',
+      '1 TITL X',
+      '1 REPO @MISSING@',
+      '0 @I1@ INDI',
+      '1 NAME A /B/',
+      '1 SOUR @S1@',
+      '0 TRLR',
+    ].join('\n');
+    const src = parseGedcom(ged).people[0].sources?.find((s) => s.title === 'X');
+    expect(src?.repository || '').toBe('');
+  });
+});

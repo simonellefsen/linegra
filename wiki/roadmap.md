@@ -9,7 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (241 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (244 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-06-30.
 
@@ -117,8 +117,11 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
   > **Done 2026-06-30 — P2 ASSO:** associations to other people (`1 ASSO @I2@` + `2 RELA godparent`,
   > e.g. witnesses/godparents) are captured into `person.metadata.associations` (no Relationship-type
   > or DB-enum change — ancillary to the person) and re-emitted on export (skipping any target not in
-  > the export set so there are no dangling refs). 4 tests incl. round-trip. **Remaining P2:** `REPO`,
-  > `OBJE`/MIME media.
+  > the export set so there are no dangling refs). 4 tests incl. round-trip.
+  > **Done 2026-06-30 — P2 REPO:** repository records (`0 @R1@ REPO` + `1 NAME`) are parsed, and a
+  > source's `1 REPO @R1@` pointer resolves to the repository name (deferred, so forward refs work;
+  > AUTH takes precedence). Resolved repositories are re-flowed into the person-level source copies,
+  > which now also carry `callNumber`/`abbreviation`. 3 tests. **Remaining P2:** `OBJE`/MIME media.
 - **P3:** compliant GEDCOM 7.0 exporter + `SCHMA` extension declarations + round-trip tests.
   > **Done 2026-06-30 — P3 (exporter gap + round-trip harness):** non-vital events (OCCU/RESI/EVEN/…)
   > are now exported (`emitCustomEvent` emits DATE/PLAC + the AGE/CAUS/AGNC from event metadata) — they

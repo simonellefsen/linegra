@@ -11,6 +11,20 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-30 — REPO repository records + source-pointer resolution (roadmap H/P2)
+
+Repository records (`0 @R1@ REPO` + `1 NAME <archive>`) and a source's `1 REPO @R1@` pointer reference
+were dropped — a source using the REPO-pointer pattern lost its repository. Fixed in
+[../lib/gedcomParser.ts](../lib/gedcomParser.ts): REPO records are parsed into a `parsedRepositories`
+map, and a source's `1 REPO @R1@` is deferred to `pendingRepoRefs` and resolved after the pass (so
+forward refs work) into `source.repository` (AUTH takes precedence if both are present). Because the
+person-level source copies are built during the pass — before REPO resolution — resolved repositories
+are re-flowed into them in a backfill pass; those copies now also carry `callNumber` and
+`abbreviation` (previously dropped). 3 tests. Build green at **244 tests**. Remaining P2:
+`OBJE`/MIME media.
+
+---
+
 ## 2026-06-30 — ASSO associations capture + export (roadmap H/P2)
 
 `1 ASSO @I2@` + `2 RELA godparent` (associations to other people — witnesses, godparents, etc.) were

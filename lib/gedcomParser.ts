@@ -114,12 +114,17 @@ export const parseGedcom = (text: string): GedcomParseResult => {
     const NOTE_POINTER = /^@.+@$/;
     const notePointerId = (val: string): string | null =>
       NOTE_POINTER.test(val) ? val.slice(1, -1) : null;
+    // Repository records (0 @R1@ REPO) keyed by id, and pending source `1 REPO @R1@` references
+    // resolved after the pass (forward refs). A source's REPO pointer sets source.repository to the
+    // repository's name. Roadmap H/P2.
+    const parsedRepositories: Record<string, { name: string }> = {};
+    const pendingRepoRefs: Array<{ sourceId: string; repoId: string }> = [];
     // Whether this export uses the `_LIVING` convention (TNG-style). When it does, a person
     // without a `_LIVING Y` tag is treated as deceased rather than defaulting to living.
     let usesLivingTag = false;
 
     let currentId = '';
-    let currentType: 'INDI' | 'FAM' | 'SOUR' | 'SNOTE' | null = null;
+    let currentType: 'INDI' | 'FAM' | 'SOUR' | 'SNOTE' | 'REPO' | null = null;
     let currentTag = '';
     let currentEvent: PersonEvent | null = null;
     // The most-recent EXID/REFN identifier captured on this INDI — a following level-2 TYPE attaches
@@ -394,6 +399,12 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           currentId = pointerId;
           currentType = 'SNOTE';
           parsedSharedNotes[pointerId] = value;
+        } else if (pointerToken && tag === 'REPO') {
+          // Repository record (`0 @R1@ REPO`); its `1 NAME` is captured below. A source's
+          // `1 REPO @R1@` pointer resolves to this name (H/P2).
+          currentId = pointerId;
+          currentType = 'REPO';
+          parsedRepositories[pointerId] = { name: value || '' };
         } else {
           currentType = null;
         }
@@ -723,6 +734,8 @@ export const parseGedcom = (text: string): GedcomParseResult => {
               actualText: base?.actualText,
               event: eventLabel,
               url: base?.url,
+              callNumber: base?.callNumber,
+              abbreviation: base?.abbreviation,
               reliability: base?.reliability as 1 | 2 | 3 | undefined
             };
           } else {
@@ -847,9 +860,19 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           case 'CALN':
             source.callNumber = value;
             break;
+          case 'REPO': {
+            // Source → repository pointer (`1 REPO @R1@`). Deferred so a REPO record appearing later
+            // still resolves; the name lands on source.repository (H/P2).
+            const rid = value.replace(/@/g, '');
+            if (rid) pendingRepoRefs.push({ sourceId: currentId, repoId: rid });
+            break;
+          }
           default:
             warnings.push(`Ignored source tag "${tag}" on source ${currentId}`);
         }
+      } else if (currentType === 'REPO' && parsedRepositories[currentId]) {
+        // Repository record body: `1 NAME <archive name>` (the REPO line value is a fallback).
+        if (tag === 'NAME' && value) parsedRepositories[currentId].name = value;
       }
     });
 
@@ -874,6 +897,23 @@ export const parseGedcom = (text: string): GedcomParseResult => {
         text,
         type: 'Research Note',
         event: ref.label
+      });
+    });
+
+    // Resolve deferred source→repository references (`1 REPO @R1@` → repository name). Doesn't
+    // overwrite a repository already set from AUTH. Unresolved/missing REPO is dropped silently. (H/P2)
+    pendingRepoRefs.forEach((ref) => {
+      const repo = parsedRepositories[ref.repoId];
+      const source = parsedSources[ref.sourceId];
+      if (repo?.name && source && !source.repository) source.repository = repo.name;
+    });
+    // Re-flow resolved repositories into person-level source copies, which were built during the pass
+    // (before REPO resolution ran) and so missed the repository. (H/P2)
+    Object.values(parsedPeople).forEach((p) => {
+      (p.sources || []).forEach((src) => {
+        if (!src.externalId || src.repository) return;
+        const base = parsedSources[src.externalId];
+        if (base?.repository) src.repository = base.repository;
       });
     });
 
