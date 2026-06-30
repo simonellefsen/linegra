@@ -125,6 +125,9 @@ export const parseGedcom = (text: string): GedcomParseResult => {
     // The most-recent EXID/REFN identifier captured on this INDI — a following level-2 TYPE attaches
     // to it (EXID.TYPE / REFN TYPE). Cleared when a new level-1 identifier or event is seen.
     let currentIdentifier: { value: string; type?: string } | null = null;
+    // The most-recent ASSO association captured on this INDI — a following level-2 RELA attaches to
+    // it (the role of the target person relative to this person). Cleared when a new ASSO is seen.
+    let currentAssociation: { personId: string; rela?: string } | null = null;
     const supportedIndividualTags = new Set([
       'NAME',
       'SEX',
@@ -143,6 +146,7 @@ export const parseGedcom = (text: string): GedcomParseResult => {
       'RFN',
       'EXID',
       'REFN',
+      'ASSO',
       'EMAIL',
       'SUBM',
       'ADDR',
@@ -540,6 +544,18 @@ export const parseGedcom = (text: string): GedcomParseResult => {
           if (value && !submitters.includes(value.replace(/@/g, ''))) {
             submitters.push(value.replace(/@/g, ''));
           }
+        } else if (tag === 'ASSO' && level === 1) {
+          // Association to another person (`1 ASSO @I2@`), with the target's role under `2 RELA`
+          // (e.g. godparent, witness). Stored on person.metadata.associations (H/P2).
+          const targetId = value.replace(/@/g, '');
+          if (targetId) {
+            const list = ensureMetadata(p).associations || (ensureMetadata(p).associations = []);
+            const entry: { personId: string; rela?: string } = { personId: targetId };
+            list.push(entry);
+            currentAssociation = entry;
+          } else {
+            currentAssociation = null;
+          }
         } else if (tag === 'BIRT') {
           currentTag = 'BIRT';
           currentEvent = null;
@@ -762,6 +778,9 @@ export const parseGedcom = (text: string): GedcomParseResult => {
         } else if (tag === 'AGNC' && currentEvent && value) {
           // Agency/institution responsible for the event's data (H/P1).
           (currentEvent.metadata || (currentEvent.metadata = {})).agency = value;
+        } else if (tag === 'RELA' && level === 2 && currentAssociation && value) {
+          // ASSO.RELA — the target person's role relative to this person (godparent, witness, …). H/P2.
+          currentAssociation.rela = value;
         } else if (tag === 'TYPE' && level === 2 && currentIdentifier && value) {
           // EXID.TYPE / REFN TYPE — attaches to the most-recent identifier (H/P1).
           currentIdentifier.type = value;
@@ -1203,6 +1222,16 @@ export const serializeGedcom = (people: Person[], relationships: Relationship[])
       (personMeta.refns as Array<{ value: string; type?: string }>).forEach((refn) => {
         emitText(out, 1, 'REFN', refn.value);
         if (refn.type) emitText(out, 2, 'TYPE', refn.type);
+      });
+    }
+    // Associations to other people (`1 ASSO @x@` + `2 RELA`), e.g. godparent/witness (H/P2). Only
+    // emitted when the target is in the export set (has an xref), so we never write a dangling ref.
+    if (Array.isArray(personMeta.associations)) {
+      (personMeta.associations as Array<{ personId: string; rela?: string }>).forEach((asso) => {
+        const targetXref = personXref.get(asso.personId);
+        if (!targetXref) return;
+        out.push(`1 ASSO ${targetXref}`);
+        if (asso.rela) emitText(out, 2, 'RELA', asso.rela);
       });
     }
     emitText(out, 1, 'NAME', `${p.firstName || ''} /${p.lastName || ''}/`.trim());

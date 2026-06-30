@@ -9,7 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
 live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (237 tests)**, wired into `npm run build` and
+Automated gates: **eslint + `tsc --noEmit` + Vitest (241 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-06-30.
 
@@ -113,8 +113,12 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
   > captured, and `1 NOTE @N1@` pointer references resolve to their text — including forward references
   > (resolved after the parse pass) and multi-line text (CONT merged by the tokenizer). Previously these
   > references were stored as literal `@N1@`, losing the note. Export still emits notes inline (valid
-  > GEDCOM; dedup back into shared SNOTE records is a follow-up). 5 tests. **Remaining P2:** `REPO`,
-  > `OBJE`/MIME media, `ASSO` associations.
+  > GEDCOM; dedup back into shared SNOTE records is a follow-up). 5 tests.
+  > **Done 2026-06-30 — P2 ASSO:** associations to other people (`1 ASSO @I2@` + `2 RELA godparent`,
+  > e.g. witnesses/godparents) are captured into `person.metadata.associations` (no Relationship-type
+  > or DB-enum change — ancillary to the person) and re-emitted on export (skipping any target not in
+  > the export set so there are no dangling refs). 4 tests incl. round-trip. **Remaining P2:** `REPO`,
+  > `OBJE`/MIME media.
 - **P3:** compliant GEDCOM 7.0 exporter + `SCHMA` extension declarations + round-trip tests.
   > **Done 2026-06-30 — P3 (exporter gap + round-trip harness):** non-vital events (OCCU/RESI/EVEN/…)
   > are now exported (`emitCustomEvent` emits DATE/PLAC + the AGE/CAUS/AGNC from event metadata) — they

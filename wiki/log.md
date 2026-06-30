@@ -11,6 +11,18 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-06-30 — ASSO associations capture + export (roadmap H/P2)
+
+`1 ASSO @I2@` + `2 RELA godparent` (associations to other people — witnesses, godparents, etc.) were
+dropped entirely. Fixed in [../lib/gedcomParser.ts](../lib/gedcomParser.ts): ASSO targets are captured
+into `person.metadata.associations` (`[{ personId, rela? }]`), with `2 RELA` attaching to the most-
+recent ASSO via a `currentAssociation` tracker. Stored as ancillary person metadata — **no
+Relationship-type or DB-enum change (no migration)**. Export emits `1 ASSO @<targetXref>@` + `2 RELA`
+for each, skipping any target not in the export set (no dangling references). 4 tests incl. round-trip.
+Build green at **241 tests**. Remaining P2: `REPO`, `OBJE`/MIME media.
+
+---
+
 ## 2026-06-30 — SNOTE shared-note resolution on import (roadmap H/P2)
 
 `1 NOTE @N1@` pointer references — common in FamilySearch/Ancestry exports that share one note across

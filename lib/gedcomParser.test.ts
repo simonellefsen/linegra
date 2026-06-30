@@ -738,3 +738,51 @@ describe('SNOTE shared-note resolution (H/P2)', () => {
     expect(p.notes || []).toEqual([]);
   });
 });
+
+describe('ASSO associations (H/P2)', () => {
+  it('captures 1 ASSO @x@ + 2 RELA into person.metadata.associations', () => {
+    const ged = [
+      '0 HEAD',
+      '0 @I1@ INDI',
+      '1 NAME A /B/',
+      '1 ASSO @I2@',
+      '2 RELA God Father',
+      '0 @I2@ INDI',
+      '1 NAME C /D/',
+      '0 TRLR',
+    ].join('\n');
+    const p = parseGedcom(ged).people[0];
+    expect(p.metadata?.associations).toEqual([{ personId: 'I2', rela: 'God Father' }]);
+  });
+
+  it('emits 1 ASSO + 2 RELA on export (target in set)', () => {
+    const ged = serializeGedcom(
+      [
+        { id: 'a', firstName: 'A', lastName: 'X', gender: 'M', metadata: { associations: [{ personId: 'b', rela: 'Witness' }] } },
+        { id: 'b', firstName: 'B', lastName: 'Y', gender: 'F' },
+      ] as unknown as Person[],
+      [],
+    );
+    expect(ged).toContain('1 ASSO @I2@');
+    expect(ged).toContain('2 RELA Witness');
+  });
+
+  it('round-trips associations (export -> parse)', () => {
+    const original = [
+      { id: 'a', firstName: 'A', lastName: 'X', gender: 'M', metadata: { associations: [{ personId: 'b', rela: 'God Father' }] } },
+      { id: 'b', firstName: 'B', lastName: 'Y', gender: 'F' },
+    ] as unknown as Person[];
+    const reparsed = parseGedcom(serializeGedcom(original, [])).people;
+    const a = reparsed.find((p) => p.firstName === 'A');
+    // 'a'→@I1@, 'b'→@I2@; the ASSO target 'b' re-imports as xref id 'I2'.
+    expect(a?.metadata?.associations).toEqual([{ personId: 'I2', rela: 'God Father' }]);
+  });
+
+  it('drops an ASSO whose target is not in the export set (no dangling ref)', () => {
+    const ged = serializeGedcom(
+      [{ id: 'a', firstName: 'A', lastName: 'X', gender: 'M', metadata: { associations: [{ personId: 'ghost', rela: 'Friend' }] } }] as unknown as Person[],
+      [],
+    );
+    expect(ged).not.toContain('1 ASSO');
+  });
+});
