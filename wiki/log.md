@@ -11,6 +11,42 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-07-02 — Server-side OpenRouter proxy + usage metering (roadmap N, Phase 1+2)
+
+The OpenRouter API key no longer reaches the browser. All AI calls now route through a new Supabase
+Edge Function ([../supabase/functions/ai-proxy/index.ts](../supabase/functions/ai-proxy/index.ts), Deno,
+dependency-free). The two client fetchers in [../services/ai.ts](../services/ai.ts) — `callOpenRouter` and
+`callOpenRouterRaw`, refactored to share `postToAiProxy` → `buildAiProxyUrl` — POST to
+`${SUPABASE_URL}/functions/v1/ai-proxy` carrying the publishable `apikey` and **no** OpenRouter key.
+`resolveOpenRouterConfig` now resolves only `model`/`baseUrl` from the *metadata* RPC and no longer throws
+on a missing key; `fetchAdminAIRuntimeSettings` / the raw-key `admin_get_ai_runtime_settings` RPC are no
+longer called from the browser (left in place, server-only). Each public AI function tags its call with a
+fixed `purpose`; `testOpenRouterConnection` passes the admin-entered candidate key as a one-off `testKey`.
+
+The function is **DB-backed**: it reads the key from `ai_provider_settings` via the auto-injected
+`SUPABASE_SERVICE_ROLE_KEY` (an `OPENROUTER_API_KEY` secret can override), so the admin "enter key / Test
+Connection" UI is unchanged. It relays OpenRouter's JSON verbatim (so client parsing is untouched),
+enforces `timeoutMs` via `AbortController`, and never returns the key. `verify_jwt=false` (local admin has
+no JWT — see roadmap A); the gateway still requires the publishable key. Configured in
+[../supabase/config.toml](../supabase/config.toml) `[functions.ai-proxy]`.
+
+Usage metering: new migration [../supabase/migrations/20260702120000_ai_usage_logs.sql](../supabase/migrations/20260702120000_ai_usage_logs.sql)
+adds the `ai_usage_logs` table (RLS `can_read_tree` SELECT, no insert policy — written by the service role)
+and `admin_get_ai_usage_summary(days)` (SECURITY DEFINER). The function logs model/tokens/estimated-cost/tree
+per call; a new **AI Usage** section in [../components/admin/AdminDatabasePanel.tsx](../components/admin/AdminDatabasePanel.tsx)
+(via `fetchAiUsageSummary` in [../services/archive.ts](../services/archive.ts)) shows rolling 7/30/90-day
+totals + per-purpose + per-tree. AI family-book composition threads `treeId` (`BookGenerationOptions.treeId`,
+injected in [../services/books.ts](../services/books.ts) `composeBook`); other calls are logged by purpose only.
+
+Verification: build green at **255 tests** (+7 — [../services/ai.test.ts](../services/ai.test.ts) pins the
+security invariants: the proxy URL is the function, not openrouter.ai, and the request body never serializes
+key material). Migration applied + function deployed to the linked project. Live: a `curl` through the proxy
+relayed to OpenRouter and logged a row that the summary RPC returned; and via `agent-browser`, the admin
+"Test Connection" button hit **only** `/functions/v1/ai-proxy` with **zero** `openrouter.ai` requests. (Both
+configured OpenRouter keys are currently expired — "User not found" 401 — so a true 200 happy-path wasn't
+exercised; the relay/logging code path is identical for success.) Excluded `supabase/functions` from tsconfig
++ eslint (Deno, not Node). **Deferred (Phase 3):** per-tree/day hard cap.
+
 ## 2026-06-30 — OBJE multimedia objects — P2 complete, GEDCOM 7 (roadmap H) done
 
 The last P2 record type. Multimedia objects — both inline (`1 OBJE` + `2 FILE`/`2 FORM`/`2 TITL`) and

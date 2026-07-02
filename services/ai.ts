@@ -1,5 +1,5 @@
 import { Person, StructuredPlace, DeathCauseCategory, BookChapterFacts, BookStatistics, BookGenerationOptions, BookStyle, BookLength, BookLanguage } from "../types";
-import { supabase } from "../lib/supabase";
+import { supabase, getActiveConfig } from "../lib/supabase";
 import { deterministicParsePlace, mergeStructuredPlace } from "../lib/placeParser";
 import { fullName } from "../lib/bookComposer";
 import { bookStrings, languageName } from "../lib/bookI18n";
@@ -53,6 +53,12 @@ type RuntimeConfigOptions = {
   overrides?: Partial<OpenRouterSettings>;
   /** Abort the HTTP request after this many ms (defaults to DEFAULT_OPENROUTER_TIMEOUT_MS). */
   timeoutMs?: number;
+  /** Attribution written to ai_usage_logs by the server-side proxy. */
+  purpose?: string;
+  treeId?: string;
+  actorId?: string;
+  /** One-off key for the admin "Test Connection" path (validated server-side, never stored). */
+  testKey?: string;
 };
 
 // Hard cap so a slow/unreachable OpenRouter can never hang a request (and thus a UI spinner)
@@ -235,48 +241,73 @@ export const saveAdminAISettings = async ({
     throw new Error(error.message);
   }
 
-  setCachedAISettings(null);
-  await fetchAdminAIRuntimeSettings(true);
+  // No client-side key cache to refresh — the ai-proxy Edge Function reads the key server-side.
   return mapMetadataRows((data ?? []) as AISettingsMetadataRow[]);
 };
 
-const resolveOpenRouterConfig = async ({ forceRefresh = false, overrides }: RuntimeConfigOptions = {}) => {
-  const fallback = buildEnvFallbackSettings(overrides);
-  let centralSettings: StoredAISettings | null = null;
+// ── Server-side proxy (roadmap N) ─────────────────────────────────────────────
+//
+// Every OpenRouter call is relayed through the `ai-proxy` Edge Function so the API key stays
+// server-side. The browser only ever sends the project publishable/anon key (already in the bundle);
+// it never resolves, holds, or transmits the OpenRouter key. The function injects the key, enforces
+// the timeout, logs one row to ai_usage_logs, and returns OpenRouter's JSON verbatim — so the parsing
+// logic below (extractAssistantText / JSON.parse) is unchanged.
+export const AI_PROXY_PATH = '/functions/v1/ai-proxy';
 
+/** Build the ai-proxy Edge Function URL from the project's Supabase URL (pure, for testing). */
+export const buildAiProxyUrl = (supabaseUrl: string) =>
+  `${supabaseUrl.replace(/\/$/, '')}${AI_PROXY_PATH}`;
+
+const getAiProxyConfig = () => {
+  const { url, key } = getActiveConfig();
+  return { proxyUrl: buildAiProxyUrl(url), publishableKey: key };
+};
+
+// Cached model/baseUrl/enabled resolved from the *metadata* RPC (which returns hasApiKey, NOT the key).
+let serverConfigCache: { enabled: boolean; model: string; baseUrl: string } | null = null;
+let serverConfigInflight: Promise<{ enabled: boolean; model: string; baseUrl: string }> | null = null;
+
+const resolveServerConfig = async (
+  forceRefresh = false
+): Promise<{ enabled: boolean; model: string; baseUrl: string }> => {
+  if (!forceRefresh && serverConfigCache) return serverConfigCache;
+  if (serverConfigInflight) return serverConfigInflight;
+  serverConfigInflight = (async () => {
+    try {
+      const metadata = await fetchAdminAISettingsMetadata();
+      const or = metadata.providers.openrouter;
+      const cfg = {
+        enabled: or.enabled,
+        model: or.model || DEFAULT_OPENROUTER_MODEL,
+        baseUrl: or.baseUrl || DEFAULT_OPENROUTER_BASE_URL,
+      };
+      serverConfigCache = cfg;
+      return cfg;
+    } catch {
+      const env = getRuntimeEnv();
+      return {
+        enabled: true,
+        model: env.OPENROUTER_MODEL || env.VITE_OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
+        baseUrl: env.OPENROUTER_BASE_URL || env.VITE_OPENROUTER_BASE_URL || DEFAULT_OPENROUTER_BASE_URL,
+      };
+    }
+  })();
   try {
-    centralSettings = await fetchAdminAIRuntimeSettings(forceRefresh);
-  } catch {
-    centralSettings = null;
+    return await serverConfigInflight;
+  } finally {
+    serverConfigInflight = null;
   }
+};
 
-  const merged: OpenRouterSettings = {
-    ...fallback.providers.openrouter,
-    ...(centralSettings?.providers.openrouter ?? {}),
-    ...(overrides ?? {}),
-    enabled: overrides?.enabled ?? centralSettings?.providers.openrouter.enabled ?? fallback.providers.openrouter.enabled,
-    apiKey: coalesceNonEmpty(
-      overrides?.apiKey,
-      centralSettings?.providers.openrouter.apiKey,
-      fallback.providers.openrouter.apiKey
-    ),
-    model: coalesceNonEmpty(
-      overrides?.model,
-      centralSettings?.providers.openrouter.model,
-      fallback.providers.openrouter.model
-    ),
-    baseUrl: coalesceNonEmpty(
-      overrides?.baseUrl,
-      centralSettings?.providers.openrouter.baseUrl,
-      fallback.providers.openrouter.baseUrl
-    ),
+const resolveOpenRouterConfig = async ({ forceRefresh = false, overrides }: RuntimeConfigOptions = {}) => {
+  const server = await resolveServerConfig(forceRefresh);
+  return {
+    enabled: overrides?.enabled ?? server.enabled,
+    model: coalesceNonEmpty(overrides?.model, server.model, DEFAULT_OPENROUTER_MODEL),
+    baseUrl: coalesceNonEmpty(overrides?.baseUrl, server.baseUrl, DEFAULT_OPENROUTER_BASE_URL),
+    // The API key is no longer resolved client-side — the ai-proxy Edge Function holds it.
+    apiKey: '',
   };
-
-  if (!merged.apiKey) {
-    throw new Error('OpenRouter API key is missing. Configure it in Administrator -> Database.');
-  }
-
-  return merged;
 };
 
 interface TextContentPart { type: 'text'; text: string }
@@ -344,38 +375,82 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3): Promise<T> => {
   throw new Error("API call failed after retries");
 };
 
+interface ProxyResponse {
+  error?: string;
+  choices?: ChatResponse['choices'];
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+}
+
+/** Build the request body sent to the ai-proxy (pure, for testing). The OpenRouter API key is NEVER
+ *  placed in this body — only an optional one-off `testKey` for the admin "Test Connection" path. */
+export const buildAiProxyRequestBody = (
+  model: string,
+  baseUrl: string,
+  messages: ChatMessage[],
+  extraBody: Record<string, unknown>,
+  options: RuntimeConfigOptions | undefined,
+  timeoutMs: number,
+) => ({
+  model,
+  messages,
+  ...extraBody,
+  baseUrl,
+  purpose: options?.purpose,
+  treeId: options?.treeId,
+  actorId: options?.actorId,
+  testKey: options?.testKey,
+  timeoutMs,
+});
+
+const postToAiProxy = async (
+  model: string,
+  baseUrl: string,
+  messages: ChatMessage[],
+  extraBody: Record<string, unknown>,
+  options: RuntimeConfigOptions | undefined,
+  timeoutMs: number
+): Promise<ProxyResponse> => {
+  const { proxyUrl, publishableKey } = getAiProxyConfig();
+  const response = await fetchWithTimeout(
+    proxyUrl,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // The publishable/anon key authorizes the Edge Function invocation (required by the Supabase
+        // gateway). It is NOT the OpenRouter key — that is injected server-side.
+        apikey: publishableKey,
+        Authorization: `Bearer ${publishableKey}`,
+      },
+      body: JSON.stringify(buildAiProxyRequestBody(model, baseUrl, messages, extraBody, options, timeoutMs)),
+    },
+    timeoutMs
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    let message = `AI proxy request failed: ${response.status}`;
+    try {
+      const parsed = detail ? (JSON.parse(detail) as ProxyResponse) : null;
+      if (parsed?.error) message = parsed.error;
+    } catch {
+      // keep the status-only message
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as ProxyResponse;
+};
+
 const callOpenRouter = async (
   messages: ChatMessage[],
   extraBody: Record<string, unknown> = {},
   options?: RuntimeConfigOptions & { allowReasoningFallback?: boolean }
 ) => {
-  const { apiKey, model, baseUrl } = await resolveOpenRouterConfig(options);
-  const response = await fetchWithTimeout(
-    `${baseUrl}/chat/completions`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://linegra.app',
-        'X-Title': 'Linegra Genealogy'
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        ...extraBody
-      })
-    },
-    options?.timeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS
-  );
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`OpenRouter request failed: ${response.status} ${detail}`);
-  }
-
-  const data: ChatResponse = await response.json();
-  return extractAssistantText(data.choices[0]?.message ?? {}, {
+  const { model, baseUrl } = await resolveOpenRouterConfig(options);
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS;
+  const data = await postToAiProxy(model, baseUrl, messages, extraBody, options, timeoutMs);
+  if (data.error) throw new Error(data.error);
+  return extractAssistantText(data.choices?.[0]?.message ?? {}, {
     allowReasoningFallback: options?.allowReasoningFallback,
   });
 };
@@ -385,32 +460,11 @@ const callOpenRouterRaw = async (
   extraBody: Record<string, unknown> = {},
   options?: RuntimeConfigOptions
 ) => {
-  const { apiKey, model, baseUrl } = await resolveOpenRouterConfig(options);
-  const response = await fetchWithTimeout(
-    `${baseUrl}/chat/completions`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://linegra.app',
-        'X-Title': 'Linegra Genealogy'
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        ...extraBody
-      })
-    },
-    options?.timeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS
-  );
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`OpenRouter request failed: ${response.status} ${detail}`);
-  }
-
-  return response.json() as Promise<ChatResponse>;
+  const { model, baseUrl } = await resolveOpenRouterConfig(options);
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS;
+  const data = await postToAiProxy(model, baseUrl, messages, extraBody, options, timeoutMs);
+  if (data.error) throw new Error(data.error);
+  return data as unknown as ChatResponse;
 };
 
 const placeCache = new BoundedCache<Partial<StructuredPlace>>();
@@ -476,9 +530,9 @@ export const parsePlaceString = async (input: string): Promise<Partial<Structure
             response_format: {
               type: 'json_schema',
               json_schema: schema
-            },
-            timeoutMs: 15000
-          }
+            }
+          },
+          { purpose: 'place_parse', timeoutMs: 15000 }
         ),
       1
     );
@@ -499,10 +553,14 @@ export const analyzeHistoricalEra = async (year: string, location: string): Prom
 
   try {
     return await withRetry(() =>
-      callOpenRouter([
-        { role: 'system', content: 'You provide concise historical summaries relevant to genealogists.' },
-        { role: 'user', content: prompt }
-      ])
+      callOpenRouter(
+        [
+          { role: 'system', content: 'You provide concise historical summaries relevant to genealogists.' },
+          { role: 'user', content: prompt }
+        ],
+        {},
+        { purpose: 'era' }
+      )
     ) || "No historical context found.";
   } catch (error) {
     console.error("OpenRouter Historical Era Error:", error);
@@ -510,13 +568,18 @@ export const analyzeHistoricalEra = async (year: string, location: string): Prom
   }
 };
 
-export const hasOpenRouterConfig = async (forceRefresh = false) => {
+export const hasOpenRouterConfig = async () => {
+  // The key is held server-side now, so this checks the stored "has key" flag (metadata RPC returns
+  // no raw key) and falls back to an env-configured key. Either path means the proxy can authenticate.
   try {
-    const config = await resolveOpenRouterConfig({ forceRefresh });
-    return Boolean(config.enabled && config.apiKey && config.model && config.baseUrl);
+    const metadata = await fetchAdminAISettingsMetadata();
+    const or = metadata.providers.openrouter;
+    if (or.enabled && or.hasApiKey && or.model && or.baseUrl) return true;
   } catch {
-    return false;
+    // fall through to env fallback
   }
+  const env = getRuntimeEnv();
+  return Boolean(env.OPENROUTER_API_KEY || env.VITE_OPENROUTER_API_KEY);
 };
 
 export const testOpenRouterConnection = async (overrides?: Partial<OpenRouterSettings>) => {
@@ -527,7 +590,14 @@ export const testOpenRouterConnection = async (overrides?: Partial<OpenRouterSet
         { role: 'user', content: 'Reply with exactly: OPENROUTER_OK' }
       ],
       { max_tokens: 128, temperature: 0 },
-      { forceRefresh: true, overrides }
+      {
+        forceRefresh: true,
+        overrides,
+        purpose: 'test',
+        // If the admin entered a candidate key, validate it server-side (one-off; never stored).
+        // When the field is empty, the proxy tests the already-stored key.
+        testKey: overrides?.apiKey?.trim() || undefined,
+      }
     )
   );
 
@@ -673,7 +743,8 @@ const computeNormalizedDeathCause = async (rawCause: string): Promise<Normalized
         },
         temperature: 0.1,
         max_tokens: 180
-      }
+      },
+      { purpose: 'death_cause' }
     )
   );
 
@@ -768,7 +839,7 @@ export const transcribeRecordImage = async (
             },
           ],
           { temperature: 0.1, max_tokens: 1600 },
-          { timeoutMs: 60000 }
+          { purpose: 'transcribe', timeoutMs: 60000 }
         ),
       1
     );
@@ -1025,7 +1096,8 @@ export const aiAssistedEdit = async (
               content: `${AI_EDIT_INSTRUCTION[op]}\n\nWrite entirely in ${languageName(target)}.\nReturn plain prose only — no headings, no bullet lists, no markdown, no labels.\n\nPassage:\n${input}`,
             },
           ],
-          { temperature: 0.6, max_tokens: 1100, timeoutMs: 30000 }
+          { temperature: 0.6, max_tokens: 1100 },
+          { purpose: 'edit', timeoutMs: 30000 }
         ),
       1
     );
@@ -1059,7 +1131,8 @@ export const composePersonBiography = async (
             { role: 'system', content: 'You are a careful historical biographer for a genealogy product.' },
             { role: 'user', content: personBiographyPrompt(person, facts, options) },
           ],
-          { temperature: 0.7, max_tokens: LENGTH_MAX_TOKENS[options.length], timeoutMs: 30000 }
+          { temperature: 0.7, max_tokens: LENGTH_MAX_TOKENS[options.length] },
+          { purpose: 'biography', timeoutMs: 30000, treeId: options.treeId, actorId: options.actorId }
         ),
       1
     );
@@ -1092,7 +1165,8 @@ export const composeFamilyOverview = async (
             { role: 'system', content: 'You are a careful historian writing the opening chapter of a family-history book.' },
             { role: 'user', content: familyOverviewPrompt(tree, statistics, options) },
           ],
-          { temperature: 0.7, max_tokens: options.length === 'short' ? 500 : 820, timeoutMs: 30000 }
+          { temperature: 0.7, max_tokens: options.length === 'short' ? 500 : 820 },
+          { purpose: 'overview', timeoutMs: 30000, treeId: options.treeId, actorId: options.actorId }
         ),
       1
     );

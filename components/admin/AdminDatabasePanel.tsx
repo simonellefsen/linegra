@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, PlugZap } from 'lucide-react';
+import { AlertTriangle, PlugZap, Activity } from 'lucide-react';
 import { FamilyLayoutAudit } from '../../types';
 import {
   DEFAULT_OPENROUTER_BASE_URL,
@@ -10,6 +10,7 @@ import {
   saveAdminAISettings,
   testOpenRouterConnection,
 } from '../../services/ai';
+import { fetchAiUsageSummary, AiUsageSummary } from '../../services/archive';
 
 interface AdminDatabasePanelProps {
   actorName?: string;
@@ -39,6 +40,33 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
   const [testing, setTesting] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
+
+  const [usage, setUsage] = useState<AiUsageSummary | null>(null);
+  const [usageDays, setUsageDays] = useState(30);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!supabaseActive) return;
+    let cancelled = false;
+    setUsageLoading(true);
+    setUsageError(null);
+    fetchAiUsageSummary(usageDays)
+      .then((summary) => {
+        if (!cancelled) setUsage(summary);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setUsageError(error instanceof Error ? error.message : 'Failed to load AI usage.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setUsageLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [supabaseActive, usageDays]);
 
   useEffect(() => {
     let cancelled = false;
@@ -212,6 +240,88 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
               </span>
             )}
           </div>
+        </div>
+
+        <div className="border border-slate-100 bg-slate-50/70 rounded-[28px] p-6 space-y-5">
+          <div className="flex items-center gap-3 text-slate-700">
+            <Activity className="w-6 h-6 text-blue-600" />
+            <div className="flex-1">
+              <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">AI Usage</p>
+              <h4 className="text-lg font-serif font-bold text-slate-900">OpenRouter Spend</h4>
+            </div>
+            <select
+              value={usageDays}
+              onChange={(event) => setUsageDays(Number(event.target.value))}
+              className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none"
+            >
+              <option value={7}>Last 7 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+          </div>
+          <p className="text-sm text-slate-500 max-w-3xl">
+            Calls are relayed through the server-side ai-proxy (roadmap N); each call logs its model, tokens, and an
+            estimated cost here. Per-tree attribution is available for AI family-book composition; other calls are
+            logged by purpose only.
+          </p>
+          {usageLoading && <p className="text-xs font-bold text-slate-500">Loading usage…</p>}
+          {usageError && <p className="text-xs font-bold text-rose-600">{usageError}</p>}
+          {usage && !usageLoading && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Calls', value: String(usage.totals.calls) },
+                  { label: 'Total tokens', value: usage.totals.total_tokens.toLocaleString() },
+                  { label: 'Est. cost', value: `$${Number(usage.totals.cost_estimate).toFixed(4)}` },
+                  { label: 'Errors', value: String(usage.totals.errors) },
+                ].map((stat) => (
+                  <div key={stat.label} className="bg-white rounded-2xl border border-slate-100 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{stat.label}</p>
+                    <p className="text-xl font-serif font-bold text-slate-900">{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+              {usage.byPurpose.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 px-1">By purpose</p>
+                  <div className="space-y-1.5">
+                    {usage.byPurpose.map((bucket) => (
+                      <div
+                        key={bucket.purpose ?? 'unknown'}
+                        className="flex items-center justify-between text-xs bg-white rounded-xl border border-slate-100 px-4 py-2"
+                      >
+                        <span className="font-bold text-slate-700">{bucket.purpose ?? 'unknown'}</span>
+                        <span className="text-slate-500">
+                          {bucket.calls} calls · {bucket.total_tokens.toLocaleString()} tok · ${Number(bucket.cost_estimate).toFixed(4)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {usage.byTree.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 px-1">By tree</p>
+                  <div className="space-y-1.5">
+                    {usage.byTree.map((bucket, index) => (
+                      <div
+                        key={bucket.tree_id ?? `tree-${index}`}
+                        className="flex items-center justify-between text-xs bg-white rounded-xl border border-slate-100 px-4 py-2"
+                      >
+                        <span className="font-bold text-slate-700 truncate">{bucket.tree_name || bucket.tree_id || '(unattributed)'}</span>
+                        <span className="text-slate-500">
+                          {bucket.calls} calls · {bucket.total_tokens.toLocaleString()} tok · ${Number(bucket.cost_estimate).toFixed(4)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {usage.totals.calls === 0 && (
+                <p className="text-xs text-slate-500">No AI calls recorded in this window yet.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="border border-rose-100 bg-rose-50/70 rounded-[28px] p-6 flex flex-col gap-4">

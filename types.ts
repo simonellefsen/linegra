@@ -356,6 +356,10 @@ export interface BookGenerationOptions {
   length: BookLength;
   language: BookLanguage;        // default 'da' (Danish)
   includeHistoricalContext?: boolean;
+  // Attribution forwarded to the ai-proxy Edge Function for per-tree usage metering (roadmap N).
+  // Not part of the persisted book shape — injected at compose time, never read back from a row.
+  treeId?: string;
+  actorId?: string;
 }
 
 /** A compact life event for a chapter (residence, military service, education, occupation milestone…). */

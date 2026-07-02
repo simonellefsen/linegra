@@ -84,6 +84,14 @@ export const composeBook = async (
   let reusedCount = 0;
   let generatedCount = 0;
 
+  // Forward tree + actor attribution to the AI composers so each call is metered to this tree
+  // (roadmap N). `options` itself is unchanged for everything else (signatures, persistence).
+  const genOptions: BookGenerationOptions = {
+    ...options,
+    treeId,
+    actorId: actor?.id ?? undefined,
+  };
+
   // Pull the stored biographies once so unchanged people can be reused without an AI call.
   let storedByPerson = new Map<string, PersonBiography>();
   try {
@@ -98,7 +106,7 @@ export const composeBook = async (
       // Family-level chapter — depends on the whole tree, so always (re)composed; cheap (1 chapter).
       let narrative: string;
       try {
-        narrative = await composeFamilyOverview(tree, plan.statistics, options);
+        narrative = await composeFamilyOverview(tree, plan.statistics, genOptions);
       } catch (error) {
         console.error('Family overview chapter failed:', error);
         narrative = deterministicFamilyOverview(tree, plan.statistics, options.language);
@@ -132,7 +140,7 @@ export const composeBook = async (
     // Otherwise (re)generate this one chapter and persist it back to the person's Story.
     let narrative: string;
     try {
-      narrative = await composePersonBiography(person, facts, options);
+      narrative = await composePersonBiography(person, facts, genOptions);
     } catch (error) {
       console.error(`Biography failed for ${chapter.title}:`, error);
       narrative = `${chapter.title}: biography could not be generated.`;

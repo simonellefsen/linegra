@@ -11,7 +11,8 @@ export default [
       'dist/**',
       'supabase/.temp/**',
       'supabase/.branches/**',
-      'supabase/seed.sql'
+      'supabase/seed.sql',
+      'supabase/functions/**'
     ]
   },
   js.configs.recommended,

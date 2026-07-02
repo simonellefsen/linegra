@@ -7,11 +7,12 @@ picked up, move it to [log.md](log.md) on completion.
 ## Status snapshot
 
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
-**AI family books + editable per-person biographies**, and reusable tree-wide sources/citations are
-live and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (248 tests)**, wired into `npm run build` and
+**AI family books + editable per-person biographies**, reusable tree-wide sources/citations, and a
+**server-side OpenRouter proxy (key never reaches the browser) + per-call usage metering** are live
+and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
+Automated gates: **eslint + `tsc --noEmit` + Vitest (255 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
-git/code 2026-06-30.
+git/code 2026-07-02.
 
 ## Candidate next work
 
@@ -333,17 +334,34 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
 - **Sequencing:** M6 + M1 (editing foundation, parallel) → M2 → M7 → M11 → M10 → M3/M4/M5. M9 runs
   in parallel; M12 anytime.
 
-### N. Server-side AI proxy + key protection + cost guardrails (SECURITY — flag before public scale)
-Today every OpenRouter call runs **client-side** with `Authorization: Bearer ${apiKey}`
-([../services/ai.ts](../services/ai.ts) ~L359/L395) and there is **no edge/serverless layer**
-(`supabase/functions` is absent). The key — whether from env or the admin AI settings table — reaches
-the browser, so anyone who can read the settings or sniff network traffic can exfiltrate it and spend
-against the account. There's also no per-tree usage metering or rate limit.
-- Move AI calls behind a **Supabase Edge Function** (or similar) that holds the key server-side; the
-  client sends prompts, never the key. Ties to the `admin_ai_settings` model already in the schema.
-- Add usage logging + a per-tree/day cap; surface spend in the admin Database panel.
-- Pairs with **K7** (raw-DNA never on the public path) as the security track. Until done, treat the
-  configured key as burnable and scope/rotate it.
+### N. Server-side AI proxy + key protection + cost guardrails (SECURITY) — Phase 1+2 DONE 2026-07-02
+> **Done 2026-07-02 — Phase 1 (key server-side):** all OpenRouter calls now route through a new Supabase
+> Edge Function, [../supabase/functions/ai-proxy/index.ts](../supabase/functions/ai-proxy/index.ts) (Deno,
+> dependency-free). The two client fetchers in [../services/ai.ts](../services/ai.ts) (`callOpenRouter` /
+> `callOpenRouterRaw`, via `postToAiProxy` → `buildAiProxyUrl`) POST to `${SUPABASE_URL}/functions/v1/ai-proxy`
+> with the publishable `apikey` — **never** the OpenRouter key. The browser no longer resolves, holds, or
+> transmits it (`resolveOpenRouterConfig` now uses the *metadata* RPC; `fetchAdminAIRuntimeSettings` / the
+> raw-key `admin_get_ai_runtime_settings` RPC are no longer called from the browser). **Verified live:** the
+> Network tab hits only the proxy, with **zero** `openrouter.ai` requests and no key in any payload.
+> The function is **DB-backed** — it reads the key from `ai_provider_settings` via the auto-injected
+> service-role key (optional `OPENROUTER_API_KEY` secret override), so the admin "enter key / Test Connection"
+> UI is unchanged. The key leaves the browser but stays in the DB (plaintext, as before; encrypt-at-rest is a
+> later hardening). `verify_jwt=false` (local admin has no JWT — see A); the gateway still requires the
+> publishable key, which is the residual abuse surface until the Phase 3 cap / roadmap A lands.
+> **Done 2026-07-02 — Phase 2 (usage logging + spend view):** a new `ai_usage_logs` table (migration
+> `20260702120000`) + `admin_get_ai_usage_summary(days)` RPC (SECURITY DEFINER); the function logs each call's
+> model/tokens/estimated-cost/tree, and a new **AI Usage** section in
+> [../components/admin/AdminDatabasePanel.tsx](../components/admin/AdminDatabasePanel.tsx) (via
+> `fetchAiUsageSummary` in [../services/archive.ts](../services/archive.ts)) shows rolling 7/30/90-day totals,
+> per-purpose and per-tree. AI family-book composition threads `treeId` (`BookGenerationOptions.treeId`) for
+> per-tree attribution; other calls are logged by purpose only. 255 tests (+7). Deployed to the linked project.
+> **Deferred (Phase 3):** a per-tree/day **hard cap** — over-budget calls would block server-side and the
+> client falls back to its deterministic path. Until then the function is publishable-key gated only.
+
+Previously every OpenRouter call ran **client-side** with `Authorization: Bearer ${apiKey}`, so the key
+reached the browser and anyone who could read settings or sniff traffic could exfiltrate it and spend
+against the account, with no usage metering or rate limit. Pairs with **K7** (raw-DNA never on the public
+path) as the security track.
 
 ### O. Data-quality / consistency engine ("Research issues") — DONE 2026-06-26
 The pure engine + admin panel shipped: [../lib/dataQuality.ts](../lib/dataQuality.ts) runs
@@ -411,9 +429,10 @@ the "newest at top" history. Also: two untracked artifacts sit in the working tr
 
 ## How to pick the next item
 Two lenses:
-- **If anything ships publicly soon → N (server-side AI proxy)** first. The OpenRouter key is in the
-  browser today; that has to move server-side before a wider audience can reach the app. Cheap
-  relative to its risk.
+- **N (server-side AI proxy) Phase 1+2 is now DONE** (2026-07-02): the OpenRouter key is out of the
+  browser and per-call spend is logged. The remaining N work is the **Phase 3 per-tree/day cap** —
+  worth doing before a wide public audience can reach the app (the proxy is publishable-key gated
+  only until then).
 - **For product leverage → A (multi-user auth)** — it unblocks M5 (public book viewer) and live
   verification of the book features (the local admin can't read saved books today; see the RLS note).
 
