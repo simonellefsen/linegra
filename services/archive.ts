@@ -1515,52 +1515,21 @@ export const listAutosomalPeopleInTree = async (treeId: string): Promise<DNAAuto
     throw new Error('Supabase credentials are missing.');
   }
 
-  const people = await fetchPagedRows<any>(async (from, to) => {
-    const { data, error } = await supabase
-      .from('persons')
-      .select('id, first_name, last_name, birth_date_text, death_date_text')
-      .eq('tree_id', treeId)
-      .order('last_name', { ascending: true })
-      .range(from, to);
-    if (error) throw new Error(error.message);
-    return data ?? [];
+  const { data, error } = await supabase.rpc('list_tree_autosomal_testers', {
+    target_tree_id: treeId,
   });
+  if (error) throw new Error(error.message);
 
-  if (!people.length) return [];
-
-  const personById = new Map<string, any>();
-  people.forEach((row) => personById.set(row.id, row));
-
-  const autosomalCounts = new Map<string, number>();
-  for (let i = 0; i < people.length; i += 500) {
-    const batchIds = people.slice(i, i + 500).map((row) => row.id);
-    const { data, error } = await supabase
-      .from('dna_tests')
-      .select('person_id')
-      .eq('test_type', 'Autosomal')
-      .in('person_id', batchIds);
-    if (error) throw new Error(error.message);
-    (data ?? []).forEach((row: any) => {
-      autosomalCounts.set(row.person_id, (autosomalCounts.get(row.person_id) || 0) + 1);
-    });
-  }
-
-  const candidates = Array.from(autosomalCounts.entries())
-    .map(([personId, autosomalTestCount]) => {
-      const person = personById.get(personId);
-      if (!person) return null;
-      return {
-        personId,
-        name: toDisplayName(person),
-        birthYear: extractYear(person.birth_date_text),
-        deathYear: extractYear(person.death_date_text),
-        autosomalTestCount
-      } as DNAAutosomalCandidate;
-    })
-    .filter((item): item is DNAAutosomalCandidate => !!item)
+  return parseRpcJsonPage(data)
+    .map((row: any) => ({
+      personId: row.person_id as string,
+      name: toDisplayName(row),
+      birthYear: extractYear(row.birth_date_text),
+      deathYear: extractYear(row.death_date_text),
+      autosomalTestCount: Number(row.autosomal_test_count || 0),
+    }))
+    .filter((item) => !!item.personId && item.autosomalTestCount > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
-
-  return candidates;
 };
 
 export const listSharedMatchesForAutosomalPerson = async (
