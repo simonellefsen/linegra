@@ -1,7 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, Dna, Layers, Loader2, Search, Sparkles } from 'lucide-react';
-import { DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution } from '../types';
-import { clusterSharedSegments, segmentsFromPreview } from '../lib/dnaClustering';
+import { DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution, Person, Relationship } from '../types';
+import { clusterSharedSegments, segmentsFromPreview, summarizeClusterIcw } from '../lib/dnaClustering';
+import {
+  grandparentSlotShortLabel,
+  inferPathGrandparentSlot,
+  inferPathParentalSide,
+  resolveGrandparentSlots,
+  type GrandparentSlot,
+  type ParentalSideHint,
+} from '../lib/dnaParentalHints';
 import {
   listAutosomalPeopleInTree,
   listSharedMatchesForAutosomalPerson,
@@ -11,6 +19,8 @@ import {
 
 interface AdminDnaPanelProps {
   treeId: string | null;
+  people?: Person[];
+  relationships?: Relationship[];
   actor?: { id?: string | null; name?: string | null };
   onOpenPerson?: (personId: string) => void | Promise<void>;
 }
@@ -32,7 +42,15 @@ const CLUSTER_TINTS = [
   'border-emerald-200 bg-emerald-50/80',
 ];
 
-const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPerson }) => {
+const formatIcwPercent = (fraction: number) => `${Math.round(fraction * 100)}%`;
+
+const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
+  treeId,
+  people = [],
+  relationships = [],
+  actor,
+  onOpenPerson,
+}) => {
   const [candidates, setCandidates] = useState<DNAAutosomalCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<string>('');
@@ -44,24 +62,70 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
   const [expandedPathByMatchId, setExpandedPathByMatchId] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [minClusterCm, setMinClusterCm] = useState(7);
+  const [strictIcw, setStrictIcw] = useState(true);
 
   const matchById = useMemo(() => new Map(matches.map((match) => [match.id, match])), [matches]);
+
+  const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
+
+  const grandparentSlots = useMemo(
+    () => (selectedPersonId ? resolveGrandparentSlots(selectedPersonId, relationships, peopleById) : []),
+    [selectedPersonId, relationships, peopleById]
+  );
 
   const segmentBackedMatches = useMemo(
     () => matches.filter((match) => (match.sharedSegmentsPreview?.length ?? 0) > 0),
     [matches]
   );
 
+  const segmentsByMatchId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof segmentsFromPreview>>();
+    segmentBackedMatches.forEach((match) => {
+      if (match.sharedSegmentsPreview?.length) {
+        map.set(match.id, segmentsFromPreview(match.sharedSegmentsPreview));
+      }
+    });
+    return map;
+  }, [segmentBackedMatches]);
+
+  const minIcwOverlapFraction = strictIcw ? 0.5 : 0;
+
   const clusterGroups = useMemo(() => {
     if (!segmentBackedMatches.length) return [];
     return clusterSharedSegments(
       segmentBackedMatches.map((match) => ({
         matchId: match.id,
-        segments: segmentsFromPreview(match.sharedSegmentsPreview!),
+        segments: segmentsByMatchId.get(match.id) || [],
       })),
-      { minCentimorgans: minClusterCm }
+      { minCentimorgans: minClusterCm, minIcwOverlapFraction }
     );
-  }, [segmentBackedMatches, minClusterCm]);
+  }, [segmentBackedMatches, segmentsByMatchId, minClusterCm, minIcwOverlapFraction]);
+
+  const clusterSummaries = useMemo(
+    () => clusterGroups.map((group) => summarizeClusterIcw(group, segmentsByMatchId, minIcwOverlapFraction)),
+    [clusterGroups, segmentsByMatchId, minIcwOverlapFraction]
+  );
+
+  interface MatchLineageHints {
+    parentalSide: ParentalSideHint;
+    grandparentSlot: GrandparentSlot | null;
+  }
+
+  const matchLineageHints = useMemo(() => {
+    const hints = new Map<string, MatchLineageHints>();
+    if (!selectedPersonId) return hints;
+    matches.forEach((match) => {
+      const resolution = resolutionByMatchId[match.id];
+      const pathPersonIds = resolution?.pathPersonIds?.length
+        ? resolution.pathPersonIds
+        : match.pathPersonIds;
+      hints.set(match.id, {
+        parentalSide: inferPathParentalSide(pathPersonIds, selectedPersonId, relationships),
+        grandparentSlot: inferPathGrandparentSlot(pathPersonIds, grandparentSlots),
+      });
+    });
+    return hints;
+  }, [matches, resolutionByMatchId, selectedPersonId, relationships, grandparentSlots]);
 
   const clusteredMatchIds = useMemo(() => new Set(clusterGroups.flat()), [clusterGroups]);
 
@@ -471,11 +535,22 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Segment clusters</p>
               <h3 className="text-xl font-serif font-bold text-slate-900 mt-1">Overlap groups (Leeds-style)</h3>
               <p className="text-sm text-slate-500 mt-2 max-w-3xl">
-                Matches imported with shared-segment CSV rows are grouped when their segments overlap on the same
-                chromosome. This is a heuristic — true triangulation also needs in-common-with and parental-side data.
+                Matches imported with shared-segment CSV rows are grouped when their owner-side segments overlap.
+                Enable strict ICW to require ~50% reciprocal overlap (reduces false clusters on unphased data).
+                Parental / grandparent labels come from documented lineage paths when available.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={strictIcw}
+                  onChange={(e) => setStrictIcw(e.target.checked)}
+                  className="rounded border-slate-300"
+                />
+                <span className="text-[10px] font-black uppercase tracking-[0.15em]">Strict ICW (50%)</span>
+              </label>
+              <div className="flex items-center gap-2">
               <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400" htmlFor="min-cluster-cm">
                 Min segment cM
               </label>
@@ -488,8 +563,22 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
                 onChange={(e) => setMinClusterCm(Math.max(0, Number(e.target.value) || 0))}
                 className="w-20 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700"
               />
+              </div>
             </div>
           </div>
+
+          {grandparentSlots.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {grandparentSlots.map((slot) => (
+                <span
+                  key={slot.key}
+                  className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg bg-slate-100 text-slate-600 border border-slate-200"
+                >
+                  {grandparentSlotShortLabel(slot.key)}: {slot.label}
+                </span>
+              ))}
+            </div>
+          )}
 
           {segmentBackedMatches.length === 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
@@ -504,6 +593,14 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {clusterGroups.map((group, index) => {
                 const tint = CLUSTER_TINTS[index % CLUSTER_TINTS.length];
+                const summary = clusterSummaries[index];
+                const slotVotes = new Map<string, number>();
+                group.forEach((matchId) => {
+                  const slot = matchLineageHints.get(matchId)?.grandparentSlot;
+                  if (slot) slotVotes.set(slot.key, (slotVotes.get(slot.key) || 0) + 1);
+                });
+                const dominantSlotKey = [...slotVotes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+                const dominantSlot = grandparentSlots.find((slot) => slot.key === dominantSlotKey) || null;
                 return (
                   <div key={`cluster-${index}`} className={`rounded-2xl border px-4 py-4 space-y-3 ${tint}`}>
                     <div className="flex items-center gap-2">
@@ -512,10 +609,29 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
                         Cluster {index + 1} · {group.length} matches
                       </p>
                     </div>
+                    {summary && (
+                      <p className="text-xs text-slate-600">
+                        Avg ICW overlap: <span className="font-semibold">{formatIcwPercent(summary.avgIcwFraction)}</span>
+                        {strictIcw && (
+                          <>
+                            {' '}
+                            · {summary.icwConfirmedPairs}/{summary.totalPairs} pairs ≥50%
+                          </>
+                        )}
+                      </p>
+                    )}
+                    {dominantSlot && (
+                      <p className="text-xs text-slate-600">
+                        Leeds hint: <span className="font-semibold">{grandparentSlotShortLabel(dominantSlot.key)}</span>
+                        {' — '}
+                        {dominantSlot.label}
+                      </p>
+                    )}
                     <ul className="space-y-2">
                       {group.map((matchId) => {
                         const match = matchById.get(matchId);
                         if (!match) return null;
+                        const hints = matchLineageHints.get(matchId);
                         return (
                           <li
                             key={matchId}
@@ -525,6 +641,12 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
                             <span className="text-slate-500"> · {formatCm(match.sharedCM)}</span>
                             <span className="text-slate-400 text-xs block">
                               {match.sharedSegmentsPreview?.length ?? 0} segment rows
+                              {hints?.parentalSide !== 'unknown' && (
+                                <> · {hints.parentalSide === 'maternal' ? 'Maternal line' : 'Paternal line'}</>
+                              )}
+                              {hints?.grandparentSlot && (
+                                <> · {grandparentSlotShortLabel(hints.grandparentSlot.key)}</>
+                              )}
                             </span>
                           </li>
                         );

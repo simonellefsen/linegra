@@ -1421,6 +1421,8 @@ useEffect(() => {
                 {adminSection === 'dna' && (
                   <AdminDnaPanel
                     treeId={activeTree?.id || null}
+                    people={treePeople}
+                    relationships={treeRelationships}
                     actor={{ id: currentUser?.id, name: currentUser?.name }}
                     onOpenPerson={handleAdminOpenPerson}
                   />

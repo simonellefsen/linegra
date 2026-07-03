@@ -96,4 +96,32 @@ describe('clusterSharedSegments', () => {
     expect(clusters[0]).toHaveLength(3);
     expect(clusters[1]).toHaveLength(2);
   });
+
+  it('strict ICW requires substantial reciprocal overlap, not just touching regions', () => {
+    const loose = clusterSharedSegments([
+      match('A', [seg('1', 100, 200)]),
+      match('B', [seg('1', 195, 295)]), // only 5 bp overlap on a 100 bp segment → 5%
+    ]);
+    expect(loose).toEqual([['A', 'B']]);
+
+    const strict = clusterSharedSegments(
+      [
+        match('A', [seg('1', 100, 200)]),
+        match('B', [seg('1', 195, 295)]),
+      ],
+      { minIcwOverlapFraction: 0.5 }
+    );
+    expect(strict).toEqual([]);
+  });
+
+  it('strict ICW keeps pairs with strong reciprocal overlap', () => {
+    const strict = clusterSharedSegments(
+      [
+        match('A', [seg('1', 100, 200)]),
+        match('B', [seg('1', 120, 220)]), // 80% overlap on the shorter segment
+      ],
+      { minIcwOverlapFraction: 0.5 }
+    );
+    expect(strict).toEqual([['A', 'B']]);
+  });
 });
