@@ -13,6 +13,7 @@ import {
 import {
   listAutosomalPeopleInTree,
   listSharedMatchesForAutosomalPerson,
+  loadDnaPathRelationshipsForTree,
   resolveSharedMatchLineage,
   resolveSharedTestLineage,
 } from '../services/archive';
@@ -216,17 +217,26 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
     let resolved = 0;
     let failed = 0;
     try {
+      const pathRelationships = await loadDnaPathRelationshipsForTree(treeId);
+      const resolveOptions = { pathRelationships };
       for (const match of matches) {
         try {
           const resolution =
             match.source === 'dna_match'
-              ? await resolveSharedMatchLineage(treeId, selectedPersonId, match.dnaMatchId || match.id, actor)
+              ? await resolveSharedMatchLineage(
+                  treeId,
+                  selectedPersonId,
+                  match.dnaMatchId || match.id,
+                  actor,
+                  resolveOptions
+                )
               : await resolveSharedTestLineage(
                   treeId,
                   selectedPersonId,
                   match.dnaTestId || match.id.replace(/^test:/, ''),
                   match.counterpartPersonId,
-                  actor
+                  actor,
+                  resolveOptions
                 );
           setResolutionByMatchId((prev) => ({ ...prev, [match.id]: resolution }));
           window.dispatchEvent(
@@ -266,15 +276,24 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
       if (!match) {
         throw new Error('Selected DNA match is no longer available.');
       }
+      const pathRelationships = await loadDnaPathRelationshipsForTree(treeId);
+      const resolveOptions = { pathRelationships };
       const resolution =
         match.source === 'dna_match'
-          ? await resolveSharedMatchLineage(treeId, selectedPersonId, match.dnaMatchId || match.id, actor)
+          ? await resolveSharedMatchLineage(
+              treeId,
+              selectedPersonId,
+              match.dnaMatchId || match.id,
+              actor,
+              resolveOptions
+            )
           : await resolveSharedTestLineage(
               treeId,
               selectedPersonId,
               match.dnaTestId || match.id.replace(/^test:/, ''),
               match.counterpartPersonId,
-              actor
+              actor,
+              resolveOptions
             );
       setResolutionByMatchId((prev) => ({ ...prev, [matchId]: resolution }));
       setExpandedPathByMatchId((prev) => ({ ...prev, [matchId]: true }));

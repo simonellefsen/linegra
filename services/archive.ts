@@ -57,7 +57,6 @@ const mapDbRelationship = (row: any): Relationship => {
   };
 };
 
-const PAGE_SIZE = 1000;
 const ARCHIVE_PAGE_SIZE = 1000;
 
 const parseRpcJsonPage = (data: unknown): any[] => {
@@ -96,20 +95,6 @@ const fetchArchiveRpcPages = async (
   return rows;
 };
 
-const fetchPagedRows = async <T>(fetchPage: (from: number, to: number) => Promise<T[]>, pageSize = PAGE_SIZE): Promise<T[]> => {
-  const rows: T[] = [];
-  let from = 0;
-  while (true) {
-    const to = from + pageSize - 1;
-    const chunk = await fetchPage(from, to);
-    if (!chunk.length) break;
-    rows.push(...chunk);
-    if (chunk.length < pageSize) break;
-    from += pageSize;
-  }
-  return rows;
-};
-
 const chunkedInsert = async <T>(table: string, rows: T[], chunkSize = 500) => {
   if (!rows.length) return;
   for (let i = 0; i < rows.length; i += chunkSize) {
@@ -118,18 +103,6 @@ const chunkedInsert = async <T>(table: string, rows: T[], chunkSize = 500) => {
     if (error) throw new Error(error.message);
   }
 };
-
-const DNA_PATH_RELATIONSHIP_TYPES = new Set<RelationshipType>([
-  'bio_father',
-  'bio_mother',
-  'adoptive_father',
-  'adoptive_mother',
-  'guardian',
-  'step_parent',
-  'child',
-  'marriage',
-  'partner',
-]);
 
 interface NameLookupRow {
   id: string;
@@ -166,19 +139,6 @@ interface SharedSegmentSummaryLike {
   largestSegmentCentimorgans: number;
   fileName?: string;
   importedAt?: string;
-}
-
-interface SharedAutosomalAdminRow {
-  test_id: string;
-  owner_person_id: string;
-  owner_first_name: string | null;
-  owner_last_name: string | null;
-  shared_person_id: string | null;
-  shared_match_person_id: string | null;
-  counterpart_person_id: string | null;
-  counterpart_first_name: string | null;
-  counterpart_last_name: string | null;
-  metadata: Record<string, unknown> | null;
 }
 
 const normalizeName = (value?: string | null) =>
@@ -476,17 +436,45 @@ const findRelationshipPath = (
 };
 
 const fetchDnaPathRelationships = async (treeId: string): Promise<RelationshipLookupRow[]> => {
-  const rows = await fetchPagedRows<any>(async (from, to) => {
-    const { data, error } = await supabase
-      .from('relationships')
-      .select('id, person_id, related_id, type')
-      .eq('tree_id', treeId)
-      .in('type', Array.from(DNA_PATH_RELATIONSHIP_TYPES))
-      .range(from, to);
-    if (error) throw new Error(error.message);
-    return data ?? [];
+  const { data, error } = await supabase.rpc('load_dna_path_relationships', {
+    target_tree_id: treeId,
   });
-  return rows.filter((row) => !!row.id && !!row.person_id && !!row.related_id) as RelationshipLookupRow[];
+  if (error) throw new Error(error.message);
+  return parseRpcJsonPage(data).filter(
+    (row) => !!row.id && !!row.person_id && !!row.related_id
+  ) as RelationshipLookupRow[];
+};
+
+export interface DnaLineageResolveOptions {
+  pathRelationships?: RelationshipLookupRow[];
+}
+
+const resolvePathRelationships = async (
+  treeId: string,
+  options?: DnaLineageResolveOptions
+): Promise<RelationshipLookupRow[]> => options?.pathRelationships ?? fetchDnaPathRelationships(treeId);
+
+const fetchPersonNameRows = async (personIds: string[]): Promise<NameLookupRow[]> => {
+  const uniqueIds = Array.from(new Set(personIds.filter(Boolean)));
+  if (!uniqueIds.length || !isSupabaseConfigured()) return [];
+  const rows: NameLookupRow[] = [];
+  for (let i = 0; i < uniqueIds.length; i += 500) {
+    const batchIds = uniqueIds.slice(i, i + 500);
+    const { data, error } = await supabase
+      .from('persons')
+      .select('id, first_name, last_name, maiden_name')
+      .in('id', batchIds);
+    if (error) throw new Error(error.message);
+    rows.push(
+      ...(data || []).map((row: any) => ({
+        id: row.id,
+        first_name: row.first_name || '',
+        last_name: row.last_name || '',
+        maiden_name: row.maiden_name || null,
+      }))
+    );
+  }
+  return rows;
 };
 
 const buildDnaMatchPayload = async (targetPersonId: string, dnaTests: DNATest[]): Promise<DnaMatchPayloadItem[]> => {
@@ -1540,39 +1528,60 @@ export const listSharedMatchesForAutosomalPerson = async (
     throw new Error('Supabase credentials are missing.');
   }
 
-  const peopleRows = await fetchPagedRows<any>(async (from, to) => {
-    const { data, error } = await supabase
-      .from('persons')
-      .select('id, tree_id, first_name, last_name')
-      .eq('tree_id', treeId)
-      .order('last_name', { ascending: true })
-      .range(from, to);
-    if (error) throw new Error(error.message);
-    return data ?? [];
-  });
-  const personById = new Map<string, any>();
-  peopleRows.forEach((row) => personById.set(row.id, row));
-  if (!personById.has(focusPersonId)) return [];
+  const { data: focusRow, error: focusError } = await supabase
+    .from('persons')
+    .select('id, tree_id, first_name, last_name')
+    .eq('id', focusPersonId)
+    .eq('tree_id', treeId)
+    .maybeSingle();
+  if (focusError) throw new Error(focusError.message);
+  if (!focusRow) return [];
 
-  const nameRows: NameLookupRow[] = peopleRows.map((row) => ({
+  const personById = new Map<string, any>([[focusPersonId, focusRow]]);
+  const focusFullName = buildFullName(focusRow.first_name, focusRow.last_name);
+
+  const [typedRelationships, matchResponse, sharedTestsResponse] = await Promise.all([
+    fetchDnaPathRelationships(treeId),
+    supabase
+      .from('dna_matches')
+      .select('id, person_id, matched_person_id, shared_cm, segments, longest_segment, confidence, metadata, created_at')
+      .or(`person_id.eq.${focusPersonId},matched_person_id.eq.${focusPersonId}`)
+      .order('shared_cm', { ascending: false }),
+    supabase.rpc('list_focus_shared_autosomal_tests', {
+      target_tree_id: treeId,
+      focus_person_id: focusPersonId,
+    }),
+  ]);
+  if (matchResponse.error) throw new Error(matchResponse.error.message);
+  if (sharedTestsResponse.error) throw new Error(sharedTestsResponse.error.message);
+  const matchRows = matchResponse.data ?? [];
+  const sharedTests: any[] = parseRpcJsonPage(sharedTestsResponse.data);
+
+  const neededPersonIds = new Set<string>([focusPersonId]);
+  (matchRows || []).forEach((row: any) => {
+    if (row.person_id) neededPersonIds.add(row.person_id);
+    if (row.matched_person_id) neededPersonIds.add(row.matched_person_id);
+  });
+  sharedTests.forEach((testRow) => {
+    const ownerPersonId = readSharedTestOwnerId(testRow);
+    if (ownerPersonId) neededPersonIds.add(ownerPersonId);
+    if (typeof testRow.counterpart_person_id === 'string') neededPersonIds.add(testRow.counterpart_person_id);
+    if (typeof testRow.shared_person_id === 'string') neededPersonIds.add(testRow.shared_person_id);
+    if (typeof testRow.shared_match_person_id === 'string') neededPersonIds.add(testRow.shared_match_person_id);
+  });
+
+  const missingPersonIds = Array.from(neededPersonIds).filter((id) => !personById.has(id));
+  if (missingPersonIds.length) {
+    const nameRows = await fetchPersonNameRows(missingPersonIds);
+    nameRows.forEach((row) => personById.set(row.id, row));
+  }
+
+  const nameRows: NameLookupRow[] = Array.from(personById.values()).map((row) => ({
     id: row.id,
     first_name: row.first_name || '',
     last_name: row.last_name || '',
-    maiden_name: null
+    maiden_name: row.maiden_name || null,
   }));
-  const focusFullName = buildFullName(
-    personById.get(focusPersonId)?.first_name,
-    personById.get(focusPersonId)?.last_name
-  );
-
-  const typedRelationships = await fetchDnaPathRelationships(treeId);
-
-  const { data: matchRows, error: matchError } = await supabase
-    .from('dna_matches')
-    .select('id, person_id, matched_person_id, shared_cm, segments, longest_segment, confidence, metadata, created_at')
-    .or(`person_id.eq.${focusPersonId},matched_person_id.eq.${focusPersonId}`)
-    .order('shared_cm', { ascending: false });
-  if (matchError) throw new Error(matchError.message);
 
   const results: DNASharedMatchRecord[] = [];
   const existingTestIds = new Set<string>();
@@ -1619,27 +1628,6 @@ export const listSharedMatchesForAutosomalPerson = async (
       sharedSegmentsPreview: sharedSegmentsPreviewFromMetadata(metadata),
     });
   });
-
-  const personIds = peopleRows.map((row) => row.id);
-  const sharedTests: any[] = [];
-  const { data: sharedAdminData, error: sharedAdminError } = await supabase.rpc(
-    'admin_list_tree_shared_autosomal_tests',
-    { target_tree_id: treeId }
-  );
-  if (!sharedAdminError && Array.isArray(sharedAdminData)) {
-    sharedTests.push(...(sharedAdminData as SharedAutosomalAdminRow[]));
-  } else {
-    for (let i = 0; i < personIds.length; i += 500) {
-      const batchIds = personIds.slice(i, i + 500);
-      const { data, error } = await supabase
-        .from('dna_tests')
-        .select('id, person_id, shared_person_id, shared_match_person_id, metadata')
-        .eq('test_type', 'Shared Autosomal')
-        .in('person_id', batchIds);
-      if (error) throw new Error(error.message);
-      sharedTests.push(...(data || []));
-    }
-  }
 
   sharedTests.forEach((testRow) => {
     const testId = readSharedTestRowId(testRow);
@@ -1833,11 +1821,14 @@ const updateRelationshipDnaSupport = async (
   }
 };
 
+export const loadDnaPathRelationshipsForTree = fetchDnaPathRelationships;
+
 export const resolveSharedMatchLineage = async (
   treeId: string,
   focusPersonId: string,
   dnaMatchId: string,
-  actor?: ImportActor | null
+  actor?: ImportActor | null,
+  options?: DnaLineageResolveOptions
 ): Promise<DnaLineageResolution> => {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');
@@ -1863,7 +1854,7 @@ export const resolveSharedMatchLineage = async (
   const matchMetadata = asRecord(matchRow.metadata);
   const previousPathRelationshipIds = ensureStringArray(matchMetadata.path_relationship_ids);
 
-  const typedRows = await fetchDnaPathRelationships(treeId);
+  const typedRows = await resolvePathRelationships(treeId, options);
   const path = findRelationshipPath(focusPersonId, counterpartPersonId, typedRows);
   const pathPersonIds = path?.pathPersonIds || [];
   const pathRelationshipIds = path?.pathRelationshipIds || [];
@@ -1969,7 +1960,8 @@ export const resolveSharedTestLineage = async (
   focusPersonId: string,
   dnaTestId: string,
   counterpartPersonId: string,
-  actor?: ImportActor | null
+  actor?: ImportActor | null,
+  options?: DnaLineageResolveOptions
 ): Promise<DnaLineageResolution> => {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');
@@ -1987,7 +1979,7 @@ export const resolveSharedTestLineage = async (
   const summary = summaryFromDnaTestMetadata(testMetadata);
   if (!summary) throw new Error('Shared autosomal summary is missing on this DNA test.');
 
-  const typedRows = await fetchDnaPathRelationships(treeId);
+  const typedRows = await resolvePathRelationships(treeId, options);
   const path = findRelationshipPath(focusPersonId, counterpartPersonId, typedRows);
   const pathPersonIds = path?.pathPersonIds || [];
   const pathRelationshipIds = path?.pathRelationshipIds || [];
