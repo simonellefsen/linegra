@@ -6,6 +6,8 @@
 // that approximate shared-grandparent / shared-ancestor groups — the foundation for the Leeds method
 // (roadmap K1) and the DNA-painter view (K5). No I/O, no Supabase — fully unit-testable.
 
+import type { DNASharedSegmentRowPreview } from '../types';
+
 export interface ClusterSegment {
   chromosome: string; // '1'..'22', 'X', …
   start: number; // start position (bp or Mb — only needs to be comparable within a chromosome)
@@ -83,3 +85,11 @@ export const clusterSharedSegments = (
     .filter((g) => g.length > 1) // omit singletons (no shared overlaps)
     .sort((a, b) => b.length - a.length);
 };
+
+export const segmentsFromPreview = (preview: DNASharedSegmentRowPreview[]): ClusterSegment[] =>
+  preview.map((row) => ({
+    chromosome: String(row.chromosome),
+    start: row.startLocation,
+    end: row.endLocation,
+    centimorgans: row.centimorgans,
+  }));

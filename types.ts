@@ -150,6 +150,8 @@ export interface DNASharedMatchRecord {
   fileName?: string;
   importedAt?: string;
   testId?: string;
+  /** Per-segment rows from a shared-segment CSV import (enables triangulation clustering). */
+  sharedSegmentsPreview?: DNASharedSegmentRowPreview[];
 }
 
 export interface DnaLineageResolution {

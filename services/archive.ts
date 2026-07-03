@@ -2,7 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { deriveMatchConfidence, supportsRelationshipHops, relationshipPredictionLabel } from '../lib/dnaClassification';
 import { inferLivingStatus } from '../lib/lifespan';
 import { parseQuay } from '../lib/sourceQuality';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution, TreeCollaborator, TreeAccessRole } from '../types';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DNASharedSegmentRowPreview, DnaLineageResolution, TreeCollaborator, TreeAccessRole } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -298,6 +298,33 @@ const summaryFromDnaTestMetadata = (metadata: Record<string, unknown>): SharedSe
       ? summaryRaw.imported_at
       : undefined,
   };
+};
+
+const sharedSegmentsPreviewFromMetadata = (
+  metadata: Record<string, unknown>
+): DNASharedSegmentRowPreview[] | undefined => {
+  const raw = metadata.sharedSegmentsPreview ?? metadata.shared_segments_preview;
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const rows: DNASharedSegmentRowPreview[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const chromosome = row.chromosome;
+    const startLocation = toNumberOrNull(row.startLocation ?? row.start_location);
+    const endLocation = toNumberOrNull(row.endLocation ?? row.end_location);
+    if (typeof chromosome !== 'string' && typeof chromosome !== 'number') continue;
+    if (startLocation == null || endLocation == null) continue;
+    rows.push({
+      chromosome: String(chromosome),
+      startLocation,
+      endLocation,
+      startRsid: typeof row.startRsid === 'string' ? row.startRsid : typeof row.start_rsid === 'string' ? row.start_rsid : '',
+      endRsid: typeof row.endRsid === 'string' ? row.endRsid : typeof row.end_rsid === 'string' ? row.end_rsid : '',
+      centimorgans: toNumberOrNull(row.centimorgans) ?? 0,
+      snps: toNumberOrNull(row.snps) ?? 0,
+    });
+  }
+  return rows.length ? rows : undefined;
 };
 
 const inferCounterpartForFocus = (
@@ -1566,7 +1593,8 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathPersonIds,
       pathRelationshipIds,
       fileName: typeof metadata.file_name === 'string' ? metadata.file_name : undefined,
-      importedAt: typeof metadata.imported_at === 'string' ? metadata.imported_at : undefined
+      importedAt: typeof metadata.imported_at === 'string' ? metadata.imported_at : undefined,
+      sharedSegmentsPreview: sharedSegmentsPreviewFromMetadata(metadata),
     });
   });
 
@@ -1710,7 +1738,8 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathPersonIds,
       pathRelationshipIds,
       fileName: summary.fileName,
-      importedAt: summary.importedAt
+      importedAt: summary.importedAt,
+      sharedSegmentsPreview: sharedSegmentsPreviewFromMetadata(metadata),
     });
   });
 

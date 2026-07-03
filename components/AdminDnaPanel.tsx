@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, Dna, Loader2, Search, Sparkles } from 'lucide-react';
+import { Activity, Dna, Layers, Loader2, Search, Sparkles } from 'lucide-react';
 import { DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution } from '../types';
+import { clusterSharedSegments, segmentsFromPreview } from '../lib/dnaClustering';
 import {
   listAutosomalPeopleInTree,
   listSharedMatchesForAutosomalPerson,
@@ -23,6 +24,14 @@ const formatVitals = (birthYear?: string | null, deathYear?: string | null) => {
 
 const formatCm = (value: number | null) => (typeof value === 'number' ? `${value.toFixed(1)} cM` : 'n/a');
 
+const CLUSTER_TINTS = [
+  'border-violet-200 bg-violet-50/80',
+  'border-sky-200 bg-sky-50/80',
+  'border-amber-200 bg-amber-50/80',
+  'border-rose-200 bg-rose-50/80',
+  'border-emerald-200 bg-emerald-50/80',
+];
+
 const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPerson }) => {
   const [candidates, setCandidates] = useState<DNAAutosomalCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
@@ -34,6 +43,32 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
   const [resolutionByMatchId, setResolutionByMatchId] = useState<Record<string, DnaLineageResolution>>({});
   const [expandedPathByMatchId, setExpandedPathByMatchId] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [minClusterCm, setMinClusterCm] = useState(7);
+
+  const matchById = useMemo(() => new Map(matches.map((match) => [match.id, match])), [matches]);
+
+  const segmentBackedMatches = useMemo(
+    () => matches.filter((match) => (match.sharedSegmentsPreview?.length ?? 0) > 0),
+    [matches]
+  );
+
+  const clusterGroups = useMemo(() => {
+    if (!segmentBackedMatches.length) return [];
+    return clusterSharedSegments(
+      segmentBackedMatches.map((match) => ({
+        matchId: match.id,
+        segments: segmentsFromPreview(match.sharedSegmentsPreview!),
+      })),
+      { minCentimorgans: minClusterCm }
+    );
+  }, [segmentBackedMatches, minClusterCm]);
+
+  const clusteredMatchIds = useMemo(() => new Set(clusterGroups.flat()), [clusterGroups]);
+
+  const overlapSingletons = useMemo(
+    () => segmentBackedMatches.filter((match) => !clusteredMatchIds.has(match.id)),
+    [segmentBackedMatches, clusteredMatchIds]
+  );
 
   const filteredCandidates = useMemo(() => {
     const term = personSearch.trim().toLowerCase();
@@ -428,6 +463,86 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({ treeId, actor, onOpenPers
           </div>
         )}
       </div>
+
+      {treeId && selectedPersonId && (
+        <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Segment clusters</p>
+              <h3 className="text-xl font-serif font-bold text-slate-900 mt-1">Overlap groups (Leeds-style)</h3>
+              <p className="text-sm text-slate-500 mt-2 max-w-3xl">
+                Matches imported with shared-segment CSV rows are grouped when their segments overlap on the same
+                chromosome. This is a heuristic — true triangulation also needs in-common-with and parental-side data.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400" htmlFor="min-cluster-cm">
+                Min segment cM
+              </label>
+              <input
+                id="min-cluster-cm"
+                type="number"
+                min={0}
+                step={1}
+                value={minClusterCm}
+                onChange={(e) => setMinClusterCm(Math.max(0, Number(e.target.value) || 0))}
+                className="w-20 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700"
+              />
+            </div>
+          </div>
+
+          {segmentBackedMatches.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+              No matches with imported segment rows for this tester. Import shared-segment CSVs on the profile DNA tab
+              to enable clustering.
+            </div>
+          ) : clusterGroups.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+              {segmentBackedMatches.length} match(es) have segment data, but none overlap above {minClusterCm} cM.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {clusterGroups.map((group, index) => {
+                const tint = CLUSTER_TINTS[index % CLUSTER_TINTS.length];
+                return (
+                  <div key={`cluster-${index}`} className={`rounded-2xl border px-4 py-4 space-y-3 ${tint}`}>
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-slate-600" />
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+                        Cluster {index + 1} · {group.length} matches
+                      </p>
+                    </div>
+                    <ul className="space-y-2">
+                      {group.map((matchId) => {
+                        const match = matchById.get(matchId);
+                        if (!match) return null;
+                        return (
+                          <li
+                            key={matchId}
+                            className="rounded-xl border border-white/70 bg-white/80 px-3 py-2 text-sm text-slate-800"
+                          >
+                            <span className="font-semibold">{match.counterpartPersonName}</span>
+                            <span className="text-slate-500"> · {formatCm(match.sharedCM)}</span>
+                            <span className="text-slate-400 text-xs block">
+                              {match.sharedSegmentsPreview?.length ?? 0} segment rows
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {overlapSingletons.length > 0 && (
+            <p className="text-xs text-slate-500">
+              {overlapSingletons.length} match(es) with segment data did not overlap any other match at this threshold.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 };

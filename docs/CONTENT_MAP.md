@@ -40,7 +40,7 @@ This catalog highlights the most relevant files for the current Linegra architec
 | --- | --- | --- |
 | DNA tab imports | `components/person-profile/DNATab.tsx`, `lib/dnaRawParser.ts` | Imports autosomal raw CSV and shared segment CSV (MyHeritage + FTDNA comparison formats). |
 | DNA lineage linking | `services/archive.ts` (`resolveSharedMatchLineage`, `resolveSharedTestLineage`) | Resolves tree paths, checks cM compatibility, annotates relationship metadata. |
-| DNA admin review | `components/AdminDnaPanel.tsx` | Centralized panel to inspect and resolve shared matches per autosomal tester. |
+| DNA admin review | `components/AdminDnaPanel.tsx` | Inspect shared matches, resolve lineage paths, and view segment-overlap clusters (roadmap K1). |
 | DNA docs | `docs/DNA_SETUP.md` | Operational guide, migration requirements, and expected behavior. |
 
 ## Data Layer & Migrations

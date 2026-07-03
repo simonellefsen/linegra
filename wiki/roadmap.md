@@ -9,8 +9,7 @@ picked up, move it to [log.md](log.md) on completion.
 Core archive, pedigree UI, GEDCOM import/export, DNA shared-match lineage, OpenRouter AI utilities,
 **AI family books + editable per-person biographies**, reusable tree-wide sources/citations, and a
 **server-side OpenRouter proxy (key never reaches the browser) + per-call usage metering** are live
-and working. The app is **single-super-admin** today (roadmap A is still the unblocker).
-Automated gates: **eslint + `tsc --noEmit` + Vitest (255 tests)**, wired into `npm run build` and
+and working. The app is **multi-user via Supabase Auth** (roadmap A, 2026-07-03). Automated gates: **eslint + `tsc --noEmit` + Vitest (255 tests)**, wired into `npm run build` and
 into husky hooks (`pre-commit`: lint+typecheck; `pre-push`: full build gate). Last reconciled with
 git/code 2026-07-02.
 
@@ -29,7 +28,7 @@ git/code 2026-07-02.
 - OAuth providers (Google/GitHub) — email-only for now.
 - Ownership transfer between accounts.
 - Collaborator-facing “pending invites” inbox in the UI (acceptance runs automatically on sign-in when emails match).
-- Backfill `log.md` / retire `lib/adminAuth.ts` (unused but kept for reference).
+- Backfill `log.md` for 2026-06-22→07 auth work.
 
 ### B. Retire / consolidate the legacy force graph — DONE 2026-06-26
 Deleted [../components/FamilyTree.tsx](../components/FamilyTree.tsx). It could never render:
@@ -191,12 +190,14 @@ parser, and lineage resolver already exist — the gap is higher-order analysis 
 that gates raw data.
 
 > **Done 2026-06-22 — K1 (engine):** [../lib/dnaClustering.ts](../lib/dnaClustering.ts) groups
-> shared-segment matches into triangulation clusters via union-find (min-cM filter, 11 tests) — the
-> clustering engine underpinning K1/K5. Remaining: wire it into the DNA admin panel as a
-> "cluster matches" view.
+> shared-segment matches into triangulation clusters via union-find (min-cM filter, 11 tests).
+> **Done 2026-07-03 — K1 (admin UI):** [../components/AdminDnaPanel.tsx](../components/AdminDnaPanel.tsx)
+> surfaces overlap clusters for the selected autosomal tester (min-cM filter, segment-row data from
+> shared-segment CSV imports). ICW / parental-side confirmation still future work (caveat below).
 
-- **K1. Segment triangulation / Leeds-method clustering.** Group shared matches into the four
-  grandparent clusters by shared-segment overlap. Reuse the per-segment data already parsed in
+- **K1. Segment triangulation / Leeds-method clustering — UI slice DONE 2026-07-03.** Admin DNA panel
+  shows overlap clusters. Remaining: four-grandparent Leeds labeling, ICW confirmation, parental-side
+  filtering. Reuse the per-segment data already parsed in
   [../lib/dnaRawParser.ts](../lib/dnaRawParser.ts) (`parseSharedSegmentsCsv`,
   `parseFtdnaSharedSegmentsCsv`), the cluster labels in
   [../lib/dnaClassification.ts](../lib/dnaClassification.ts), and the `dna_matches` schema. Deeper
@@ -441,10 +442,8 @@ Two lenses:
 - **For product leverage → A (multi-user auth)** — it unblocks M5 (public book viewer) and live
   verification of the book features (the local admin can't read saved books today; see the RLS note).
 
-For user-facing progress on the themed groups (small, high-visibility wins): **wire K1 into the DNA
-panel** (the clustering engine exists in `lib/dnaClustering.ts` but is **not yet referenced by any UI**
-— see caveat below), or **H P1** (the GEDCOM 7.0 structured-date spine — lossless dates, also fixes
-export round-trip ids).
+For user-facing progress on the themed groups (small, high-visibility wins): **K1 admin clustering
+is now wired** (2026-07-03); next DNA wins are **K5** (segment painter) or **K2** (MRCA suggestions).
 Confirm priority with the user before large changes.
 
 > **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit
