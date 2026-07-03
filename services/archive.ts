@@ -2,7 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { deriveMatchConfidence, supportsRelationshipHops, relationshipPredictionLabel } from '../lib/dnaClassification';
 import { inferLivingStatus } from '../lib/lifespan';
 import { parseQuay } from '../lib/sourceQuality';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution } from '../types';
+import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution, TreeCollaborator, TreeAccessRole } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -736,7 +736,8 @@ export const listFamilyTreesWithCounts = async (): Promise<FamilyTreeSummary[]> 
   return (data || []).map((row: any) => ({
     ...mapDbTree(row),
     personCount: Number(row.person_count || 0),
-    relationshipCount: Number(row.relationship_count || 0)
+    relationshipCount: Number(row.relationship_count || 0),
+    myRole: (row.my_role as TreeAccessRole | 'owner' | null) ?? null,
   }));
 };
 
@@ -2606,3 +2607,77 @@ export interface SupabaseTreeStatistics {
   } | null;
   centuryStats: Array<{ label: string; startYear: number; people: number; averageAge: number | null }>;
 }
+
+const mapDbCollaborator = (row: any): TreeCollaborator => ({
+  id: row.id,
+  treeId: row.tree_id ?? row.treeId,
+  profileId: row.profile_id ?? row.profileId ?? null,
+  invitationEmail: row.invitation_email ?? row.invitationEmail ?? null,
+  role: row.role,
+  status: row.status,
+  displayName: row.display_name ?? row.displayName ?? null,
+  email: row.email ?? null,
+  invitedAt: row.invited_at ?? row.invitedAt,
+  respondedAt: row.responded_at ?? row.respondedAt ?? null,
+});
+
+export const listTreeCollaborators = async (treeId: string): Promise<TreeCollaborator[]> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data, error } = await supabase.rpc('list_tree_collaborators', { target_tree_id: treeId });
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapDbCollaborator);
+};
+
+export const inviteTreeCollaborator = async (
+  treeId: string,
+  email: string,
+  role: 'editor' = 'editor'
+): Promise<TreeCollaborator> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured.');
+  }
+  const { data, error } = await supabase.rpc('invite_tree_collaborator', {
+    target_tree_id: treeId,
+    payload_email: email,
+    payload_role: role,
+  });
+  if (error) throw new Error(error.message);
+  return mapDbCollaborator(data);
+};
+
+export const updateTreeCollaborator = async (
+  collaboratorId: string,
+  payload: { role?: 'editor'; status?: 'invited' | 'active' | 'revoked' }
+): Promise<TreeCollaborator> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured.');
+  }
+  const { data, error } = await supabase.rpc('update_tree_collaborator', {
+    target_collaborator_id: collaboratorId,
+    payload_role: payload.role ?? null,
+    payload_status: payload.status ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return mapDbCollaborator(data);
+};
+
+export const removeTreeCollaborator = async (collaboratorId: string): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured.');
+  }
+  const { error } = await supabase.rpc('remove_tree_collaborator', {
+    target_collaborator_id: collaboratorId,
+  });
+  if (error) throw new Error(error.message);
+};
+
+export const claimTreeOwnership = async (treeId: string): Promise<FamilyTreeType> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured.');
+  }
+  const { data, error } = await supabase.rpc('admin_claim_tree_ownership', { target_tree_id: treeId });
+  if (error) throw new Error(error.message);
+  return mapDbTree(data);
+};

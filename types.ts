@@ -334,6 +334,8 @@ export interface FamilyTree {
 export interface FamilyTreeSummary extends FamilyTree {
   personCount: number;
   relationshipCount: number;
+  /** Caller role on this tree (`owner` / `editor`) when authenticated. */
+  myRole?: TreeAccessRole | 'owner' | null;
 }
 
 // ── AI Family Books ──────────────────────────────────────────────────────────
@@ -432,12 +434,34 @@ export interface PersonBiography {
   updatedAt?: string;
 }
 
+export type UserRole = 'researcher' | 'superadmin';
+export type TreeAccessRole = 'owner' | 'editor' | null;
+export type TreeCollaboratorStatus = 'invited' | 'active' | 'revoked';
+
+export interface TreeCollaborator {
+  id: string;
+  treeId: string;
+  profileId?: string | null;
+  invitationEmail?: string | null;
+  role: 'owner' | 'editor';
+  status: TreeCollaboratorStatus;
+  displayName?: string | null;
+  email?: string | null;
+  invitedAt?: string;
+  respondedAt?: string | null;
+}
+
 export interface User {
   id: string;
   name: string;
   email: string;
   avatarUrl?: string;
   isLoggedIn: boolean;
+  /** Global profile role from Supabase `profiles.role`. */
+  role: UserRole;
+  /** True for the first-bootstrapped account (database maintenance, AI settings). */
+  isSuperAdmin: boolean;
+  /** Legacy alias kept while UI migrates; equals `isSuperAdmin`. */
   isAdmin: boolean;
 }
 

@@ -14,7 +14,7 @@ This catalog highlights the most relevant files for the current Linegra architec
 
 | Feature | Key Files | Notes |
 | --- | --- | --- |
-| Super admin auth modal | `components/AuthModal.tsx`, `App.tsx` | Local super-admin login state, first-use credentials flow, session restore. |
+| **Auth + collaborators** | `services/auth.ts`, `components/AuthModal.tsx`, `components/admin/AdminCollaboratorsPanel.tsx`, `supabase/migrations/20260703120000_multi_user_auth.sql` | Supabase email/password sign-in, tree-scoped editor roles via `tree_collaborators`, owner invite UI. |
 | Admin page tabs | `components/admin/AdminSectionTabs.tsx`, `App.tsx` | Top-level admin sub-panels: Database, Trees, GEDCOM, DNA. |
 | Database panel + reset modal | `components/admin/AdminDatabasePanel.tsx`, `components/admin/AdminNukeModal.tsx`, `services/ai.ts`, `lib/aiSettings.ts`, `supabase/migrations/20260328140000_admin_ai_settings.sql` | Shows maintenance actions, central AI settings, OpenRouter connection testing, and layout audit history; launches destructive reset flow. |
 | Trees panel | `components/AdminTreesPanel.tsx`, `services/archive.ts` (`createFamilyTree`, `updateTreeSettings`, `deleteFamilyTreeRecord`, `listFamilyTreesWithCounts`) | Tree CRUD, visibility, default proband, owner metadata, counts. |

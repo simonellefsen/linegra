@@ -38,22 +38,10 @@ This includes supported CSV formats (MyHeritage and FTDNA segment comparison), h
 
 ## Super Administrator Login
 
-Linegra currently ships with a single local super administrator account. Use the header
-**Login** button and enter the bootstrap credentials:
+Linegra uses **Supabase Auth** (email + password). Sign in with the header **Login** button to edit trees you own or collaborate on. Public archives remain readable without an account.
 
-| Username | Password |
-|----------|----------|
-| `linegra` | `linegra` |
+- **First account** on a fresh database becomes the **super administrator** (`profiles.role = superadmin`) and can access the Database panel (NUKE, AI settings, usage).
+- **Tree owners** can invite editors from **Administrator → Trees → Edit Settings → Collaborators**.
+- **Legacy ownerless trees** can be claimed by a super administrator via **Claim ownership** on the Trees panel.
 
-On the first successful login you must immediately set a new username and password;
-this prompt cannot be skipped and ensures the archive is secured before edits occur.
-Updated credentials are stored in the browser/Electron `localStorage`, so if you clear
-storage or move to a new machine you will need to repeat the bootstrap process. Multi‑user
-registration is not yet available—only this super administrator can add, edit, or delete
-archival data in the current release.
-
-> **Local development:** when the app is served from `localhost` (or `127.0.0.1`/`*.local`),
-> you can sign in one‑step with **`admin` / `admin`** (the `linegra` / `linegra` bootstrap also
-> works) and the forced credential‑reset prompt is skipped. This convenience is gated on the
-> hostname at runtime, so deployments to a real domain are unaffected — there the forced reset
-> still applies and only your stored credentials are accepted.
+> **Local development:** run `supabase start`, apply migrations (`supabase db reset`), create an account via **Create one** in the login modal, then sign in. Email confirmation can be disabled in the local Supabase Auth settings for faster iteration.

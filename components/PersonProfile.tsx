@@ -128,6 +128,7 @@ const buildSnapshotFromPerson = (target: Person) =>
 interface PersonProfileProps {
   person: Person;
   currentUser: UserType | null;
+  canEditTree?: boolean;
   onClose: () => void;
   onNavigateToPerson?: (person: Person) => void;
   onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
@@ -141,6 +142,7 @@ type ProfileSection = 'vital' | 'story' | 'family' | 'sources' | 'media' | 'dna'
 const PersonProfile: React.FC<PersonProfileProps> = ({
   person,
   currentUser,
+  canEditTree = false,
   onClose,
   onNavigateToPerson,
   onPersistFamilyLayout,
@@ -320,10 +322,10 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     return map;
   }, [citations]);
 
-  const canAccessDNA = !!currentUser?.isAdmin;
-  const canEditFamily = !!currentUser?.isAdmin;
-  const canEditPerson = !!currentUser?.isAdmin;
-  const canViewPrivateRelations = !!currentUser?.isAdmin;
+  const canAccessDNA = canEditTree;
+  const canEditFamily = canEditTree;
+  const canEditPerson = canEditTree;
+  const canViewPrivateRelations = canEditTree;
 
   useEffect(() => {
     let cancelled = false;

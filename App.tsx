@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm } from './services/archive';
-import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit } from './types';
+import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership } from './services/archive';
+import { canWriteTreeRole, getInitialSessionUser, signOut, subscribeToAuthChanges } from './services/auth';
+import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
 import { collectDnaSupportMatchIds } from './lib/dnaSupport';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
@@ -67,6 +68,7 @@ const App: React.FC = () => {
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
   const [adminSection, setAdminSection] = useState<AdminSection>('gedcom');
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -121,7 +123,18 @@ const App: React.FC = () => {
   });
   const [landingLoading, setLandingLoading] = useState(false);
   const [landingError, setLandingError] = useState<string | null>(null);
-  const canViewPrivate = !!currentUser?.isAdmin;
+  const activeTreeId = activeTree?.id ?? null;
+  const activeTreeSummary = useMemo(
+    () => adminTrees.find((tree) => tree.id === activeTreeId) ?? null,
+    [adminTrees, activeTreeId]
+  );
+  const activeTreeRole: TreeAccessRole | 'owner' | null = activeTreeSummary?.myRole ?? null;
+  const canWriteActiveTree = canWriteTreeRole(activeTreeRole, currentUser?.isSuperAdmin);
+  const canViewPrivate = canWriteActiveTree;
+  const showAdministratorTab =
+    !!currentUser &&
+    (currentUser.isSuperAdmin ||
+      adminTrees.some((tree) => canWriteTreeRole(tree.myRole ?? null, currentUser.isSuperAdmin)));
   const filterVisiblePeople = useCallback(
     (list: Person[]) => (canViewPrivate ? list : list.filter((person) => !person.isPrivate)),
     [canViewPrivate]
@@ -161,7 +174,6 @@ const App: React.FC = () => {
     },
     [canViewPrivate]
   );
-  const activeTreeId = activeTree?.id ?? null;
 
   const loadTreeArchive = useCallback(
     async (tree: FamilyTreeType | null, opts: { silent?: boolean; force?: boolean } = {}) => {
@@ -219,27 +231,25 @@ const App: React.FC = () => {
   );
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem('LINEGRA_SUPERADMIN');
-    if (stored) {
+    let cancelled = false;
+    void (async () => {
       try {
-        const parsed = JSON.parse(stored) as User;
-        setCurrentUser(parsed);
+        const user = await getInitialSessionUser();
+        if (!cancelled) setCurrentUser(user);
       } catch (err) {
-        console.error('Failed to parse stored admin session', err);
-        window.localStorage.removeItem('LINEGRA_SUPERADMIN');
+        console.error('Failed to restore auth session', err);
+      } finally {
+        if (!cancelled) setAuthReady(true);
       }
-    }
+    })();
+    const { data } = subscribeToAuthChanges((user) => {
+      setCurrentUser(user);
+    });
+    return () => {
+      cancelled = true;
+      data.subscription.unsubscribe();
+    };
   }, []);
-
-useEffect(() => {
-  if (typeof window === 'undefined') return;
-  if (currentUser) {
-    window.localStorage.setItem('LINEGRA_SUPERADMIN', JSON.stringify(currentUser));
-  } else {
-    window.localStorage.removeItem('LINEGRA_SUPERADMIN');
-  }
-}, [currentUser]);
 
 useEffect(() => {
   setMobileNavOpen(false);
@@ -367,7 +377,7 @@ useEffect(() => {
   }, [supabaseActive]);
 
   const fetchAdminTreeStats = useCallback(async () => {
-    if (!supabaseActive || !currentUser?.isAdmin) {
+    if (!supabaseActive || !currentUser) {
       setAdminTrees([]);
       return;
     }
@@ -380,14 +390,14 @@ useEffect(() => {
     } finally {
       setAdminTreesLoading(false);
     }
-  }, [supabaseActive, currentUser?.isAdmin]);
+  }, [supabaseActive, currentUser]);
 
   useEffect(() => {
     fetchAdminTreeStats();
   }, [fetchAdminTreeStats]);
 
   useEffect(() => {
-    if (!supabaseActive || !currentUser?.isAdmin || !activeTreeId) {
+    if (!supabaseActive || !canWriteActiveTree || !activeTreeId) {
       setLayoutAudits([]);
       return;
     }
@@ -401,7 +411,7 @@ useEffect(() => {
         setAuditTotal(total);
       })
       .catch((err) => console.error('Failed to fetch layout audits', err));
-  }, [supabaseActive, currentUser?.isAdmin, activeTreeId, auditOffset]);
+  }, [supabaseActive, canWriteActiveTree, activeTreeId, auditOffset]);
 
   const hasMoreAudits = layoutAudits.length < auditTotal;
   const treePeople = useMemo(() => {
@@ -493,7 +503,7 @@ useEffect(() => {
     setDescendantDepth(0);
   }, [focusPersonId, treeDefaultProbandId]);
 
-  const pedigreeAllowsPlaceholders = !!currentUser?.isAdmin;
+  const pedigreeAllowsPlaceholders = canWriteActiveTree;
   const siblingHints = pedigreeScope.siblingHints || {};
   const childHints = pedigreeScope.childHints || {};
   const handleExpandSiblings = useCallback((personId: string) => {
@@ -573,7 +583,7 @@ useEffect(() => {
     });
   }, [trees, allPeople, allRelationships]);
 
-  const adminTreeData = supabaseActive && currentUser?.isAdmin ? adminTrees : localTreeSummaries;
+  const adminTreeData = supabaseActive && currentUser ? adminTrees : localTreeSummaries;
 
   const fetchSearchPage = useCallback(
     async (page = 0, append = false) => {
@@ -686,29 +696,37 @@ useEffect(() => {
     );
   }, []);
 
+  const handleClaimTreeOwnership = useCallback(
+    async (treeId: string) => {
+      if (!currentUser?.isSuperAdmin) return;
+      try {
+        await claimTreeOwnership(treeId);
+        await fetchAdminTreeStats();
+      } catch (err) {
+        console.error('Failed to claim tree ownership', err);
+      }
+    },
+    [currentUser?.isSuperAdmin, fetchAdminTreeStats]
+  );
+
   const handleRefreshTreeGraph = useCallback(async () => {
     if (!activeTree || !supabaseActive) return;
     await loadTreeArchive(activeTree, { silent: true, force: true });
   }, [activeTree, supabaseActive, loadTreeArchive]);
 
-  const handleAdminLogin = (username: string) => {
-    const adminUser: User = {
-      id: `admin-${username}`,
-      name: username,
-      email: `${username}@linegra.super`,
-      isLoggedIn: true,
-      isAdmin: true,
-      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=0f172a&color=fff`
-    };
-    setCurrentUser(adminUser);
+  const handleAuthenticated = () => {
     setShowAuthModal(false);
+    void fetchAdminTreeStats();
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem('LINEGRA_SUPERADMIN');
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('Sign out failed', err);
     }
+    setCurrentUser(null);
+    setAdminTrees([]);
   };
 
   useEffect(() => {
@@ -1007,7 +1025,7 @@ useEffect(() => {
     );
   }
 
-  if (loading) {
+  if (loading || !authReady) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-slate-50">
         <div className="text-center space-y-6">
@@ -1089,7 +1107,7 @@ useEffect(() => {
 
         <div className="flex-1 px-5 space-y-2">
           {primaryNavItems
-            .filter(item => !item.adminOnly || currentUser?.isAdmin)
+            .filter(item => !item.adminOnly || showAdministratorTab)
             .map((item) => (
               <button
                 key={item.id}
@@ -1155,7 +1173,15 @@ useEffect(() => {
                 >
                   <div className="text-right hidden sm:block">
                     <p className="text-sm font-black text-slate-900 leading-none">{currentUser.name}</p>
-                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1.5">{currentUser.isAdmin ? 'Super Administrator' : 'Researcher'}</p>
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1.5">
+                      {currentUser.isSuperAdmin
+                        ? 'Super Administrator'
+                        : canWriteActiveTree
+                          ? activeTreeRole === 'owner'
+                            ? 'Tree Owner'
+                            : 'Tree Editor'
+                          : 'Signed In'}
+                    </p>
                   </div>
                   <img src={currentUser.avatarUrl} className="w-12 h-12 rounded-full border-4 border-white shadow-xl cursor-pointer" alt="Avatar" />
                 </button>
@@ -1217,7 +1243,7 @@ useEffect(() => {
                   mediaHighlights={landingCards.randomMedia}
                   onPersonSelect={handlePersonSelect}
                   onExploreTree={handleExploreTree}
-                  isAdmin={currentUser?.isAdmin || false}
+                  isAdmin={canWriteActiveTree}
                   stats={treeStatistics}
                   loading={landingLoading || statsLoading}
                   error={landingError || statsError}
@@ -1228,7 +1254,7 @@ useEffect(() => {
                   <p className="text-slate-500 max-w-2xl mx-auto">
                     Create your first archive from the Administrator → Trees panel to begin importing GEDCOM data and visualizing your kinship map.
                   </p>
-                  {currentUser?.isAdmin ? (
+                  {canWriteActiveTree ? (
                     <button
                       onClick={() => setActiveTab('records')}
                       className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-[0.3em]"
@@ -1329,10 +1355,10 @@ useEffect(() => {
                 </div>
               )
             )}
-            {activeTab === 'records' && currentUser?.isAdmin && (
+            {activeTab === 'records' && showAdministratorTab && (
               <div className="space-y-8 max-w-6xl mx-auto py-6">
                 <AdminSectionTabs section={adminSection} onChange={setAdminSection} />
-                {adminSection === 'database' && (
+                {adminSection === 'database' && currentUser?.isSuperAdmin && (
                   <AdminDatabasePanel
                     actorName={currentUser?.name}
                     supabaseActive={supabaseActive}
@@ -1346,9 +1372,11 @@ useEffect(() => {
                 {adminSection === 'trees' && (
                   <AdminTreesPanel
                     trees={adminTreeData}
+                    isSuperAdmin={currentUser?.isSuperAdmin}
                     onCreate={handleAdminCreateTree}
                     onDelete={handleAdminDeleteTree}
                     onUpdateSettings={handleAdminUpdateTreeSettings}
+                    onClaimOwnership={handleClaimTreeOwnership}
                     onSearchPersons={handleAdminSearchTreePersons}
                     onLoadPersonById={handleAdminLoadPersonById}
                     creating={creatingTree}
@@ -1397,6 +1425,7 @@ useEffect(() => {
             <PersonProfile 
               person={selectedPerson} 
               currentUser={currentUser}
+              canEditTree={canWriteActiveTree}
               onClose={() => handlePersonSelect(null)} 
               onNavigateToPerson={(next) => handlePersonSelect(next)}
               onPersistFamilyLayout={handlePersistFamilyLayout}
@@ -1528,7 +1557,7 @@ useEffect(() => {
         onConfirm={handleNukeConfirm}
       />
 
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={handleAdminLogin} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onAuthenticated={handleAuthenticated} />
       <div className="fixed left-2 bottom-2 z-[70] pointer-events-none rounded-md border border-slate-300/80 bg-white/85 px-2 py-1 text-[10px] font-mono text-slate-500 shadow-sm backdrop-blur">
         build {buildStamp}
       </div>

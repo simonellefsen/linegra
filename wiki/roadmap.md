@@ -16,15 +16,20 @@ git/code 2026-07-02.
 
 ## Candidate next work
 
-### A. Multi-user collaboration (schema-ready, no UI)
-The DB already models this: `tree_collaborators` (roles owner/editor, invite-by-email/profile,
-status), and `can_read_tree`/`can_write_tree` already honor active collaborators. But there is
-**no registration or collaborator-management UI**, and auth is a local super-admin in
-`localStorage` ([decisions/local-superadmin-auth.md](decisions/local-superadmin-auth.md)).
-- Wire Supabase Auth (email/OAuth) → real `auth.users` / `profiles`.
-- Build a collaborators panel (invite, set role, revoke) on top of existing RLS.
-- Migrate super-admin bootstrap onto a real account.
-- **Highest-leverage** item: unlocks the security model the schema was built for.
+### A. Multi-user collaboration — IN PROGRESS 2026-07-03
+**Shipped in this slice:**
+- Supabase Auth (email/password sign-in + sign-up) replaces the local `localStorage` super-admin bootstrap (`services/auth.ts`, `AuthModal.tsx`).
+- `can_write_tree` restored to real auth semantics (no more anonymous writes on public trees).
+- Mutating `admin_*` RPCs require the `authenticated` role; tree create/delete/settings/relationship/person-profile paths assert `can_write_tree`.
+- Collaborator RPCs + **Administrator → Trees → Collaborators** panel (invite editor by email, revoke, re-activate).
+- First registered profile becomes `superadmin`; legacy ownerless trees can be **claimed** by a superadmin.
+- Tree list returns `my_role` per tree; UI gates edit/admin affordances on owner/editor (or superadmin on ownerless trees).
+
+**Still open:**
+- OAuth providers (Google/GitHub) — email-only for now.
+- Ownership transfer between accounts.
+- Collaborator-facing “pending invites” inbox in the UI (acceptance runs automatically on sign-in when emails match).
+- Backfill `log.md` / retire `lib/adminAuth.ts` (unused but kept for reference).
 
 ### B. Retire / consolidate the legacy force graph — DONE 2026-06-26
 Deleted [../components/FamilyTree.tsx](../components/FamilyTree.tsx). It could never render:

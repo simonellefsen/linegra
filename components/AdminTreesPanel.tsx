@@ -1,9 +1,11 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { FamilyTreeSummary, Person } from '../types';
 import { Users, GitBranch, Trash2, Inbox, Loader2, Database, AlertTriangle, Settings, Eye, EyeOff } from 'lucide-react';
+import AdminCollaboratorsPanel from './admin/AdminCollaboratorsPanel';
 
 interface AdminTreesPanelProps {
   trees: FamilyTreeSummary[];
+  isSuperAdmin?: boolean;
   onCreate: (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => Promise<void>;
   onDelete: (treeId: string) => Promise<void>;
   onUpdateSettings: (
@@ -17,6 +19,7 @@ interface AdminTreesPanelProps {
       ownerEmail?: string;
     }
   ) => Promise<void>;
+  onClaimOwnership?: (treeId: string) => Promise<void>;
   onSearchPersons?: (treeId: string, query: string) => Promise<Person[]>;
   onLoadPersonById?: (treeId: string, personId: string) => Promise<Person | null>;
   creating?: boolean;
@@ -27,9 +30,11 @@ interface AdminTreesPanelProps {
 
 const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   trees,
+  isSuperAdmin = false,
   onCreate,
   onDelete,
   onUpdateSettings,
+  onClaimOwnership,
   onSearchPersons,
   onLoadPersonById,
   creating = false,
@@ -344,25 +349,37 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => beginEditSettings(tree)}
-                      className="px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 border border-slate-200 text-slate-600 hover:bg-slate-50"
-                    >
-                      <Settings className="w-4 h-4" />
-                      Edit Settings
-                    </button>
-                    <button
-                      onClick={() => setPendingDeleteId(tree.id)}
-                      className={`px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 ${
-                        deletingTreeId === tree.id
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                          : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-                      }`}
-                      disabled={deletingTreeId === tree.id}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
-                    </button>
+                    {!tree.ownerId && isSuperAdmin && onClaimOwnership && (
+                      <button
+                        onClick={() => void onClaimOwnership(tree.id)}
+                        className="px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                      >
+                        Claim ownership
+                      </button>
+                    )}
+                    {(tree.myRole === 'owner' || tree.myRole === 'editor' || (isSuperAdmin && !tree.ownerId)) && (
+                      <button
+                        onClick={() => beginEditSettings(tree)}
+                        className="px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 border border-slate-200 text-slate-600 hover:bg-slate-50"
+                      >
+                        <Settings className="w-4 h-4" />
+                        Edit Settings
+                      </button>
+                    )}
+                    {tree.myRole === 'owner' && (
+                      <button
+                        onClick={() => setPendingDeleteId(tree.id)}
+                        className={`px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2 ${
+                          deletingTreeId === tree.id
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                            : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                        }`}
+                        disabled={deletingTreeId === tree.id}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -529,6 +546,13 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                       )}
                     </div>
                     {settingsError && <p className="text-rose-500 text-xs font-bold">{settingsError}</p>}
+                    {(tree.myRole === 'owner' || (isSuperAdmin && !tree.ownerId)) && (
+                      <AdminCollaboratorsPanel
+                        treeId={tree.id}
+                        treeName={tree.name}
+                        canManage={tree.myRole === 'owner'}
+                      />
+                    )}
                     <div className="flex flex-wrap gap-3">
                       <button
                         type="button"
