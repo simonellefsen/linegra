@@ -40,7 +40,7 @@ const AdminResearchPanel: React.FC<AdminResearchPanelProps> = ({ treeId, people,
   const [archivePeople, setArchivePeople] = useState<Person[]>([]);
   const [archiveRelationships, setArchiveRelationships] = useState<Relationship[]>([]);
   useEffect(() => {
-    if (!treeId || people.length > 0) return;
+    if (!treeId) return;
     let cancelled = false;
     loadArchiveData(treeId)
       .then((archive) => {
@@ -52,7 +52,7 @@ const AdminResearchPanel: React.FC<AdminResearchPanelProps> = ({ treeId, people,
     return () => {
       cancelled = true;
     };
-  }, [treeId, people.length]);
+  }, [treeId]);
 
   const effectivePeople = people.length > 0 ? people : archivePeople;
   const effectiveRelationships = relationships.length > 0 ? relationships : archiveRelationships;

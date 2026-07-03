@@ -881,6 +881,42 @@ export const loadArchiveData = async (treeId: string) => {
   return { people, relationships };
 };
 
+export interface PedigreeScopeArchive {
+  focusPersonId: string | null;
+  people: Person[];
+  relationships: Relationship[];
+  hasMoreAncestors: boolean;
+  hasMoreDescendants: boolean;
+}
+
+export const loadPedigreeScope = async (
+  treeId: string,
+  focusPersonId: string | null,
+  maxAncestorDepth = 2,
+  maxDescendantDepth = 1
+): Promise<PedigreeScopeArchive> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data, error } = await supabase.rpc('load_pedigree_scope', {
+    target_tree_id: treeId,
+    focus_person_id: focusPersonId,
+    max_ancestor_depth: maxAncestorDepth,
+    max_descendant_depth: maxDescendantDepth,
+  });
+  if (error) throw new Error(error.message);
+  const payload = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+  const personRows = parseRpcJsonPage(payload.persons);
+  const relationshipRows = parseRpcJsonPage(payload.relationships);
+  return {
+    focusPersonId: typeof payload.focus_person_id === 'string' ? payload.focus_person_id : null,
+    people: mapBasicPeople(personRows).map((person) => ({ ...person, detailsLoaded: false })),
+    relationships: relationshipRows.map(mapDbRelationship),
+    hasMoreAncestors: payload.has_more_ancestors === true,
+    hasMoreDescendants: payload.has_more_descendants === true,
+  };
+};
+
 export const fetchWhatsNewPeople = async (treeId: string, limit = 4): Promise<Person[]> => {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');

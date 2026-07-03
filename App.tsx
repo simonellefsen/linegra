@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership } from './services/archive';
+import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership } from './services/archive';
 import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, signOut, subscribeToAuthChanges } from './services/auth';
 import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
@@ -58,8 +58,6 @@ const App: React.FC = () => {
   const [allPeople, setAllPeople] = useState<Person[]>([]);
   const [allRelationships, setAllRelationships] = useState<Relationship[]>([]);
   const [dnaMatchCmById, setDnaMatchCmById] = useState<Map<string, number>>(new Map());
-  const [graphTreeId, setGraphTreeId] = useState<string | null>(null);
-
   const [showTreeSelector, setShowTreeSelector] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -96,6 +94,8 @@ const App: React.FC = () => {
   const [ancestorDepth, setAncestorDepth] = useState(DEFAULT_ANCESTOR_DEPTH);
   const [descendantDepth, setDescendantDepth] = useState(DEFAULT_DESCENDANT_DEPTH);
   const [pedigreeFocusId, setPedigreeFocusId] = useState<string | null>(null);
+  const [pedigreeHasMore, setPedigreeHasMore] = useState({ ancestors: false, descendants: false });
+  const graphLoadKeyRef = useRef<string | null>(null);
   type SearchFiltersState = { livingOnly: boolean; deceasedOnly: boolean; missingData: boolean; gender: 'all' | 'M' | 'F' };
   const createDefaultSearchFilters = useCallback<SearchFiltersState>(() => ({
     livingOnly: false,
@@ -178,29 +178,36 @@ const App: React.FC = () => {
     [canViewPrivate]
   );
 
-  const loadTreeArchive = useCallback(
-    async (tree: FamilyTreeType | null, opts: { silent?: boolean; force?: boolean } = {}) => {
+  const loadPedigreeGraph = useCallback(
+    async (
+      tree: FamilyTreeType,
+      focusId: string | null,
+      ancestors: number,
+      descendants: number,
+      opts: { silent?: boolean; force?: boolean } = {}
+    ) => {
       if (!supabaseActive) return;
-      if (!tree) {
-        setAllPeople([]);
-        setAllRelationships([]);
-        setGraphTreeId(null);
-        return;
-      }
-      if (graphTreeId === tree.id && !opts.force) {
-        return;
-      }
+      const loadKey = `${tree.id}:${focusId ?? 'auto'}:${ancestors}:${descendants}`;
+      if (!opts.force && graphLoadKeyRef.current === loadKey) return;
+
       if (!opts.silent) {
         setArchiveLoading(true);
       }
       setArchiveError(null);
       try {
-        const archive = await loadArchiveData(tree.id);
-        setAllPeople(archive.people);
-        setAllRelationships(archive.relationships);
-        setGraphTreeId(tree.id);
+        const scope = await loadPedigreeScope(tree.id, focusId, ancestors, descendants);
+        if (scope.focusPersonId && !focusId) {
+          setPedigreeFocusId(scope.focusPersonId);
+        }
+        setAllPeople(scope.people);
+        setAllRelationships(scope.relationships);
+        setPedigreeHasMore({
+          ancestors: scope.hasMoreAncestors,
+          descendants: scope.hasMoreDescendants,
+        });
+        graphLoadKeyRef.current = loadKey;
       } catch (err) {
-        console.error('Failed to load tree data', err);
+        console.error('Failed to load pedigree scope', err);
         const message = err instanceof Error ? err.message : 'Failed to load tree data.';
         setArchiveError(message);
       } finally {
@@ -209,7 +216,7 @@ const App: React.FC = () => {
         }
       }
     },
-    [supabaseActive, graphTreeId]
+    [supabaseActive]
   );
 
   const handleEnsurePersonDetails = useCallback(
@@ -286,7 +293,8 @@ useEffect(() => {
     setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
     setAllPeople([]);
     setAllRelationships([]);
-    setGraphTreeId(null);
+    graphLoadKeyRef.current = null;
+    setPedigreeHasMore({ ancestors: false, descendants: false });
     setPedigreeFocusId(null);
     // Clear a person carried over from the *previous* tree: a stale selectedPerson keeps the old
     // profile panel open and, via the focusPersonId fallback, points the new tree's pedigree at
@@ -347,12 +355,6 @@ useEffect(() => {
   }, [activeTreeId, filterVisiblePeople]);
 
   useEffect(() => {
-    if (!treeViewReady || !activeTree) return;
-    if (graphTreeId === activeTree.id) return;
-    loadTreeArchive(activeTree, { silent: false });
-  }, [treeViewReady, activeTree, graphTreeId, loadTreeArchive]);
-
-  useEffect(() => {
     if (searchModalBaseResults.length) {
       setSearchModalResults(applySearchFilters(searchModalBaseResults, searchFilters));
     } else {
@@ -366,7 +368,6 @@ useEffect(() => {
       setActiveTree(null);
       setAllPeople([]);
       setAllRelationships([]);
-      setGraphTreeId(null);
       setConfigError('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY (formerly SUPABASE_ANON_KEY) in your .env.local before running Linegra.');
       setLoading(false);
       return;
@@ -513,6 +514,22 @@ useEffect(() => {
   const focusPersonId = pedigreeFocusId ?? selectedPerson?.id ?? treeDefaultProbandId ?? treePeople[0]?.id;
   const focusPerson = focusPersonId ? treePeople.find((p) => p.id === focusPersonId) ?? null : null;
 
+  useEffect(() => {
+    if (!treeViewReady || !activeTree || !supabaseActive) return;
+    const focusId = pedigreeFocusId ?? selectedPerson?.id ?? treeDefaultProbandId ?? null;
+    void loadPedigreeGraph(activeTree, focusId, ancestorDepth, descendantDepth);
+  }, [
+    treeViewReady,
+    activeTree,
+    supabaseActive,
+    pedigreeFocusId,
+    selectedPerson?.id,
+    treeDefaultProbandId,
+    ancestorDepth,
+    descendantDepth,
+    loadPedigreeGraph,
+  ]);
+
   const pedigreeScope = useMemo(() => {
     if (!focusPersonId) {
       return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
@@ -598,15 +615,28 @@ useEffect(() => {
 
   const localTreeSummaries = useMemo<FamilyTreeSummary[]>(() => {
     return trees.map((tree) => {
-      const personCount = allPeople.filter((p) => p.treeId === tree.id).length;
-      const relationshipCount = allRelationships.filter((rel) => rel.treeId === tree.id).length;
+      const adminMatch = adminTrees.find((entry) => entry.id === tree.id);
+      if (adminMatch) {
+        return {
+          ...tree,
+          personCount: adminMatch.personCount,
+          relationshipCount: adminMatch.relationshipCount,
+        };
+      }
+      if (tree.id === activeTreeId && treeStatistics) {
+        return {
+          ...tree,
+          personCount: treeStatistics.totalIndividuals,
+          relationshipCount: treeRelationships.length,
+        };
+      }
       return {
         ...tree,
-        personCount,
-        relationshipCount
+        personCount: 0,
+        relationshipCount: 0,
       };
     });
-  }, [trees, allPeople, allRelationships]);
+  }, [trees, adminTrees, activeTreeId, treeStatistics, treeRelationships.length]);
 
   const adminTreeData = supabaseActive && currentUser ? adminTrees : localTreeSummaries;
 
@@ -706,12 +736,10 @@ useEffect(() => {
       setPedigreeFocusId(person.id);
       setActiveTab('tree');
       setTreeViewReady(true);
-      if (activeTree) {
-        loadTreeArchive(activeTree, { silent: false });
-      }
+      graphLoadKeyRef.current = null;
       handlePersonSelect(null);
     },
-    [activeTree, loadTreeArchive, handlePersonSelect]
+    [handlePersonSelect]
   );
 
   const handlePersonPatched = useCallback((updated: Person) => {
@@ -736,8 +764,22 @@ useEffect(() => {
 
   const handleRefreshTreeGraph = useCallback(async () => {
     if (!activeTree || !supabaseActive) return;
-    await loadTreeArchive(activeTree, { silent: true, force: true });
-  }, [activeTree, supabaseActive, loadTreeArchive]);
+    graphLoadKeyRef.current = null;
+    const focusId = pedigreeFocusId ?? selectedPerson?.id ?? treeDefaultProbandId ?? null;
+    await loadPedigreeGraph(activeTree, focusId, ancestorDepth, descendantDepth, {
+      silent: true,
+      force: true,
+    });
+  }, [
+    activeTree,
+    supabaseActive,
+    loadPedigreeGraph,
+    pedigreeFocusId,
+    selectedPerson?.id,
+    treeDefaultProbandId,
+    ancestorDepth,
+    descendantDepth,
+  ]);
 
   const handleAuthenticated = () => {
     setShowAuthModal(false);
@@ -782,6 +824,7 @@ useEffect(() => {
     const match = treePeople.find((p) => p.id === pendingPersonId);
     if (match) {
       setSelectedPerson(match);
+      setPedigreeFocusId(match.id);
       if (!match.detailsLoaded) {
         handleEnsurePersonDetails(match.id);
       } else {
@@ -795,6 +838,8 @@ useEffect(() => {
         const person = await fetchPersonDetails(pendingPersonId);
         if (cancelled) return;
         setSelectedPerson(person);
+        setPedigreeFocusId(person.id);
+        setTreeViewReady(true);
         // A ?person= UUID may belong to a different tree than the ?tree= param selected at
         // boot. The person's tree wins so the profile and the tree selector stay consistent.
         if (person.treeId && person.treeId !== activeTreeId) {
@@ -828,7 +873,6 @@ useEffect(() => {
         setActiveTree(nextActive);
         setAllPeople([]);
         setAllRelationships([]);
-        setGraphTreeId(null);
         await fetchAdminTreeStats();
       } catch (err) {
         console.error('Failed to create tree', err);
@@ -856,13 +900,11 @@ useEffect(() => {
           setActiveTree(null);
           setAllPeople([]);
           setAllRelationships([]);
-          setGraphTreeId(null);
         } else {
           const activeStillExists = activeTree ? localRemaining.find((tree) => tree.id === activeTree.id) : null;
           setActiveTree(activeStillExists || localRemaining[0]);
           setAllPeople([]);
           setAllRelationships([]);
-          setGraphTreeId(null);
         }
 
         const updatedTrees = await ensureTrees();
@@ -999,7 +1041,7 @@ useEffect(() => {
     setActiveTab('home');
     setAllPeople([]);
     setAllRelationships([]);
-    setGraphTreeId(null);
+    graphLoadKeyRef.current = null;
     setTreeViewReady(false);
   };
 
@@ -1010,25 +1052,26 @@ useEffect(() => {
     }
     try {
       await importGedcomToSupabase(activeTreeId, data, currentUser);
-      if (activeTree && graphTreeId === activeTree.id) {
-        await loadTreeArchive(activeTree, { silent: false, force: true });
-      }
+      graphLoadKeyRef.current = null;
       await fetchAdminTreeStats();
       setActiveTab('tree');
+      if (treeViewReady && activeTree) {
+        const focusId = pedigreeFocusId ?? treeDefaultProbandId ?? null;
+        await loadPedigreeGraph(activeTree, focusId, ancestorDepth, descendantDepth, { force: true });
+      }
     } catch (err) {
       console.error('Failed to import GEDCOM to Supabase', err);
     }
   };
 
-  const handleExploreTree = useCallback(async () => {
+  const handleExploreTree = useCallback(() => {
     if (!activeTree) return;
     if (!pedigreeFocusId && !selectedPerson && treeDefaultProbandId) {
       setPedigreeFocusId(treeDefaultProbandId);
     }
     setActiveTab('tree');
     setTreeViewReady(true);
-    await loadTreeArchive(activeTree, { silent: false });
-  }, [activeTree, loadTreeArchive, pedigreeFocusId, selectedPerson, treeDefaultProbandId]);
+  }, [activeTree, pedigreeFocusId, selectedPerson, treeDefaultProbandId]);
 
   if (!supabaseActive) {
     return (
@@ -1252,7 +1295,12 @@ useEffect(() => {
                 </div>
                 <button
                   className="ml-auto text-xs font-bold uppercase tracking-[0.2em] text-rose-500 hover:text-rose-700"
-                  onClick={() => loadTreeArchive(activeTree, { silent: false })}
+                  onClick={() => {
+                    if (!activeTree) return;
+                    graphLoadKeyRef.current = null;
+                    const focusId = pedigreeFocusId ?? selectedPerson?.id ?? treeDefaultProbandId ?? null;
+                    void loadPedigreeGraph(activeTree, focusId, ancestorDepth, descendantDepth, { force: true });
+                  }}
                 >
                   Retry
                 </button>
@@ -1318,8 +1366,8 @@ useEffect(() => {
                           maxAncestors={ancestorDepth}
                           maxDescendants={descendantDepth}
                           showPlaceholders={pedigreeAllowsPlaceholders}
-                          ancestorsRemaining={pedigreeScope.hasMoreAncestors}
-                          descendantsRemaining={pedigreeScope.hasMoreDescendants}
+                          ancestorsRemaining={pedigreeHasMore.ancestors || pedigreeScope.hasMoreAncestors}
+                          descendantsRemaining={pedigreeHasMore.descendants || pedigreeScope.hasMoreDescendants}
                           siblingHints={siblingHints}
                           childHints={childHints}
                           onExpandAncestors={() =>
@@ -1355,13 +1403,12 @@ useEffect(() => {
                           Load the interactive pedigree when you’re ready. We’ll start with {focusPerson ? `${focusPerson.firstName} ${focusPerson.lastName}` : 'your focus person'} and show parents plus grandparents, then you can unfold more generations on demand.
                         </p>
                           <button
-                          onClick={async () => {
+                          onClick={() => {
                             if (!activeTree) return;
                             if (!pedigreeFocusId && !selectedPerson && treeDefaultProbandId) {
                               setPedigreeFocusId(treeDefaultProbandId);
                             }
                             setTreeViewReady(true);
-                            await loadTreeArchive(activeTree, { silent: false });
                           }}
                           disabled={!activeTree}
                           className="px-6 py-3 rounded-2xl bg-slate-900 text-white font-black uppercase tracking-[0.3em] disabled:opacity-40"

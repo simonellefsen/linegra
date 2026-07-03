@@ -84,7 +84,7 @@ const BookComposerPanel: React.FC<BookComposerPanelProps> = ({
   const effectiveRelationships = relationships.length > 0 ? relationships : archiveRelationships;
 
   useEffect(() => {
-    if (!treeId || people.length > 0) return;
+    if (!treeId) return;
     let cancelled = false;
     setArchiveLoading(true);
     loadArchiveData(treeId)
@@ -100,7 +100,7 @@ const BookComposerPanel: React.FC<BookComposerPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [treeId, people.length]);
+  }, [treeId]);
 
   const pickerPeople = useMemo(() => {
     return [...effectivePeople].sort((a, b) => {
