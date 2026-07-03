@@ -1,10 +1,45 @@
-import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import type { AuthChangeEvent, Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { TreeAccessRole, User, UserRole } from '../types';
 
 const avatarUrlFor = (user: SupabaseUser, displayName: string) =>
   (user.user_metadata?.avatar_url as string | undefined) ||
   `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0f172a&color=fff`;
+
+/** Where Supabase should send users after email confirmation (must be allow-listed in the project). */
+export const getAuthRedirectUrl = (): string | undefined => {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/`;
+  }
+  const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env as Record<string, string | undefined> : {};
+  const configured = env.VITE_APP_URL ?? env.APP_URL;
+  return configured ? configured.replace(/\/$/, '') + '/' : undefined;
+};
+
+/** True when the current URL is a Supabase email-confirmation (or recovery) callback. */
+export const isAuthCallbackUrl = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const searchParams = new URLSearchParams(window.location.search);
+  const type = hashParams.get('type') ?? searchParams.get('type');
+  const hasTokens =
+    hashParams.has('access_token') ||
+    searchParams.has('access_token') ||
+    searchParams.has('code');
+  return hasTokens && (type === 'signup' || type === 'email' || type === 'email_change' || type === 'recovery');
+};
+
+/** Strip auth tokens from the address bar after the client has consumed them. */
+export const clearAuthCallbackFromUrl = (): void => {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  url.hash = '';
+  url.searchParams.delete('code');
+  url.searchParams.delete('type');
+  url.searchParams.delete('access_token');
+  url.searchParams.delete('refresh_token');
+  window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+};
 
 export const mapProfileToUser = (
   authUser: SupabaseUser,
@@ -56,10 +91,12 @@ export const signInWithEmail = async (email: string, password: string) => {
 };
 
 export const signUpWithEmail = async (email: string, password: string, displayName?: string) => {
+  const emailRedirectTo = getAuthRedirectUrl();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      emailRedirectTo,
       data: {
         display_name: displayName?.trim() || email.split('@')[0],
         full_name: displayName?.trim() || undefined,
@@ -95,17 +132,17 @@ export const getMyTreeRole = async (treeId: string): Promise<TreeAccessRole> => 
 export const canWriteTreeRole = (role: TreeAccessRole, isSuperAdmin = false) =>
   isSuperAdmin || role === 'owner' || role === 'editor';
 
-export const subscribeToAuthChanges = (
-  onChange: (user: User | null) => void
-) =>
-  supabase.auth.onAuthStateChange((_event, session) => {
+export type AuthChangeHandler = (user: User | null, event: AuthChangeEvent) => void;
+
+export const subscribeToAuthChanges = (onChange: AuthChangeHandler) =>
+  supabase.auth.onAuthStateChange((event, session) => {
     void (async () => {
       try {
         const mapped = await resolveSessionUser(session);
-        onChange(mapped);
+        onChange(mapped, event);
       } catch (err) {
         console.error('Failed to resolve auth session', err);
-        onChange(null);
+        onChange(null, event);
       }
     })();
   });

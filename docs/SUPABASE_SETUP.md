@@ -95,5 +95,20 @@ SUPABASE_PUBLISHABLE_KEY=<public-publishable-key>
 
 For Vercel, set the same values in the project settings (Environment Variables → Production/Preview) so builds use the correct Supabase instance.
 
+## 8. Auth URL configuration (email confirmation redirects)
+
+Supabase confirmation emails include a `redirect_to` URL. If that points at `localhost`, users land on your dev machine after clicking **Confirm your mail**.
+
+**Dashboard (hosted project):** [Authentication → URL Configuration](https://supabase.com/dashboard/project/_/auth/url-configuration)
+
+| Setting | Value |
+| --- | --- |
+| **Site URL** | Your production app URL, e.g. `https://linegra.vercel.app` |
+| **Redirect URLs** | Production URL **and** local dev, e.g. `https://linegra.vercel.app/**`, `http://localhost:3000/**`, `http://127.0.0.1:3000/**` |
+
+The app passes `emailRedirectTo` on sign-up using the **current browser origin**, so signing up on production generates production links. Signing up on `localhost:3000` still correctly targets local dev — but only if that URL is in **Redirect URLs**.
+
+After changing Site URL, request a fresh confirmation email (or sign up again) so the link is regenerated.
+
 ---
 Need help rotating keys or setting up storage buckets? Ping the team before changing any schema files so migrations stay linear.

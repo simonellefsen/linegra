@@ -11,7 +11,7 @@ help:
 	@echo "  make test        Run Vitest unit tests"
 	@echo "  make build       Lint, typecheck, test, and Vite production build"
 	@echo "  make check       Alias for lint + typecheck + test (no Vite build)"
-	@echo "  make dev         Start Vite dev server"
+	@echo "  make dev         Start Vite dev server (same as: npm run dev)"
 	@echo "  make preview     Serve the production build locally"
 	@echo "  make clean       Remove build output"
 

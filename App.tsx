@@ -1,8 +1,8 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { ensureTrees, loadArchiveData, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership } from './services/archive';
-import { canWriteTreeRole, getInitialSessionUser, signOut, subscribeToAuthChanges } from './services/auth';
+import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, signOut, subscribeToAuthChanges } from './services/auth';
 import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
 import { collectDnaSupportMatchIds } from './lib/dnaSupport';
@@ -30,7 +30,8 @@ import {
   Loader2,
   Menu,
   X,
-  SlidersHorizontal
+  SlidersHorizontal,
+  CheckCircle2
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -69,6 +70,8 @@ const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [authSuccessMessage, setAuthSuccessMessage] = useState<string | null>(null);
+  const emailCallbackPending = useRef(false);
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
   const [adminSection, setAdminSection] = useState<AdminSection>('gedcom');
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -230,12 +233,24 @@ const App: React.FC = () => {
     [supabaseActive]
   );
 
+  const showEmailConfirmedNotice = useCallback((user: User) => {
+    setAuthSuccessMessage(`Email confirmed — welcome, ${user.name}! You are signed in.`);
+    clearAuthCallbackFromUrl();
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
+    emailCallbackPending.current = isAuthCallbackUrl();
     void (async () => {
       try {
         const user = await getInitialSessionUser();
-        if (!cancelled) setCurrentUser(user);
+        if (!cancelled) {
+          setCurrentUser(user);
+          if (user && emailCallbackPending.current) {
+            emailCallbackPending.current = false;
+            showEmailConfirmedNotice(user);
+          }
+        }
       } catch (err) {
         console.error('Failed to restore auth session', err);
       } finally {
@@ -244,12 +259,22 @@ const App: React.FC = () => {
     })();
     const { data } = subscribeToAuthChanges((user) => {
       setCurrentUser(user);
+      if (user && emailCallbackPending.current) {
+        emailCallbackPending.current = false;
+        showEmailConfirmedNotice(user);
+      }
     });
     return () => {
       cancelled = true;
       data.subscription.unsubscribe();
     };
-  }, []);
+  }, [showEmailConfirmedNotice]);
+
+  useEffect(() => {
+    if (!authSuccessMessage) return;
+    const timer = window.setTimeout(() => setAuthSuccessMessage(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [authSuccessMessage]);
 
 useEffect(() => {
   setMobileNavOpen(false);
@@ -1558,6 +1583,25 @@ useEffect(() => {
       />
 
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onAuthenticated={handleAuthenticated} />
+      {authSuccessMessage && (
+        <div className="fixed top-6 left-1/2 z-[80] w-[min(92vw,28rem)] -translate-x-1/2 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-white px-5 py-4 shadow-2xl shadow-emerald-900/10">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-900">Account confirmed</p>
+              <p className="mt-1 text-sm text-slate-600 leading-relaxed">{authSuccessMessage}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAuthSuccessMessage(null)}
+              className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
       <div className="fixed left-2 bottom-2 z-[70] pointer-events-none rounded-md border border-slate-300/80 bg-white/85 px-2 py-1 text-[10px] font-mono text-slate-500 shadow-sm backdrop-blur">
         build {buildStamp}
       </div>
