@@ -58,6 +58,43 @@ const mapDbRelationship = (row: any): Relationship => {
 };
 
 const PAGE_SIZE = 1000;
+const ARCHIVE_PAGE_SIZE = 1000;
+
+const parseRpcJsonPage = (data: unknown): any[] => {
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const fetchArchiveRpcPages = async (
+  rpcName: 'load_tree_archive_persons_page' | 'load_tree_archive_relationships_page',
+  treeId: string,
+  pageSize = ARCHIVE_PAGE_SIZE
+): Promise<any[]> => {
+  const rows: any[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase.rpc(rpcName, {
+      target_tree_id: treeId,
+      page_limit: pageSize,
+      page_offset: offset,
+    });
+    if (error) throw new Error(error.message);
+    const chunk = parseRpcJsonPage(data);
+    if (!chunk.length) break;
+    rows.push(...chunk);
+    if (chunk.length < pageSize) break;
+    offset += pageSize;
+  }
+  return rows;
+};
 
 const fetchPagedRows = async <T>(fetchPage: (from: number, to: number) => Promise<T[]>, pageSize = PAGE_SIZE): Promise<T[]> => {
   const rows: T[] = [];
@@ -826,29 +863,9 @@ export const loadArchiveData = async (treeId: string) => {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');
   }
-  const personRows = await fetchPagedRows(async (from, to) => {
-    const { data, error } = await supabase
-      .from('persons')
-      .select(
-        'id, tree_id, first_name, last_name, maiden_name, gender, birth_date_text, death_date_text, birth_place_text, death_place_text, updated_at, metadata, is_living, is_private'
-      )
-      .eq('tree_id', treeId)
-      .order('last_name', { ascending: true })
-      .range(from, to);
-    if (error) throw new Error(error.message);
-    return data ?? [];
-  });
-
-  const relationshipRows = await fetchPagedRows(async (from, to) => {
-    const { data, error } = await supabase
-      .from('relationships')
-      .select('*')
-      .eq('tree_id', treeId)
-      .order('created_at', { ascending: true })
-      .range(from, to);
-    if (error) throw new Error(error.message);
-    return data ?? [];
-  });
+  // SECURITY DEFINER RPC pages avoid per-row RLS on large relationship scans (10k+ trees).
+  const personRows = await fetchArchiveRpcPages('load_tree_archive_persons_page', treeId);
+  const relationshipRows = await fetchArchiveRpcPages('load_tree_archive_relationships_page', treeId);
 
   const emptyNotes: Record<string, Note[]> = {};
   const emptySources: Record<string, Source[]> = {};
@@ -2397,7 +2414,7 @@ interface ImportActor {
 
 const recordAuditLogs = async (entries: Array<{ tree_id: string; actor_id: string | null; actor_name: string; action: string; entity_type: string; entity_id: string; details?: Record<string, unknown> }>) => {
   if (!entries.length || !isSupabaseConfigured()) return;
-  await supabase.from('audit_logs').insert(entries);
+  await chunkedInsert('audit_logs', entries);
 };
 
 export const importGedcomToSupabase = async (treeId: string, data: { people: Person[]; relationships: Relationship[] }, actor?: ImportActor | null) => {
@@ -2448,36 +2465,12 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
   const citations: any[] = [];
   const sourceExternalToDbId = new Map<string, string>();
   const sourceLocalToDbId = new Map<string, string>();
-  const auditEntries: Array<{ tree_id: string; actor_id: string | null; actor_name: string; action: string; entity_type: string; entity_id: string; details?: Record<string, unknown> }> = [];
-
   if (personRows.length) {
     await chunkedInsert('persons', personRows);
-    personRows.forEach((row) => {
-      auditEntries.push({
-        tree_id: treeId,
-        actor_id: userId,
-        actor_name: actorName,
-        action: 'person_import',
-        entity_type: 'person',
-        entity_id: row.id,
-        details: { source: 'GEDCOM' }
-      });
-    });
   }
 
   if (relationshipRows.length) {
     await chunkedInsert('relationships', relationshipRows as any[]);
-    (relationshipRows as any[]).forEach((row: any) => {
-      auditEntries.push({
-        tree_id: treeId,
-        actor_id: userId,
-        actor_name: actorName,
-        action: 'relationship_import',
-        entity_type: 'relationship',
-        entity_id: row.id,
-        details: { source: 'GEDCOM', type: row.type }
-      });
-    });
   }
 
   data.people.forEach((person) => {
@@ -2585,7 +2578,24 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
     await chunkedInsert('citations', citations);
   }
 
-  await recordAuditLogs(auditEntries);
+  await recordAuditLogs([
+    {
+      tree_id: treeId,
+      actor_id: userId,
+      actor_name: actorName,
+      action: 'gedcom_import',
+      entity_type: 'tree',
+      entity_id: treeId,
+      details: {
+        source: 'GEDCOM',
+        people: personRows.length,
+        relationships: relationshipRows.length,
+        events: events.length,
+        sources: sources.length,
+        citations: citations.length,
+      },
+    },
+  ]);
 
   await supabase.from('gedcom_imports').insert({
     tree_id: treeId,
