@@ -125,7 +125,7 @@ export const acceptPendingCollaboratorInvites = async (): Promise<number> => {
 export const listMyPendingCollaboratorInvites = async (): Promise<PendingCollaboratorInvite[]> => {
   const { data, error } = await supabase.rpc('list_my_pending_collaborator_invites');
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => mapPendingCollaboratorInvite(row as Record<string, unknown>));
+  return (data ?? []).map((row: Record<string, unknown>) => mapPendingCollaboratorInvite(row));
 };
 
 const shouldAutoAcceptCollaboratorInvites = (event: AuthChangeEvent) =>

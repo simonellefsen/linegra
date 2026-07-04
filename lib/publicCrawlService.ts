@@ -101,7 +101,7 @@ export const loadPublicPersonCrawlPayload = async (
         treeId: personRow.tree_id,
         firstName: String(record.first_name ?? record.firstName ?? ''),
         lastName: String(record.last_name ?? record.lastName ?? ''),
-        title: (record.title as string | null) ?? null,
+        title: record.title != null ? String(record.title) : undefined,
         isPrivate: Boolean(record.is_private ?? record.isPrivate),
         isLiving: record.is_living as boolean | undefined,
         birthDate: (record.birth_date_text ?? record.birthDate) as string | null | undefined,
