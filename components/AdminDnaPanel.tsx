@@ -998,7 +998,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             <span className="text-slate-500"> · {formatCm(match.sharedCM)}</span>
                             <span className="text-slate-400 text-xs block">
                               {match.sharedSegmentsPreview?.length ?? 0} segment rows
-                              {hints?.parentalSide !== 'unknown' && (
+                              {hints && hints.parentalSide !== 'unknown' && (
                                 <> · {hints.parentalSide === 'maternal' ? 'Maternal line' : 'Paternal line'}</>
                               )}
                               {hints?.grandparentSlot && (

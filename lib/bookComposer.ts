@@ -477,7 +477,7 @@ export const planBook = (
   const statistics = summarizeFamily(selected, relationships);
   const strings = bookStrings(options.language);
   const surname = statistics.topSurnames[0] || '';
-  const span = strings.spanPhrase(statistics.earliestBirthYear, statistics.latestDeathYear);
+  const span = strings.spanPhrase(statistics.earliestBirthYear ?? null, statistics.latestDeathYear ?? null);
 
   const title = strings.familyHistory(surname);
   const subtitle = [tree?.name && tree.name !== title ? tree.name : null, span ? strings.narrativeChronicle(span) : null]

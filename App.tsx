@@ -110,7 +110,7 @@ const App: React.FC = () => {
   const [pedigreeHasMore, setPedigreeHasMore] = useState({ ancestors: false, descendants: false });
   const graphLoadKeyRef = useRef<string | null>(null);
   type SearchFiltersState = { livingOnly: boolean; deceasedOnly: boolean; missingData: boolean; gender: 'all' | 'M' | 'F' };
-  const createDefaultSearchFilters = useCallback<SearchFiltersState>(() => ({
+  const createDefaultSearchFilters = useCallback((): SearchFiltersState => ({
     livingOnly: false,
     deceasedOnly: false,
     missingData: false,

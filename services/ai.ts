@@ -83,7 +83,7 @@ const fetchWithTimeout = async (
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (controller.signal.aborted) {
-      throw new Error(`OpenRouter request timed out after ${timeoutMs}ms`);
+      throw new Error(`OpenRouter request timed out after ${timeoutMs}ms`, { cause: err });
     }
     throw err;
   } finally {
@@ -457,7 +457,7 @@ const postToAiProxy = async (
 
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
-    let parsed: (ProxyResponse & { code?: string }) | null = null;
+    let parsed: (ProxyResponse & { code?: string }) | null;
     try {
       parsed = detail ? (JSON.parse(detail) as ProxyResponse & { code?: string }) : null;
     } catch {
@@ -883,7 +883,7 @@ export const transcribeRecordImage = async (
     const visionHint = /image|vision|multimodal|modal|unsupported/i.test(message)
       ? ' This model may not support images — set a vision-capable model (a name ending in -vl) in Administrator → Database.'
       : '';
-    throw new Error(`Could not transcribe the image.${visionHint} (${message})`);
+    throw new Error(`Could not transcribe the image.${visionHint} (${message})`, { cause: error });
   }
 };
 
@@ -991,7 +991,7 @@ export const deterministicFamilyOverview = (
   const surname = statistics.topSurnames[0] || '';
   const family = o.family(surname);
   const count = statistics.personCount;
-  const span = bookStrings(language).spanPhrase(statistics.earliestBirthYear, statistics.latestDeathYear);
+  const span = bookStrings(language).spanPhrase(statistics.earliestBirthYear ?? null, statistics.latestDeathYear ?? null);
   const places = statistics.topPlaces.length ? `, ${joinList(statistics.topPlaces.slice(0, 3))}` : '';
   const genClause = statistics.generationDepth ? o.acrossGens(statistics.generationDepth) : o.acrossYears;
 

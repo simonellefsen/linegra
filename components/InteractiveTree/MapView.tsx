@@ -43,8 +43,14 @@ const MapView: React.FC<MapViewProps> = ({ people, focusId, selectedPersonId, on
     () =>
       segments.map((segment) => ({
         ...segment,
-        from: projectEquirectangular(segment.from.lat, segment.from.lng, MAP_W, MAP_H),
-        to: projectEquirectangular(segment.to.lat, segment.to.lng, MAP_W, MAP_H),
+        from: {
+          ...projectEquirectangular(segment.from.lat, segment.from.lng, MAP_W, MAP_H),
+          label: segment.from.label,
+        },
+        to: {
+          ...projectEquirectangular(segment.to.lat, segment.to.lng, MAP_W, MAP_H),
+          label: segment.to.label,
+        },
       })),
     [segments]
   );

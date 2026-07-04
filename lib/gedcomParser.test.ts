@@ -583,7 +583,7 @@ describe('event detail AGE / CAUS / AGNC (H/P1)', () => {
     const p = parseGedcom(
       '0 HEAD\n0 @I1@ INDI\n1 NAME A /B/\n1 OCCU Blacksmith\n2 AGE 43y\n2 CAUS apprenticeship ended\n2 AGNC Guild of Smiths\n0 TRLR',
     ).people[0];
-    const occu = p.events.find((e) => e.type === 'Occupation');
+    const occu = p.events?.find((e) => e.type === 'Occupation');
     expect(occu?.metadata).toMatchObject({ age: '43y', cause: 'apprenticeship ended', agency: 'Guild of Smiths' });
   });
 
@@ -648,7 +648,7 @@ describe('round-trip — events + full P1 person (H/P3)', () => {
       }],
     } as unknown as Person];
     const reparsed = parseGedcom(serializeGedcom(original, [])).people[0];
-    const occu = reparsed.events.find((e) => e.type === 'Occupation');
+    const occu = reparsed.events?.find((e) => e.type === 'Occupation');
     expect(occu).toMatchObject({ date: '1900', description: 'Blacksmith' });
     expect(placeText(occu?.place)).toBe('London');
     expect(occu?.metadata).toMatchObject({ age: '43y', cause: 'retirement', agency: 'Guild of Smiths' });
@@ -693,7 +693,7 @@ describe('SNOTE shared-note resolution (H/P2)', () => {
     ].join('\n');
     const p = parseGedcom(ged).people[0];
     expect(p.notes).toHaveLength(1);
-    expect(p.notes[0].text).toBe('This is a shared note');
+    expect(p.notes?.[0]?.text).toBe('This is a shared note');
   });
 
   it('shares one SNOTE across multiple people', () => {
@@ -710,8 +710,8 @@ describe('SNOTE shared-note resolution (H/P2)', () => {
     ].join('\n');
     const people = parseGedcom(ged).people;
     expect(people).toHaveLength(2);
-    expect(people[0].notes[0].text).toBe('Shared text');
-    expect(people[1].notes[0].text).toBe('Shared text');
+    expect(people[0].notes?.[0]?.text).toBe('Shared text');
+    expect(people[1].notes?.[0]?.text).toBe('Shared text');
   });
 
   it('preserves multi-line SNOTE text (CONT merged by the tokenizer)', () => {
@@ -725,12 +725,12 @@ describe('SNOTE shared-note resolution (H/P2)', () => {
       '0 TRLR',
     ].join('\n');
     const p = parseGedcom(ged).people[0];
-    expect(p.notes[0].text).toBe('Line one\nLine two');
+    expect(p.notes?.[0]?.text).toBe('Line one\nLine two');
   });
 
   it('leaves inline NOTE text untouched (no pointer)', () => {
     const p = parseGedcom('0 HEAD\n0 @I1@ INDI\n1 NAME A /X/\n1 NOTE An inline note\n0 TRLR').people[0];
-    expect(p.notes[0].text).toBe('An inline note');
+    expect(p.notes?.[0]?.text).toBe('An inline note');
   });
 
   it('drops an unresolved pointer silently (no crash)', () => {

@@ -45,8 +45,8 @@ export const buildAncestorBreadcrumbs = (
       label: `${person.firstName} ${person.lastName}`.trim() || person.id,
     });
 
-    const parentLinks = parentLinksByChild.get(currentId) || [];
-    const preferred =
+    const parentLinks: Relationship[] = parentLinksByChild.get(currentId) || [];
+    const preferred: Relationship | undefined =
       parentLinks.find((l) => l.type === 'bio_father') ||
       parentLinks.find((l) => l.type === 'bio_mother') ||
       parentLinks[0];

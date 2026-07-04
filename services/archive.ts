@@ -2765,7 +2765,7 @@ export const resolveSharedTestLineage = async (
   };
 
   let matchId = existingMatch?.id as string | undefined;
-  if (matchId) {
+  if (matchId && existingMatch) {
     const previousPathRelationshipIds = ensureStringArray(asRecord(existingMatch.metadata).path_relationship_ids);
     await updateRelationshipDnaSupport(previousPathRelationshipIds, focusPersonId, matchId, 'remove');
     const { error: updateMatchError } = await supabase
@@ -2908,7 +2908,7 @@ export const resolveFamilyKitLineage = async (
   };
 
   let matchId = existingMatch?.id as string | undefined;
-  if (matchId) {
+  if (matchId && existingMatch) {
     const previousPathRelationshipIds = ensureStringArray(asRecord(existingMatch.metadata).path_relationship_ids);
     await updateRelationshipDnaSupport(previousPathRelationshipIds, focusPersonId, matchId, 'remove');
     const { error: updateMatchError } = await supabase

@@ -130,7 +130,7 @@ export const composeBook = async (
     // Reuse the stored biography when it's still valid: a manual (human-edited) biography is
     // always reused and never auto-regenerated (see wiki/decisions/ai-narrative-editing-and-grounding.md);
     // an AI biography is reused when its signature still matches the current facts.
-    if (stored && shouldReuseBiography(stored, signature, forceRegenerate)) {
+    if (stored && shouldReuseBiography(stored, signature, forceRegenerate ?? false)) {
       reusedCount += 1;
       done += 1;
       onProgress?.(done, total);
