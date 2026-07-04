@@ -1,0 +1,30 @@
+# Linegra public crawl policy
+# https://linegra.app
+
+User-agent: *
+Allow: /
+Allow: /tree/
+Allow: /book/
+Allow: /api/public/
+Disallow: /api/
+Disallow: /records
+
+# Major search + research agents (opt-out honored via robots.txt)
+User-agent: GPTBot
+Allow: /tree/
+Allow: /book/
+Allow: /api/public/
+Allow: /llms.txt
+
+User-agent: ClaudeBot
+Allow: /tree/
+Allow: /book/
+Allow: /api/public/
+Allow: /llms.txt
+
+User-agent: PerplexityBot
+Allow: /tree/
+Allow: /book/
+Allow: /api/public/
+
+Sitemap: https://linegra.app/sitemap.xml

@@ -11,6 +11,34 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-07-04 — Bot / LLM crawl traffic admin panel (roadmap U10)
+
+**Traffic tab:** `public_crawl_events` table + `record_public_crawl_event` / `admin_get_crawl_traffic_stats`
+RPCs; Edge APIs persist bot hits; superadmin **Administrator → Traffic** panel
+([../components/admin/AdminCrawlTrafficPanel.tsx](../components/admin/AdminCrawlTrafficPanel.tsx)).
+
+## 2026-07-04 — Crawler & agent discoverability foundation (roadmap U)
+
+**Canonical URLs (U2):** `/tree/{id}` and `/tree/{id}/person/{pid}` with legacy `?tree=&person=`
+redirects — [../lib/publicRoutes.ts](../lib/publicRoutes.ts), [../App.tsx](../App.tsx).
+
+**Crawl surfaces (U1/U3–U8/U10):** `public/robots.txt`, `public/llms.txt`, dynamic
+`/sitemap.xml` ([../api/sitemap.xml.ts](../api/sitemap.xml.ts)), Edge person/tree HTML + JSON +
+Markdown APIs under `/api/public/*`, bot `middleware.ts`, migration
+`20260704140000_public_crawl_discoverability.sql`. Policy:
+[sources/crawler-agent-discoverability.md](sources/crawler-agent-discoverability.md).
+
+## 2026-07-04 — Collaborator invites inbox (roadmap A)
+
+**Pending invites UI:** migration
+`20260704130000_collaborator_invites_inbox.sql` adds `list_my_pending_collaborator_invites()`.
+[../components/profile/CollaboratorInvitesPanel.tsx](../components/profile/CollaboratorInvitesPanel.tsx)
+lists editor invites matched to the signed-in email; **Researcher Profile** tab
+([../components/profile/ResearcherProfilePage.tsx](../components/profile/ResearcherProfilePage.tsx))
+hosts account info + the inbox. Home shows a banner when invites are still pending after
+auto-accept on session restore/sign-in. Manual **Accept all** reuses
+`accept_pending_collaborator_invites()` and refreshes the tree list.
+
 ## 2026-07-04 — GEDCOM fidelity + build performance (roadmap E + G)
 
 **GEDCOM fidelity (E):** [../lib/gedcomFidelity.ts](../lib/gedcomFidelity.ts) infers

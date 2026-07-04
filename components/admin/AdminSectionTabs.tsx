@@ -1,13 +1,14 @@
 import React from 'react';
 
-export type AdminSection = 'database' | 'trees' | 'gedcom' | 'dna' | 'books' | 'research';
+export type AdminSection = 'database' | 'trees' | 'gedcom' | 'dna' | 'books' | 'research' | 'traffic';
 
 interface AdminSectionTabsProps {
   section: AdminSection;
   onChange: (next: AdminSection) => void;
+  showCrawlTraffic?: boolean;
 }
 
-const TABS: Array<{ id: AdminSection; label: string }> = [
+const BASE_TABS: Array<{ id: AdminSection; label: string }> = [
   { id: 'database', label: 'Database' },
   { id: 'trees', label: 'Trees' },
   { id: 'gedcom', label: 'GEDCOM' },
@@ -16,9 +17,18 @@ const TABS: Array<{ id: AdminSection; label: string }> = [
   { id: 'research', label: 'Research' },
 ];
 
-const AdminSectionTabs: React.FC<AdminSectionTabsProps> = ({ section, onChange }) => (
-  <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-4 flex items-center gap-3">
-    {TABS.map((tab) => (
+const AdminSectionTabs: React.FC<AdminSectionTabsProps> = ({
+  section,
+  onChange,
+  showCrawlTraffic = false,
+}) => {
+  const tabs = showCrawlTraffic
+    ? [...BASE_TABS, { id: 'traffic' as const, label: 'Traffic' }]
+    : BASE_TABS;
+
+  return (
+  <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-4 flex flex-wrap items-center gap-3">
+    {tabs.map((tab) => (
       <button
         key={tab.id}
         onClick={() => onChange(tab.id)}
@@ -30,6 +40,7 @@ const AdminSectionTabs: React.FC<AdminSectionTabsProps> = ({ section, onChange }
       </button>
     ))}
   </div>
-);
+  );
+};
 
 export default AdminSectionTabs;

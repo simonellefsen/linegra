@@ -22,6 +22,8 @@ export interface HaplogroupRouteInfo {
   /** Phylogenetic SNP path from macro-haplogroup to terminal. */
   path: string[];
   migrationSteps: MigrationStep[];
+  /** True when migration context is inferred from a parent clade, not an exact terminal match. */
+  inferred?: boolean;
 }
 
 interface RouteEntry {
@@ -375,10 +377,111 @@ const MT_ROUTES: Record<string, RouteEntry> = {
       },
     ],
   }),
+  J: withEraGuide({
+    region: 'Near East / Mediterranean / Europe',
+    era: 'Neolithic',
+    description:
+      'Haplogroup J arose in western Asia and spread with early farming cultures into the Mediterranean and Europe.',
+    path: ['N', 'JT', 'J'],
+    migrationSteps: [
+      ...MT_OUT_OF_AFRICA,
+      {
+        region: 'Levant / Anatolia',
+        period: 'c. 25,000 – 8000 BCE',
+        note: 'JT and J diversify in the Near East before Neolithic expansions.',
+      },
+      {
+        region: 'Mediterranean & southeastern Europe',
+        period: 'c. 7000 – 2000 BCE',
+        note: 'J lineages enter Europe with farming and later Bronze Age exchange.',
+      },
+    ],
+  }),
+  J1: withEraGuide({
+    region: 'Mediterranean / Europe',
+    era: 'Neolithic–Bronze Age',
+    description:
+      'J1 is a major European branch of J — common from Iberia to the Balkans and present at lower frequency in northern Europe.',
+    path: ['N', 'JT', 'J', 'J1'],
+    migrationSteps: [
+      ...MT_OUT_OF_AFRICA,
+      {
+        region: 'Near East → Aegean / Adriatic',
+        period: 'c. 7000 – 3000 BCE',
+        note: 'J1 spreads with Neolithic maritime and overland routes into southern Europe.',
+      },
+      {
+        region: 'Central & Northern Europe',
+        period: 'c. 2000 BCE – present',
+        note: 'Later migrations and admixture carry J1-derived lines into Baltic and Nordic gene pools.',
+      },
+    ],
+  }),
+  J1c: withEraGuide({
+    region: 'Europe',
+    era: 'Neolithic–Bronze Age',
+    description:
+      'J1c is one of the most frequent J branches in Europe — found from the Atlantic fringe to Scandinavia.',
+    path: ['N', 'JT', 'J', 'J1', 'J1c'],
+    migrationSteps: [
+      ...MT_OUT_OF_AFRICA,
+      {
+        region: 'Southeastern Europe / Balkans',
+        period: 'c. 6000 – 2500 BCE',
+        note: 'J1c expands with early European farmers and later metal-age networks.',
+      },
+      {
+        region: 'Western, central, and northern Europe',
+        period: 'c. 2000 BCE – present',
+        note: 'J1c subclades appear across the continent, including low–moderate frequency in Nordic populations.',
+      },
+    ],
+  }),
+  J1c2: withEraGuide({
+    region: 'Europe',
+    era: 'Bronze Age',
+    description:
+      'J1c2 is a widespread European J1c branch — present from southern Europe to the British Isles and Scandinavia.',
+    path: ['N', 'JT', 'J', 'J1', 'J1c', 'J1c2'],
+    migrationSteps: [
+      ...MT_OUT_OF_AFRICA,
+      {
+        region: 'Central / Western Europe',
+        period: 'c. 2500 – 500 BCE',
+        note: 'J1c2 diversifies during Bronze Age population mixing across the continent.',
+      },
+      {
+        region: 'Northern Europe & Atlantic fringe',
+        period: 'c. 500 BCE – present',
+        note: 'Younger J1c2 subclades reach Nordic and British populations through medieval and modern gene flow.',
+      },
+    ],
+  }),
+  J1c2a: withEraGuide({
+    region: 'Europe / Scandinavia',
+    era: 'Holocene',
+    description:
+      'J1c2a is a younger European maternal line under J1c2 — reported in Norway, Britain, and broader European datasets.',
+    path: ['N', 'JT', 'J', 'J1', 'J1c', 'J1c2', 'J1c2a'],
+    migrationSteps: [
+      ...MT_OUT_OF_AFRICA,
+      {
+        region: 'Western & Central Europe',
+        period: 'c. 2000 BCE – 500 CE',
+        note: 'J1c2 ancestors established across Europe before the formation of terminal J1c2a branches.',
+      },
+      {
+        region: 'Scandinavia & North Atlantic',
+        period: 'c. 500 CE – present',
+        note: 'J1c2a appears in modern Nordic and British mtDNA pools — consistent with continental maternal ancestry.',
+      },
+    ],
+  }),
 };
 
 const MITOTREE_ALIASES: Record<string, string> = {
   U1a1a2a1: 'U1a1a2',
+  J1c2a8a: 'J1c2a',
 };
 
 const normalizeMitotreeKey = (value: string): string => {
@@ -404,7 +507,7 @@ const buildRoute = (
   haplogroup: string,
   line: HaplogroupLine,
   entry: RouteEntry,
-  options?: { terminalPath?: string[]; descriptionSuffix?: string }
+  options?: { terminalPath?: string[]; descriptionSuffix?: string; inferred?: boolean }
 ): HaplogroupRouteInfo => ({
   haplogroup,
   line,
@@ -416,6 +519,7 @@ const buildRoute = (
     : entry.description,
   path: options?.terminalPath || entry.path,
   migrationSteps: entry.migrationSteps,
+  inferred: options?.inferred,
 });
 
 /** Generic Y-DNA fallback for unknown R- or I- terminals. */
@@ -426,6 +530,7 @@ const fallbackYRoute = (haplogroup: string): HaplogroupRouteInfo | null => {
     return buildRoute(haplogroup, 'Y-DNA', entry, {
       terminalPath: [...entry.path.filter((s) => s !== haplogroup), haplogroup],
       descriptionSuffix: `Terminal subclade ${haplogroup} — phylogeny inferred from nearest known parent in the reference.`,
+      inferred: true,
     });
   }
   if (haplogroup.startsWith('I-')) {
@@ -434,9 +539,23 @@ const fallbackYRoute = (haplogroup: string): HaplogroupRouteInfo | null => {
     return buildRoute(haplogroup, 'Y-DNA', entry, {
       terminalPath: [...entry.path.filter((s) => s !== haplogroup), haplogroup],
       descriptionSuffix: `Terminal subclade ${haplogroup} — phylogeny inferred from nearest known parent in the reference.`,
+      inferred: true,
     });
   }
   return null;
+};
+
+/** Generic mtDNA fallback when terminal is not in the table but a parent clade is. */
+const fallbackMtRoute = (haplogroup: string, line: HaplogroupLine): HaplogroupRouteInfo | null => {
+  const key = line === 'Mitotree' ? normalizeMitotreeKey(haplogroup) : haplogroup;
+  const entry = findLongestPrefix(key, MT_ROUTES);
+  if (!entry || entry.path[entry.path.length - 1] === key) return null;
+  const parent = entry.path[entry.path.length - 1];
+  return buildRoute(haplogroup, line === 'Mitotree' ? 'Mitotree' : 'mtDNA', entry, {
+    terminalPath: [...entry.path.filter((s) => s !== key), haplogroup],
+    descriptionSuffix: `Terminal haplogroup ${haplogroup} — migration context inferred from nearest known parent (${parent}) in the reference dataset.`,
+    inferred: true,
+  });
 };
 
 export const lookupHaplogroupRoute = (
@@ -461,7 +580,7 @@ export const lookupHaplogroupRoute = (
   if (line === 'Mitotree') {
     const mtKey = normalizeMitotreeKey(trimmed);
     const entry = findLongestPrefix(mtKey, MT_ROUTES);
-    if (!entry) return null;
+    if (!entry) return fallbackMtRoute(trimmed, 'Mitotree');
     return buildRoute(trimmed, 'Mitotree', entry, {
       terminalPath: [...entry.path, trimmed],
       descriptionSuffix: `Mitotree terminal haplotype: ${trimmed}.`,
@@ -469,7 +588,7 @@ export const lookupHaplogroupRoute = (
   }
 
   const entry = findLongestPrefix(trimmed, MT_ROUTES);
-  if (!entry) return null;
+  if (!entry) return fallbackMtRoute(trimmed, 'mtDNA');
   const path =
     entry.path[entry.path.length - 1] === trimmed
       ? entry.path
@@ -542,3 +661,52 @@ export const collectHaplogroupRoutes = (test: {
 
   return routes;
 };
+
+export interface UnresolvedHaplogroup {
+  line: HaplogroupLine;
+  haplogroup: string;
+}
+
+const maternalRouteResolved = (
+  mtDnaHaplogroup?: string,
+  mitotree?: string
+): boolean => {
+  const maternal = collectMaternalRoute(mtDnaHaplogroup, mitotree);
+  if (!maternal) return false;
+  return Array.isArray(maternal) ? maternal.length > 0 : true;
+};
+
+/** Haplogroup values entered on the test but with no migration card in the reference dataset. */
+export const collectUnresolvedHaplogroups = (test: {
+  yHaplogroup?: string;
+  mtDnaHaplogroup?: string;
+  mitotree?: string;
+}): UnresolvedHaplogroup[] => {
+  const unresolved: UnresolvedHaplogroup[] = [];
+  const y = test.yHaplogroup?.trim();
+  if (y && !lookupHaplogroupRoute(y, 'Y-DNA')) {
+    unresolved.push({ line: 'Y-DNA', haplogroup: y });
+  }
+
+  const mt = test.mtDnaHaplogroup?.trim();
+  const mito = test.mitotree?.trim();
+  if (mt || mito) {
+    if (!maternalRouteResolved(mt, mito)) {
+      if (mt) unresolved.push({ line: 'mtDNA', haplogroup: mt });
+      if (mito && (!mt || !maternalBasesMatch(mt, mito))) {
+        unresolved.push({ line: 'Mitotree', haplogroup: mito });
+      }
+    }
+  }
+
+  return unresolved;
+};
+
+export const analyzeHaplogroupCoverage = (test: {
+  yHaplogroup?: string;
+  mtDnaHaplogroup?: string;
+  mitotree?: string;
+}) => ({
+  routes: collectHaplogroupRoutes(test),
+  unresolved: collectUnresolvedHaplogroups(test),
+});

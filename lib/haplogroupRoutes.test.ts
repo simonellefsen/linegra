@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lookupHaplogroupRoute, collectHaplogroupRoutes } from './haplogroupRoutes';
+import { lookupHaplogroupRoute, collectHaplogroupRoutes, collectUnresolvedHaplogroups } from './haplogroupRoutes';
 
 describe('lookupHaplogroupRoute', () => {
   it('resolves Y-DNA I-M6155 with migration steps', () => {
@@ -28,6 +28,18 @@ describe('lookupHaplogroupRoute', () => {
     expect(route?.haplogroup).toBe('U5b1b1a+7385+16519');
     expect(route?.migrationSteps.length).toBeGreaterThan(0);
   });
+
+  it('resolves mtDNA J1c2a (European J branch)', () => {
+    const route = lookupHaplogroupRoute('J1c2a', 'mtDNA');
+    expect(route?.path).toContain('J1c2a');
+    expect(route?.region).toMatch(/Europe|Scandinavia/i);
+  });
+
+  it('maps Mitotree J1c2a8a terminal to J1c2a reference', () => {
+    const route = lookupHaplogroupRoute('J1c2a8a', 'Mitotree');
+    expect(route).not.toBeNull();
+    expect(route?.migrationSteps.length).toBeGreaterThan(0);
+  });
 });
 
 describe('collectHaplogroupRoutes', () => {
@@ -51,5 +63,24 @@ describe('collectHaplogroupRoutes', () => {
       mitotree: 'H1a+123',
     });
     expect(routes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('reports unresolved haplogroups not in the reference', () => {
+    const unresolved = collectUnresolvedHaplogroups({
+      yHaplogroup: 'Q-L53',
+      mtDnaHaplogroup: 'X2b',
+    });
+    expect(unresolved.map((item) => item.haplogroup)).toEqual(['Q-L53', 'X2b']);
+  });
+
+  it('resolves Sissel-style J1c2a + J1c2a8a maternal profile', () => {
+    const routes = collectHaplogroupRoutes({
+      mtDnaHaplogroup: 'J1c2a',
+      mitotree: 'J1c2a8a',
+    });
+    expect(routes).toHaveLength(1);
+    expect(routes[0]?.haplogroup).toBe('J1c2a');
+    expect(routes[0]?.mitotreeTerminal).toBe('J1c2a8a');
+    expect(collectUnresolvedHaplogroups({ mtDnaHaplogroup: 'J1c2a', mitotree: 'J1c2a8a' })).toHaveLength(0);
   });
 });

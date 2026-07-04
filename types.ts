@@ -490,6 +490,16 @@ export interface TreeCollaborator {
   respondedAt?: string | null;
 }
 
+export interface PendingCollaboratorInvite {
+  id: string;
+  treeId: string;
+  treeName: string;
+  role: 'editor';
+  invitationEmail: string;
+  invitedAt?: string;
+  ownerDisplayName?: string | null;
+}
+
 export interface User {
   id: string;
   name: string;
