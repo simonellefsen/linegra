@@ -16,7 +16,7 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   const format = url.searchParams.get('format') ?? 'html';
-  recordPublicCrawlEvent({
+  await recordPublicCrawlEvent({
     route: 'tree',
     userAgent: request.headers.get('user-agent'),
     resourceId: treeId,

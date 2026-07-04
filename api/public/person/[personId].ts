@@ -31,7 +31,7 @@ export default async function handler(request: Request): Promise<Response> {
   if (!personId) return notFound();
 
   const format = resolveFormat(request);
-  recordPublicCrawlEvent({
+  await recordPublicCrawlEvent({
     route: 'person',
     userAgent: request.headers.get('user-agent'),
     resourceId: personId,

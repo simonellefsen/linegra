@@ -187,10 +187,23 @@ const mapVisitorSection = (section: unknown): VisitorTrafficStats => {
 export const mapCrawlTrafficStats = (payload: unknown): CrawlTrafficStats => {
   const data = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
 
+  // Support pre-20260704160000 flat RPC shape if migration lags behind deploy.
+  const botPayload =
+    data.bot ??
+    (data.totals
+      ? {
+          totals: data.totals,
+          by_agent: data.by_agent,
+          by_route: data.by_route,
+          by_day: data.by_day,
+          recent: data.recent,
+        }
+      : undefined);
+
   return {
     days: Number(data.days ?? 30),
     agentFilter: typeof data.agent_filter === 'string' ? data.agent_filter : null,
-    bot: mapBotSection(data.bot),
+    bot: mapBotSection(botPayload),
     visitor: mapVisitorSection(data.visitor),
   };
 };

@@ -24,27 +24,27 @@ const truncateUserAgent = (userAgent: string | null | undefined): string | null 
   return trimmed.slice(0, 500);
 };
 
-const persistPublicCrawlEvent = async (input: RecordPublicCrawlEventInput): Promise<void> => {
+/** Await on Edge/API handlers so Vercel does not drop the write after the response. */
+export const recordPublicCrawlEvent = async (
+  input: RecordPublicCrawlEventInput
+): Promise<void> => {
   const agentBucket = classifyCrawlerUserAgent(input.userAgent);
-  const supabase = createServerSupabase();
-  const { error } = await supabase.rpc('record_public_crawl_event', {
-    payload_route: input.route,
-    payload_agent_bucket: agentBucket,
-    payload_resource_id: isUuid(input.resourceId) ? input.resourceId : null,
-    payload_format: input.format ?? null,
-    payload_country_code: input.geo?.countryCode ?? null,
-    payload_region: input.geo?.region ?? null,
-    payload_city: input.geo?.city ?? null,
-    payload_user_agent: truncateUserAgent(input.userAgent),
-  });
-  if (error) {
-    console.warn('record_public_crawl_event failed', error.message);
-  }
-};
-
-/** Fire-and-forget: records bot and browser agents (geo stored for visitors). */
-export const recordPublicCrawlEvent = (input: RecordPublicCrawlEventInput): void => {
-  void persistPublicCrawlEvent(input).catch((err) => {
+  try {
+    const supabase = createServerSupabase();
+    const { error } = await supabase.rpc('record_public_crawl_event', {
+      payload_route: input.route,
+      payload_agent_bucket: agentBucket,
+      payload_resource_id: isUuid(input.resourceId) ? input.resourceId : null,
+      payload_format: input.format ?? null,
+      payload_country_code: input.geo?.countryCode ?? null,
+      payload_region: input.geo?.region ?? null,
+      payload_city: input.geo?.city ?? null,
+      payload_user_agent: truncateUserAgent(input.userAgent),
+    });
+    if (error) {
+      console.warn('record_public_crawl_event failed', error.message);
+    }
+  } catch (err) {
     console.warn('record_public_crawl_event failed', err);
-  });
+  }
 };
