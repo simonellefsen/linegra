@@ -10,6 +10,7 @@ describe('crawlerAgents', () => {
 
   it('classifies agent buckets', () => {
     expect(classifyCrawlerUserAgent('GPTBot/1.0')).toBe('gptbot');
+    expect(classifyCrawlerUserAgent('Mozilla/5.0 (compatible; Googlebot/2.1)')).toBe('googlebot');
     expect(classifyCrawlerUserAgent('Mozilla/5.0 Chrome/120')).toBe('browser');
   });
 });

@@ -10,9 +10,14 @@ export const classifyCrawlerUserAgent = (userAgent: string | null | undefined): 
   if (!userAgent) return 'unknown';
   if (/googlebot/i.test(userAgent)) return 'googlebot';
   if (/bingbot/i.test(userAgent)) return 'bingbot';
+  if (/duckduckbot/i.test(userAgent)) return 'duckduckbot';
+  if (/applebot/i.test(userAgent)) return 'applebot';
+  if (/facebookexternalhit|meta-externalagent/i.test(userAgent)) return 'facebookbot';
   if (/gptbot|chatgpt-user|oai-searchbot/i.test(userAgent)) return 'gptbot';
   if (/claudebot|anthropic-ai/i.test(userAgent)) return 'claudebot';
   if (/perplexitybot/i.test(userAgent)) return 'perplexitybot';
+  if (/yandex/i.test(userAgent)) return 'yandexbot';
+  if (/baiduspider/i.test(userAgent)) return 'baiduspider';
   if (isCrawlerUserAgent(userAgent)) return 'other-bot';
   return 'browser';
 };

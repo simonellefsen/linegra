@@ -487,9 +487,9 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
 - **U6** `public/llms.txt` agent index.
 - **U1/U4/U5** Edge HTML shells: `api/public/person/[personId].ts`, `api/public/tree/[treeId].ts`, JSON-LD + OG meta.
 - **U7/U8** `?format=md` / JSON person API on the same route.
-- **U10** crawler User-Agent buckets + `public_crawl_hit` logs; `middleware.ts` serves HTML to bots on `/tree/*`.
+- **U10** crawler User-Agent buckets + `public_crawl_hit` logs; `middleware.ts` serves HTML to bots on `/tree/*`; visitor (non-bot) hits + geo on public pages; admin Traffic panel with agent drill-down.
 
-**Still open:** book HTML prerender for crawlers, sitemap-index chunking, admin crawler metrics UI, `noai` media meta, full in-app link hygiene audit (U9).
+**Still open:** book HTML prerender for crawlers, sitemap-index chunking, `noai` media meta, full in-app link hygiene audit (U9), **traffic rollup** (hour/day/week/month/year aggregates to cap `public_crawl_events` growth).
 
 *Classic search crawlers (HTML-first):*
 
@@ -538,9 +538,15 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
   `title`/`aria-label` ("Father: …", "Child: …"). Helps both accessibility and agent heuristics that
   score `<a>` tags over canvas/SVG.
 - **U10. Bot observability & policy.** Log agent/crawler hits on public routes (User-Agent buckets:
-  `Googlebot`, `GPTBot`, `ClaudeBot`, `PerplexityBot`, etc.) in admin metrics; document opt-out in
-  `robots.txt` where desired. Optional `noai` / `noimageai` meta for restricted media later.
-  _Logging + robots policy shipped; admin Traffic panel shipped 2026-07-04._
+  `Googlebot`, `GPTBot`, `ClaudeBot`, `PerplexityBot`, etc.) and human visitor hits (geo from edge
+  headers, no IP storage) in admin metrics; document opt-out in `robots.txt` where desired. Optional
+  `noai` / `noimageai` meta for restricted media later.
+  _Logging + robots policy shipped; admin Traffic panel (bot drill-down + visitor geo) shipped 2026-07-04._
+- **U10a. Traffic rollup & retention.** Raw `public_crawl_events` rows are fine for launch but will
+  grow without bound. Add scheduled aggregation into **hour / day / week / month / year** summary
+  tables (hits by agent, route, country; optional unique-resource counts) and prune or archive raw
+  events after a retention window. Admin panel reads rollups for long windows; recent drill-down keeps
+  a short raw tail. Goal: bounded storage and faster stats RPCs as traffic scales.
 
 *Privacy & sequencing:*
 
