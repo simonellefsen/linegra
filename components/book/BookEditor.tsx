@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUp, ArrowDown, Plus, Trash2, Save, Loader2, Eye, X, AlertCircle, RefreshCw, Lock, Unlock, History, Upload } from 'lucide-react';
 import { FamilyBook, BookChapter, BookChapterKind, BookChapterStatus, BookStatus, Person } from '../../types';
-import { saveFamilyBook } from '../../services/books';
+import { saveFamilyBook, setFamilyBookPublic } from '../../services/books';
 import { composePersonBiography, composeFamilyOverview } from '../../services/ai';
 import { moveChapter, removeChapter, createCustomChapter, createSectionChapter } from '../../lib/bookComposer';
 import { createBookVersion, recordVersion, matchesVersion, restoreVersion, BookVersion } from '../../lib/bookVersions';
 import { loadVersionHistory, saveVersionHistory } from '../../lib/bookVersionStore';
 import BookPrintOverlay from './BookPrintOverlay';
+import BookShareControls from './BookShareControls';
 import AiTextOps from '../common/AiTextOps';
 
 interface BookEditorProps {
@@ -58,6 +59,7 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
   const [title, setTitle] = useState(book.title);
   const [subtitle, setSubtitle] = useState(book.subtitle ?? '');
   const [chapters, setChapters] = useState<BookChapter[]>(book.chapters);
+  const [isPublic, setIsPublic] = useState(book.isPublic);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
@@ -79,8 +81,14 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
 
   // A live, unsaved copy for the preview overlay (does not persist until Save).
   const workingBook = useMemo<FamilyBook>(
-    () => ({ ...book, title: title.trim() || book.title, subtitle: subtitle.trim() || null, chapters }),
-    [book, title, subtitle, chapters]
+    () => ({
+      ...book,
+      title: title.trim() || book.title,
+      subtitle: subtitle.trim() || null,
+      chapters,
+      isPublic,
+    }),
+    [book, title, subtitle, chapters, isPublic]
   );
 
   const updateChapter = useCallback((index: number, patch: Partial<BookChapter>) => {
@@ -150,7 +158,7 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
           options: book.options,
           chapters,
           statistics: book.statistics,
-          isPublic: book.isPublic,
+          isPublic,
           actor,
         });
         const snapshot = createBookVersion(
@@ -171,7 +179,22 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
         setSaving(false);
       }
     },
-    [book, title, subtitle, chapters, actor, onSaved, onClose]
+    [book, title, subtitle, chapters, isPublic, actor, onSaved, onClose]
+  );
+
+  const handleTogglePublic = useCallback(
+    async (next: boolean) => {
+      setIsPublic(next);
+      setError(null);
+      try {
+        await setFamilyBookPublic({ ...workingBook, isPublic: next }, next, actor);
+        onSaved();
+      } catch (err) {
+        setIsPublic(!next);
+        setError(err instanceof Error ? err.message : 'Could not update sharing settings.');
+      }
+    },
+    [workingBook, actor, onSaved]
   );
 
   const handleSave = useCallback(() => persist(book.status, 'Save'), [persist, book.status]);
@@ -263,6 +286,8 @@ const BookEditor: React.FC<BookEditorProps> = ({ book, people = [], treeName, ac
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
           />
         </div>
+
+        <BookShareControls book={workingBook} disabled={saving} onTogglePublic={handleTogglePublic} />
 
         {error ? (
           <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

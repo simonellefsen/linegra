@@ -202,28 +202,27 @@ that gates raw data.
   `parseFtdnaSharedSegmentsCsv`), the cluster labels in
   [../lib/dnaClassification.ts](../lib/dnaClassification.ts), and the `dna_matches` schema. Deeper
   design: `sources/dna-triangulation.md` (to be written).
-- **K2. MRCA suggestion from shared matches + cM.** Propose most-recent-common-ancestor candidates
-  by combining the shortest-path resolver with shared-match overlap. Reuse
-  `resolveSharedMatchLineage` / `resolveSharedTestLineage` in
-  [../services/archive.ts](../services/archive.ts) and `supportsRelationshipHops` in
-  `lib/dnaClassification.ts`. *(Note: the resolver lives in `services/archive.ts`, not the admin
-  panel — the panel only calls it.)*
-- **K3. In-tree auto-placement of unknown matches.** When a match has no person row, use the
-  resolver to suggest where they slot in. Reuse `resolveSharedMatchLineage`, `persons.is_dna_match` /
-  `dna_match_info`. Extends [concepts/dna-lineage-verification.md](concepts/dna-lineage-verification.md).
-- **K4. Y / mtDNA haplogroup migration display.** Map `DNATest.haplogroup` (already stored) →
-  migration route on tester profiles. Needs an external haplogroup→route reference dataset.
-- **K5. DNA-painter-style segment view.** Per-chromosome bar of shared segments colored by cluster.
-  Reuse the shared-segment parser output + K1 clusters.
-- **K6. Raw-autosomal ingestion beyond CSV.** `parseAutosomalCsv` is shallow
-  (rsid/chromosome/position preview only); full per-SNP matching is a different scale problem — the
-  heavy lift. **Blocked by K7.** Reuse [../lib/dnaRawParser.ts](../lib/dnaRawParser.ts).
-- **K7. Consent + encryption-at-rest for raw biometric DNA.** Raw autosomal DNA is sensitive,
-  immutable, hereditary data. Add `consent_given_at` / `consent_scope` on `dna_tests`; encrypt at
-  rest or don't persist (minimize first); keep out of the public read path. Policy:
-  [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md); ties
-  to SPEC §8.
-- **Sequencing:** K7 → K6 → K1 → K5 (consent gates raw ingestion gates triangulation gates painter).
+- **K2. MRCA suggestion from shared matches + cM — DONE 2026-07-04.** Ranks MRCA candidates by
+  supporting matches, combined cM, cluster overlap, and path convergence in
+  [../lib/dnaMrcaSuggestions.ts](../lib/dnaMrcaSuggestions.ts), surfaced in the admin DNA panel.
+- **K3. In-tree auto-placement of unknown matches — DONE 2026-07-04.** Unlinked shared-segment
+  imports surface in the admin DNA panel with placement suggestions
+  ([../lib/dnaMatchPlacement.ts](../lib/dnaMatchPlacement.ts)); curators can link to an existing
+  person or create a `is_dna_match` placeholder and attach the test.
+- **K4. Y / mtDNA haplogroup fields + migration routes — DONE 2026-07-04.** Profile DNA tab stores
+  **Y-DNA**, **mtDNA**, and **Mitotree**; migration route cards use
+  [../lib/haplogroupRoutes.ts](../lib/haplogroupRoutes.ts) (curated reference dataset).
+- **K5. DNA-painter-style segment view — DONE 2026-07-04.** Per-chromosome segment bars colored by
+  cluster in [../components/dna/DnaSegmentPainterView.tsx](../components/dna/DnaSegmentPainterView.tsx),
+  wired into the admin DNA panel. Pure layout in [../lib/dnaSegmentPainter.ts](../lib/dnaSegmentPainter.ts).
+- **K6. Raw-autosomal ingestion beyond CSV — DONE 2026-07-04.** Full SNP index builder +
+  kit-vs-kit comparison in [../lib/dnaAutosomalIndex.ts](../lib/dnaAutosomalIndex.ts); admin panel
+  compares encrypted indices when consent + key are present.
+- **K7. Consent + encryption-at-rest for raw biometric DNA — DONE 2026-07-04.** Consent modal on
+  raw import, `consent_given_at` / `consent_scope` columns, AES-GCM encrypted payload storage
+  ([../lib/dnaRawEncryption.ts](../lib/dnaRawEncryption.ts)), purge RPC, private test flagging.
+  Policy: [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md).
+- **Sequencing:** K7 → K6 → K1 → K5 — **complete.**
 
 ### L. Interactive tree enhancements
 Extends SPEC §7 (performance); new UI views are new SPEC ground. The pedigree view
@@ -246,23 +245,28 @@ replacing the layout engine in [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.
   (color/style) and DNA-backed edges surface **shared-cM** on the badge + hover tooltip, joined from
   `dna_matches.shared_cm` by the match ids in `dna_support_by_person`. Reused the existing confidence
   enum + `relationships.metadata.dna_support_by_person`. Extends D.
-- **L2. Fan / pedigree-compact view.** Alternate renderer for 8+ ancestor generations. Reuse
-  [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.ts) +
-  [../lib/pedigreeScope.ts](../lib/pedigreeScope.ts) (ancestor depth already capped at 8).
-- **L3. Timeline / chronological view.** Persons/events on a time axis. Reuse `person_events` +
-  birth/death-year helpers.
-- **L4. Map / migration view.** Plot persons/events by `StructuredPlace.lat`/`lng` over a basemap;
-  animate migration paths. **New runtime dependency (a map lib) — flag before starting.**
-- **L5. Keyboard navigation + search-to-focus + breadcrumbs.** UX polish. Reuse
-  [../lib/pedigreeScope.ts](../lib/pedigreeScope.ts).
-- **L6. Tree export as PNG / SVG / PDF.** Client-side canvas/SVG serialization. Model on the
-  `@media print` pattern in `components/book/*`.
-- **L7. Side-by-side person / tree compare.** Two-focus view. Reuse
-  [../lib/pedigreeScope.ts](../lib/pedigreeScope.ts).
+- **L2. Fan / pedigree-compact view — DONE 2026-07-04.** Alternate ancestor fan renderer for 8+
+  generations: [../lib/fanLayout.ts](../lib/fanLayout.ts) maps pedigree spans to polar coordinates;
+  [../components/InteractiveTree/FanTree.tsx](../components/InteractiveTree/FanTree.tsx) with DNA-aware
+  edges; **Pedigree / Fan** toggle on the Interactive Tree tab. Descendants stay in the standard pedigree
+  view — fan is ancestors-only.
+- **L3. Timeline / chronological view — DONE 2026-07-04.** Birth/death/burial + custom events on a
+  time axis for the scoped pedigree ([../components/InteractiveTree/TimelineView.tsx](../components/InteractiveTree/TimelineView.tsx),
+  [../lib/timelineEvents.ts](../lib/timelineEvents.ts)).
+- **L4. Map / migration view — DONE 2026-07-04.** SVG equirectangular map with lat/lng or country-centroid
+  fallback, animated birth→death segments ([../components/InteractiveTree/MapView.tsx](../components/InteractiveTree/MapView.tsx),
+  [../lib/placeCoordinates.ts](../lib/placeCoordinates.ts)). No external map-tile dependency.
+- **L5. Keyboard navigation + search-to-focus + breadcrumbs — DONE 2026-07-04.** Ancestor breadcrumbs,
+  ↑↓←→ pedigree navigation, Home reset, `/` focuses search ([../lib/treeNavigation.ts](../lib/treeNavigation.ts),
+  [../components/InteractiveTree/useTreeKeyboardNav.ts](../components/InteractiveTree/useTreeKeyboardNav.ts),
+  [../components/InteractiveTree/TreeViewToolbar.tsx](../components/InteractiveTree/TreeViewToolbar.tsx)).
+- **L6. Tree export as PNG / SVG / PDF — DONE 2026-07-04.** Client-side SVG/PNG export + print/PDF via
+  [../lib/treeExport.ts](../lib/treeExport.ts) (Export menu on tree toolbar).
+- **L7. Side-by-side person / tree compare — DONE 2026-07-04.** Dual pedigree scopes with person pickers
+  ([../components/InteractiveTree/CompareTreeView.tsx](../components/InteractiveTree/CompareTreeView.tsx)).
 - **Virtualization for large trees folds under existing G / SPEC §7**, not a new L item — G already
   covers "no full-tree hydration."
-- **Sequencing:** L1 first (cheap, high-visibility); then L4 (map) as the showcase; the rest as
-  capacity allows.
+- **L track complete (L1–L7).** Next themed groups: **M5** (public book viewer), **N Phase 3** (AI spend cap).
 
 ### M. AI family books & biography editing
 Builds on J. Extends SPEC §3.5 (admin workspace) and adds a public viewer; grounding policy ties to
@@ -305,8 +309,12 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
   immediately. **Deferred to M5:** server-side snapshots (a `family_book_versions` table +
   `published_chapters` column via migration) for cross-device history and a viewer-facing published
   snapshot the public viewer reads.
-- **M5. Public book sharing viewer.** `is_public` + an RLS policy already exist but there's no
-  public viewer UI. Build the read-only viewer route + shareable link; print-to-PDF already works.
+- **M5. Public book sharing viewer — DONE 2026-07-04.** Read-only viewer at `/book/:id` (also `?book=:id`)
+  via [../components/book/PublicBookViewerPage.tsx](../components/book/PublicBookViewerPage.tsx) +
+  [../lib/bookShare.ts](../lib/bookShare.ts). Uses existing `is_public` RLS (`can_read_tree` + published
+  `status: complete`). Share toggle + copy link in [../components/book/BookShareControls.tsx](../components/book/BookShareControls.tsx)
+  (book editor + saved-books list). Print/PDF via existing `@media print` styles. `vercel.json` SPA rewrite
+  for direct `/book/*` links.
 
 *Biography editing & generation:*
 
@@ -442,9 +450,9 @@ Two lenses:
 - **For product leverage → A (multi-user auth)** — it unblocks M5 (public book viewer) and live
   verification of the book features (the local admin can't read saved books today; see the RLS note).
 
-For user-facing progress on the themed groups (small, high-visibility wins): **K1 admin clustering
-is now wired** (2026-07-03); next DNA wins are **K5** (segment painter) or **K2** (MRCA suggestions).
-Confirm priority with the user before large changes.
+For user-facing progress on the themed groups (small, high-visibility wins): the **L interactive tree
+track (L1–L7) is complete.** Next themed groups: **M5** (public book viewer, gated on auth), or
+**N Phase 3** (AI spend cap).
 
 > **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit
 > owner* on the same region. True triangulation/Leeds also requires the two matches to share that

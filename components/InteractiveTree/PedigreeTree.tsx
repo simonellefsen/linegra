@@ -282,7 +282,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   };
 
   return (
-    <div className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
+    <div data-tree-export-root className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-white/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 shadow-sm backdrop-blur max-w-[72%]">
         <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-emerald-600" />DNA-backed</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-indigo-600" />Confirmed</span>

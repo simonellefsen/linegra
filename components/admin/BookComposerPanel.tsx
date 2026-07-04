@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Eye, Trash2, Sparkles, RefreshCw, AlertCircle, CheckCircle2, Pencil } from 'lucide-react';
+import { BookOpen, Eye, Trash2, Sparkles, RefreshCw, AlertCircle, CheckCircle2, Pencil, Globe, Copy, ExternalLink } from 'lucide-react';
 import { Person, Relationship, BookGenerationOptions, BookScope, BookStyle, BookLength, BookLanguage, FamilyBook } from '../../types';
 import { planBook, extractYear } from '../../lib/bookComposer';
 import { BOOK_LANGUAGES, DEFAULT_BOOK_LANGUAGE } from '../../lib/bookI18n';
-import { composeBook, saveFamilyBook, listFamilyBooks, deleteFamilyBook } from '../../services/books';
+import { composeBook, saveFamilyBook, listFamilyBooks, deleteFamilyBook, setFamilyBookPublic, isBookPubliclyShareable } from '../../services/books';
+import { buildPublicBookUrl } from '../../lib/bookShare';
 import { loadArchiveData } from '../../services/archive';
 import BookPrintOverlay from '../book/BookPrintOverlay';
 import BookEditor from '../book/BookEditor';
@@ -223,6 +224,30 @@ const BookComposerPanel: React.FC<BookComposerPanelProps> = ({
     },
     [actor, loadBooks]
   );
+
+  const handleTogglePublic = useCallback(
+    async (book: FamilyBook, next: boolean) => {
+      setError(null);
+      try {
+        await setFamilyBookPublic(book, next, actor);
+        await loadBooks();
+        setInfo(next ? `"${book.title}" is now publicly shareable.` : `"${book.title}" is now private.`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update sharing.');
+      }
+    },
+    [actor, loadBooks]
+  );
+
+  const handleCopyShareLink = useCallback(async (book: FamilyBook) => {
+    const url = buildPublicBookUrl(book.id);
+    try {
+      await navigator.clipboard.writeText(url);
+      setInfo('Share link copied to clipboard.');
+    } catch {
+      window.prompt('Copy this link:', url);
+    }
+  }, []);
 
   if (!treeId) {
     return (
@@ -490,12 +515,60 @@ const BookComposerPanel: React.FC<BookComposerPanelProps> = ({
             {savedBooks.map((book) => (
               <li key={book.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <p className="truncate font-serif text-lg font-bold text-slate-900">{book.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="truncate font-serif text-lg font-bold text-slate-900">{book.title}</p>
+                    {book.isPublic ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-sky-700">
+                        <Globe className="h-3 w-3" /> Public
+                      </span>
+                    ) : null}
+                    {book.status === 'complete' ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700">
+                        Published
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-500">
+                        Draft
+                      </span>
+                    )}
+                  </div>
                   <p className="truncate text-sm text-slate-500">
                     {book.chapters.length} chapters · {formatUpdated(book.updatedAt)}
                   </p>
                 </div>
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {book.status === 'complete' ? (
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePublic(book, !book.isPublic)}
+                      className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-widest ${
+                        book.isPublic
+                          ? 'border-sky-200 text-sky-700 hover:bg-sky-50'
+                          : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Globe className="h-3.5 w-3.5" /> {book.isPublic ? 'Unshare' : 'Share'}
+                    </button>
+                  ) : null}
+                  {isBookPubliclyShareable(book) ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyShareLink(book)}
+                        className="flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-700 hover:bg-slate-50"
+                      >
+                        <Copy className="h-3.5 w-3.5" /> Link
+                      </button>
+                      <a
+                        href={buildPublicBookUrl(book.id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-700 hover:bg-slate-50"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> Open
+                      </a>
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => setEditingBook(book)}

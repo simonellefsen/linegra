@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, Dna, Layers, Loader2, Search, Sparkles } from 'lucide-react';
-import { DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution, Person, Relationship } from '../types';
+import { Activity, Dna, Layers, Loader2, Search, Sparkles, UserPlus, Link2 } from 'lucide-react';
+import { DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution, Person, Relationship, UnlinkedDnaMatchRecord } from '../types';
 import { clusterSharedSegments, segmentsFromPreview, summarizeClusterIcw } from '../lib/dnaClustering';
+import DnaSegmentPainterView from './dna/DnaSegmentPainterView';
+import type { PaintSegmentInput } from '../lib/dnaSegmentPainter';
+import { suggestMrcaCandidates, type MatchLineageInput } from '../lib/dnaMrcaSuggestions';
 import {
   grandparentSlotShortLabel,
   inferPathGrandparentSlot,
@@ -10,13 +13,28 @@ import {
   type GrandparentSlot,
   type ParentalSideHint,
 } from '../lib/dnaParentalHints';
+import { suggestUnknownMatchPlacements } from '../lib/dnaMatchPlacement';
 import {
+  createDnaMatchPlaceholderPerson,
+  linkUnlinkedDnaTestToPerson,
   listAutosomalPeopleInTree,
+  listAutosomalRawKitsForTree,
   listSharedMatchesForAutosomalPerson,
+  listUnlinkedSharedMatchesForAutosomalPerson,
   loadDnaPathRelationshipsForTree,
+  resolveFamilyKitLineage,
   resolveSharedMatchLineage,
   resolveSharedTestLineage,
 } from '../services/archive';
+import {
+  compareAutosomalMarkerIndices,
+  deserializeMarkerIndex,
+} from '../lib/dnaAutosomalIndex';
+import {
+  canStoreEncryptedRawDna,
+  decryptRawPayload,
+  resolveDnaEncryptionKey,
+} from '../lib/dnaRawEncryption';
 
 interface AdminDnaPanelProps {
   treeId: string | null;
@@ -57,13 +75,21 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   const [selectedPersonId, setSelectedPersonId] = useState<string>('');
   const [personSearch, setPersonSearch] = useState('');
   const [matches, setMatches] = useState<DNASharedMatchRecord[]>([]);
+  const [unlinkedMatches, setUnlinkedMatches] = useState<UnlinkedDnaMatchRecord[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
+  const [placingMatchId, setPlacingMatchId] = useState<string | null>(null);
+  const [rawKits, setRawKits] = useState<Awaited<ReturnType<typeof listAutosomalRawKitsForTree>>>([]);
+  const [kitCompareA, setKitCompareA] = useState('');
+  const [kitCompareB, setKitCompareB] = useState('');
+  const [kitComparison, setKitComparison] = useState<ReturnType<typeof compareAutosomalMarkerIndices> | null>(null);
+  const [comparingKits, setComparingKits] = useState(false);
   const [resolvingMatchId, setResolvingMatchId] = useState<string | null>(null);
   const [resolutionByMatchId, setResolutionByMatchId] = useState<Record<string, DnaLineageResolution>>({});
   const [expandedPathByMatchId, setExpandedPathByMatchId] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [minClusterCm, setMinClusterCm] = useState(7);
   const [strictIcw, setStrictIcw] = useState(true);
+  const [selectedPaintMatchId, setSelectedPaintMatchId] = useState<string | null>(null);
 
   const matchById = useMemo(() => new Map(matches.map((match) => [match.id, match])), [matches]);
 
@@ -135,6 +161,181 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
     [segmentBackedMatches, clusteredMatchIds]
   );
 
+  const clusterIndexByMatchId = useMemo(() => {
+    const map = new Map<string, number>();
+    clusterGroups.forEach((group, index) => {
+      group.forEach((matchId) => map.set(matchId, index));
+    });
+    return map;
+  }, [clusterGroups]);
+
+  const paintInputs = useMemo((): PaintSegmentInput[] => {
+    return segmentBackedMatches.map((match) => ({
+      matchId: match.id,
+      matchLabel: match.counterpartPersonName,
+      clusterIndex: clusterIndexByMatchId.get(match.id) ?? null,
+      segments: segmentsByMatchId.get(match.id) || [],
+    }));
+  }, [segmentBackedMatches, clusterIndexByMatchId, segmentsByMatchId]);
+
+  const resolvePersonName = useCallback(
+    (personId: string) => {
+      const person = peopleById.get(personId);
+      if (!person) return 'Unknown person';
+      return `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Unknown person';
+    },
+    [peopleById]
+  );
+
+  const mrcaMatchInputs = useMemo((): MatchLineageInput[] => {
+    return matches.map((match) => {
+      const resolution = resolutionByMatchId[match.id];
+      const pathPersonIds = resolution?.pathPersonIds?.length
+        ? resolution.pathPersonIds
+        : match.pathPersonIds;
+      const pathRelationshipIds = resolution?.pathRelationshipIds?.length
+        ? resolution.pathRelationshipIds
+        : match.pathRelationshipIds;
+      return {
+        matchId: match.id,
+        counterpartPersonId: match.counterpartPersonId,
+        counterpartPersonName: match.counterpartPersonName,
+        sharedCM: match.sharedCM,
+        segments: match.segments,
+        pathPersonIds,
+        pathRelationshipIds,
+        pathFound: pathPersonIds.length > 1 && pathRelationshipIds.length > 0,
+        pathFitsPrediction: resolution?.pathFitsPrediction ?? match.pathFitsPrediction,
+        clusterIndex: clusterIndexByMatchId.get(match.id) ?? null,
+      };
+    });
+  }, [matches, resolutionByMatchId, clusterIndexByMatchId]);
+
+  const mrcaCandidates = useMemo(() => {
+    if (!selectedPersonId || !matches.length) return [];
+    return suggestMrcaCandidates(selectedPersonId, mrcaMatchInputs, relationships, resolvePersonName, {
+      clusterGroups: clusterGroups,
+      minSupportingMatches: 1,
+    });
+  }, [selectedPersonId, matches.length, mrcaMatchInputs, relationships, resolvePersonName, clusterGroups]);
+
+  const linkedMatchSegmentInputs = useMemo(
+    () =>
+      segmentBackedMatches.map((match) => ({
+        matchId: match.id,
+        counterpartName: match.counterpartPersonName,
+        segments: segmentsByMatchId.get(match.id) || [],
+      })),
+    [segmentBackedMatches, segmentsByMatchId]
+  );
+
+  const placementByUnlinkedId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof suggestUnknownMatchPlacements>>();
+    unlinkedMatches.forEach((match) => {
+      map.set(
+        match.id,
+        suggestUnknownMatchPlacements(
+          {
+            matchId: match.id,
+            matchName: match.matchName,
+            sharedCM: match.sharedCM,
+            segments: match.segments,
+            predictionLabel: match.predictionLabel,
+            segmentsPreview: segmentsFromPreview(match.sharedSegmentsPreview || []),
+          },
+          {
+            mrcaCandidates,
+            linkedMatches: linkedMatchSegmentInputs,
+            clusterGroups,
+            minClusterCm,
+            nameMatchCandidate: match.suggestedNameMatchPersonId
+              ? {
+                  personId: match.suggestedNameMatchPersonId,
+                  personName: match.suggestedNameMatchPersonName || 'Unknown',
+                  score: match.suggestedNameMatchScore || 0,
+                }
+              : null,
+          }
+        )
+      );
+    });
+    return map;
+  }, [unlinkedMatches, mrcaCandidates, linkedMatchSegmentInputs, clusterGroups, minClusterCm]);
+
+  const handleCreateDnaMatchPerson = async (match: UnlinkedDnaMatchRecord) => {
+    if (!treeId || !selectedPersonId || placingMatchId) return;
+    setPlacingMatchId(match.id);
+    setError(null);
+    try {
+      const result = await createDnaMatchPlaceholderPerson({
+        treeId,
+        focusPersonId: selectedPersonId,
+        dnaTestId: match.dnaTestId,
+        matchName: match.matchName,
+        sharedCM: match.sharedCM,
+        segments: match.segments,
+        longestSegment: match.longestSegment,
+        actor,
+      });
+      await loadMatches();
+      await onOpenPerson?.(result.personId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create DNA match person.');
+    } finally {
+      setPlacingMatchId(null);
+    }
+  };
+
+  const handleLinkUnlinkedToPerson = async (match: UnlinkedDnaMatchRecord, targetPersonId: string) => {
+    if (!treeId || !selectedPersonId || placingMatchId) return;
+    setPlacingMatchId(match.id);
+    setError(null);
+    try {
+      await linkUnlinkedDnaTestToPerson({
+        treeId,
+        focusPersonId: selectedPersonId,
+        dnaTestId: match.dnaTestId,
+        targetPersonId,
+        matchName: match.matchName,
+        sharedCM: match.sharedCM,
+        segments: match.segments,
+        longestSegment: match.longestSegment,
+      });
+      await loadMatches();
+      await onOpenPerson?.(targetPersonId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not link DNA test to person.');
+    } finally {
+      setPlacingMatchId(null);
+    }
+  };
+
+  const handleCompareRawKits = async () => {
+    const kitA = rawKits.find((kit) => kit.testId === kitCompareA);
+    const kitB = rawKits.find((kit) => kit.testId === kitCompareB);
+    const key = resolveDnaEncryptionKey();
+    if (!kitA || !kitB || !key || !kitA.encryptedRawPayload || !kitB.encryptedRawPayload) {
+      setKitComparison(null);
+      return;
+    }
+    setComparingKits(true);
+    setError(null);
+    try {
+      const [plainA, plainB] = await Promise.all([
+        decryptRawPayload(kitA.encryptedRawPayload, key),
+        decryptRawPayload(kitB.encryptedRawPayload, key),
+      ]);
+      const indexA = deserializeMarkerIndex(plainA, kitA.rawMarkerIndexStats);
+      const indexB = deserializeMarkerIndex(plainB, kitB.rawMarkerIndexStats);
+      setKitComparison(compareAutosomalMarkerIndices(indexA, indexB));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not compare encrypted raw kits.');
+      setKitComparison(null);
+    } finally {
+      setComparingKits(false);
+    }
+  };
+
   const filteredCandidates = useMemo(() => {
     const term = personSearch.trim().toLowerCase();
     if (!term) return candidates;
@@ -169,16 +370,22 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   const loadMatches = useCallback(async () => {
     if (!treeId || !selectedPersonId) {
       setMatches([]);
+      setUnlinkedMatches([]);
       return;
     }
     setLoadingMatches(true);
     setError(null);
     try {
-      const rows = await listSharedMatchesForAutosomalPerson(treeId, selectedPersonId);
+      const [rows, unlinked] = await Promise.all([
+        listSharedMatchesForAutosomalPerson(treeId, selectedPersonId),
+        listUnlinkedSharedMatchesForAutosomalPerson(treeId, selectedPersonId),
+      ]);
       setMatches(rows);
+      setUnlinkedMatches(unlinked);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load shared autosomal matches.');
       setMatches([]);
+      setUnlinkedMatches([]);
     } finally {
       setLoadingMatches(false);
     }
@@ -188,6 +395,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
     setResolutionByMatchId({});
     setExpandedPathByMatchId({});
     setMatches([]);
+    setUnlinkedMatches([]);
     if (!treeId) {
       setCandidates([]);
       setSelectedPersonId('');
@@ -199,6 +407,16 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   useEffect(() => {
     loadMatches();
   }, [treeId, selectedPersonId, loadMatches]);
+
+  useEffect(() => {
+    if (!treeId) {
+      setRawKits([]);
+      return;
+    }
+    listAutosomalRawKitsForTree(treeId)
+      .then(setRawKits)
+      .catch(() => setRawKits([]));
+  }, [treeId, matches.length, unlinkedMatches.length]);
 
   const [resolvingAll, setResolvingAll] = useState(false);
   const [resolveAllProgress, setResolveAllProgress] = useState<{ done: number; total: number }>({
@@ -227,6 +445,16 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                   treeId,
                   selectedPersonId,
                   match.dnaMatchId || match.id,
+                  actor,
+                  resolveOptions
+                )
+              : match.source === 'family_kit'
+              ? await resolveFamilyKitLineage(
+                  treeId,
+                  selectedPersonId,
+                  match.dnaTestId || match.id.replace(/^family-kit:/, ''),
+                  match.counterpartPersonId,
+                  match.familyRelationLabel || 'Family member',
                   actor,
                   resolveOptions
                 )
@@ -287,6 +515,16 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
               actor,
               resolveOptions
             )
+          : match.source === 'family_kit'
+          ? await resolveFamilyKitLineage(
+              treeId,
+              selectedPersonId,
+              match.dnaTestId || match.id.replace(/^family-kit:/, ''),
+              match.counterpartPersonId,
+              match.familyRelationLabel || 'Family member',
+              actor,
+              resolveOptions
+            )
           : await resolveSharedTestLineage(
               treeId,
               selectedPersonId,
@@ -321,8 +559,9 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
           <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">DNA Panel</p>
           <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">Autosomal Match Lineage Review</h3>
           <p className="text-sm text-slate-500 mt-2 max-w-3xl">
-            Pick a person with an Autosomal test, inspect shared autosomal matches in this tree, and run lineage path
-            resolution. The action will attach DNA support to relationship links when the found path fits the cM-based prediction.
+            Pick a person with an Autosomal test, inspect shared autosomal matches and in-tree family kits in this
+            tree, and run lineage path resolution. Shared-segment CSV imports provide cM data; relatives with raw
+            autosomal uploads appear as family kits when they are linked in the tree.
           </p>
         </div>
         {error && (
@@ -409,8 +648,13 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                   Select a person to load matches.
                 </div>
               ) : matches.length === 0 && !loadingMatches ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  No shared autosomal matches found for this person.
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 space-y-2">
+                  <p>No shared autosomal matches or in-tree family kits found for this person.</p>
+                  <p className="text-xs text-slate-400">
+                    Import a <span className="font-semibold">Shared DNA CSV</span> (segment comparison export) on
+                    this person or a match profile for cM-based matches. Relatives with a documented tree link and a
+                    raw Autosomal upload (e.g. a parent&apos;s AncestryDNA file) appear here as family kits.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
@@ -438,6 +682,11 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-bold text-slate-900">{match.counterpartPersonName}</p>
+                            {match.source === 'family_kit' && match.familyRelationLabel && (
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mt-0.5">
+                                {match.familyRelationLabel} · family kit
+                              </p>
+                            )}
                             <p className="text-xs text-slate-500">
                               Test owner:{' '}
                               <span
@@ -512,9 +761,11 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             {match.pathFound ? <Dna className="w-3.5 h-3.5" /> : <Activity className="w-3.5 h-3.5" />}
                             {match.pathFound
                               ? match.pathFitsPrediction
-                                ? 'Path linked + cM compatible'
-                                : 'Path found, review cM mismatch'
-                              : 'No lineage path linked'}
+                                ? match.source === 'family_kit'
+                                  ? 'Path linked (documented family, no segment cM)'
+                                  : 'Path linked + cM compatible (blood line)'
+                                : 'Blood path found but cM does not fit prediction'
+                              : 'No ancestral blood or sibling path'}
                           </span>
                           <button
                             type="button"
@@ -546,6 +797,93 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
           </div>
         )}
       </div>
+
+      {treeId && selectedPersonId && unlinkedMatches.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 space-y-5">
+          <div>
+            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Unknown matches</p>
+            <h3 className="text-xl font-serif font-bold text-slate-900 mt-1">Placement suggestions (K3)</h3>
+            <p className="text-sm text-slate-500 mt-2 max-w-3xl">
+              Shared-segment imports with no linked person row. Review suggested placement, link to an existing
+              person, or create a DNA match placeholder to attach the test in-tree.
+            </p>
+          </div>
+          <div className="space-y-4">
+            {unlinkedMatches.map((match) => {
+              const suggestions = placementByUnlinkedId.get(match.id) || [];
+              const topSuggestion = suggestions[0];
+              const linkSuggestion = suggestions.find((item) => item.kind === 'link_existing');
+              const isPlacing = placingMatchId === match.id;
+              return (
+                <div
+                  key={match.id}
+                  className="rounded-2xl border border-amber-200 bg-amber-50/40 px-4 py-4 space-y-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{match.matchName}</p>
+                      <p className="text-xs text-slate-500">
+                        {formatCm(match.sharedCM)} · {match.segments ?? 'n/a'} segments · {match.predictionLabel}
+                      </p>
+                      {match.fileName && <p className="text-xs text-slate-400 truncate max-w-xl">{match.fileName}</p>}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {linkSuggestion?.anchorPersonId && (
+                        <button
+                          type="button"
+                          disabled={isPlacing}
+                          onClick={() => handleLinkUnlinkedToPerson(match, linkSuggestion.anchorPersonId!)}
+                          className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          <Link2 className="w-3.5 h-3.5" />
+                          Link to {linkSuggestion.anchorPersonName}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={isPlacing}
+                        onClick={() => handleCreateDnaMatchPerson(match)}
+                        className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1.5"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        {isPlacing ? 'Placing…' : 'Create match person'}
+                      </button>
+                    </div>
+                  </div>
+                  {topSuggestion && (
+                    <p className="text-xs text-slate-700">
+                      <span className="font-semibold">Top suggestion:</span> {topSuggestion.rationale}
+                    </p>
+                  )}
+                  {suggestions.length > 1 && (
+                    <ul className="text-xs text-slate-600 space-y-1">
+                      {suggestions.slice(0, 4).map((suggestion, index) => (
+                        <li key={`${match.id}-suggestion-${index}`}>
+                          {suggestion.anchorPersonName ? (
+                            <button
+                              type="button"
+                              className="underline decoration-dotted underline-offset-2 hover:text-blue-700"
+                              onClick={() =>
+                                suggestion.anchorPersonId && onOpenPerson?.(suggestion.anchorPersonId)
+                              }
+                            >
+                              {suggestion.anchorPersonName}
+                            </button>
+                          ) : (
+                            <span>{suggestion.relationshipLabel}</span>
+                          )}
+                          {' — '}
+                          {suggestion.rationale}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {treeId && selectedPersonId && (
         <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 space-y-5">
@@ -681,6 +1019,189 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
             <p className="text-xs text-slate-500">
               {overlapSingletons.length} match(es) with segment data did not overlap any other match at this threshold.
             </p>
+          )}
+        </div>
+      )}
+
+      {treeId && selectedPersonId && mrcaCandidates.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 space-y-5">
+          <div>
+            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">MRCA analysis</p>
+            <h3 className="text-xl font-serif font-bold text-slate-900 mt-1">Suggested common ancestors</h3>
+            <p className="text-sm text-slate-500 mt-2 max-w-3xl">
+              Candidates ranked by how many shared matches point to the same ancestor, combined shared cM,
+              cluster overlap, and lineage-path convergence. Resolve match lineages first for best results.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {mrcaCandidates.slice(0, 10).map((candidate, index) => (
+              <div
+                key={candidate.ancestorPersonId}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 space-y-2"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => onOpenPerson?.(candidate.ancestorPersonId)}
+                      className="text-sm font-bold text-slate-900 hover:text-blue-700 underline decoration-dotted underline-offset-2"
+                    >
+                      {index + 1}. {candidate.ancestorName}
+                    </button>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Likely MRCA for{' '}
+                      <span className="font-semibold text-slate-700">{candidate.primaryRelationshipLabel}</span>
+                      {' · '}
+                      {candidate.supportingMatchIds.length} match
+                      {candidate.supportingMatchIds.length === 1 ? '' : 'es'}
+                      {candidate.totalSharedCm > 0 && (
+                        <>
+                          {' '}
+                          · {candidate.totalSharedCm.toFixed(1)} cM combined
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {candidate.clusterIndices.length > 0 && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700">
+                        Clusters {candidate.clusterIndices.map((i) => i + 1).join(', ')}
+                      </span>
+                    )}
+                    {candidate.pathConvergenceCount >= 2 && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700">
+                        Path convergence ×{candidate.pathConvergenceCount}
+                      </span>
+                    )}
+                    {candidate.cmCompatibleCount > 0 && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border border-blue-200 bg-blue-50 text-blue-700">
+                        cM fit {candidate.cmCompatibleCount}/{candidate.supportingMatchIds.length}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-slate-600">
+                  Matches: {candidate.supportingMatchNames.join(', ')}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {treeId && selectedPersonId && segmentBackedMatches.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 space-y-5">
+          <div>
+            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Chromosome map</p>
+            <h3 className="text-xl font-serif font-bold text-slate-900 mt-1">Segment painter</h3>
+            <p className="text-sm text-slate-500 mt-2 max-w-3xl">
+              Shared segments positioned on each chromosome, colored by overlap cluster. Gray segments belong to
+              matches that did not cluster at the current threshold. Click a segment to highlight the match.
+            </p>
+          </div>
+
+          {clusterGroups.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {clusterGroups.map((group, index) => {
+                const tint = CLUSTER_TINTS[index % CLUSTER_TINTS.length];
+                return (
+                  <span
+                    key={`legend-${index}`}
+                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border ${tint}`}
+                  >
+                    Cluster {index + 1} · {group.length}
+                  </span>
+                );
+              })}
+              {overlapSingletons.length > 0 && (
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border border-slate-200 bg-slate-100 text-slate-600">
+                  Unclustered · {overlapSingletons.length}
+                </span>
+              )}
+            </div>
+          )}
+
+          <DnaSegmentPainterView
+            inputs={paintInputs}
+            minCentimorgans={minClusterCm}
+            selectedMatchId={selectedPaintMatchId}
+            onSelectMatch={(matchId) => {
+              setSelectedPaintMatchId((current) => (current === matchId ? null : matchId));
+              const counterpartId = matchById.get(matchId)?.counterpartPersonId;
+              if (counterpartId) onOpenPerson?.(counterpartId);
+            }}
+          />
+
+          {selectedPaintMatchId && matchById.get(selectedPaintMatchId) && (
+            <p className="text-xs text-slate-600">
+              Selected:{' '}
+              <span className="font-semibold">{matchById.get(selectedPaintMatchId)?.counterpartPersonName}</span>
+              {clusterIndexByMatchId.has(selectedPaintMatchId) && (
+                <> · cluster {clusterIndexByMatchId.get(selectedPaintMatchId)! + 1}</>
+              )}
+            </p>
+          )}
+        </div>
+      )}
+
+      {treeId && rawKits.length >= 2 && (
+        <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 space-y-5">
+          <div>
+            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Raw kit comparison</p>
+            <h3 className="text-xl font-serif font-bold text-slate-900 mt-1">Encrypted autosomal overlap (K6)</h3>
+            <p className="text-sm text-slate-500 mt-2 max-w-3xl">
+              Compare SNP overlap between testers who imported raw autosomal data with encrypted-index consent.
+              Requires <code className="text-xs bg-slate-100 px-1 rounded">VITE_DNA_ENCRYPTION_KEY</code>.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <select
+              value={kitCompareA}
+              onChange={(e) => setKitCompareA(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-sm"
+            >
+              <option value="">Select kit A</option>
+              {rawKits.map((kit) => (
+                <option key={`a-${kit.testId}`} value={kit.testId}>
+                  {kit.personName}
+                </option>
+              ))}
+            </select>
+            <select
+              value={kitCompareB}
+              onChange={(e) => setKitCompareB(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-sm"
+            >
+              <option value="">Select kit B</option>
+              {rawKits.map((kit) => (
+                <option key={`b-${kit.testId}`} value={kit.testId}>
+                  {kit.personName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            disabled={!kitCompareA || !kitCompareB || kitCompareA === kitCompareB || comparingKits || !canStoreEncryptedRawDna()}
+            onClick={handleCompareRawKits}
+            className="px-4 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-50"
+          >
+            {comparingKits ? 'Comparing…' : 'Compare encrypted kits'}
+          </button>
+          {kitComparison && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700 space-y-1">
+              <p>
+                Shared SNPs: <span className="font-bold">{kitComparison.sharedSnps.toLocaleString()}</span>
+              </p>
+              <p>
+                Half-identical: <span className="font-bold">{kitComparison.halfIdenticalSnps.toLocaleString()}</span>
+                {' · '}
+                Mismatches: <span className="font-bold">{kitComparison.mismatches.toLocaleString()}</span>
+              </p>
+              <p>
+                Overlap rate: <span className="font-bold">{(kitComparison.overlapRate * 100).toFixed(2)}%</span>
+              </p>
+            </div>
           )}
         </div>
       )}

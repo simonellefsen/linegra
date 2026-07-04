@@ -249,6 +249,40 @@ export const getFamilyBook = async (bookId: string): Promise<FamilyBook | null> 
   return data ? mapBookRow(data as Record<string, unknown>) : null;
 };
 
+/** True when a book may be opened via the public viewer (published + explicitly shared). */
+export const isBookPubliclyShareable = (book: Pick<FamilyBook, 'isPublic' | 'status'>): boolean =>
+  book.isPublic && book.status === 'complete';
+
+/**
+ * Load a book for the anonymous public viewer. Returns null when the book is missing,
+ * not shared, still a draft, or the caller lacks read access (RLS).
+ */
+export const fetchPublicFamilyBook = async (bookId: string): Promise<FamilyBook | null> => {
+  const book = await getFamilyBook(bookId);
+  if (!book || !isBookPubliclyShareable(book)) return null;
+  return book;
+};
+
+/** Toggle the `is_public` flag on an existing book (requires write access). */
+export const setFamilyBookPublic = async (
+  book: FamilyBook,
+  isPublic: boolean,
+  actor: { id?: string | null; name?: string | null }
+): Promise<void> => {
+  await saveFamilyBook({
+    bookId: book.id,
+    treeId: book.treeId,
+    title: book.title,
+    subtitle: book.subtitle ?? null,
+    status: book.status,
+    options: book.options,
+    chapters: book.chapters,
+    statistics: book.statistics,
+    isPublic,
+    actor,
+  });
+};
+
 export const deleteFamilyBook = async (
   bookId: string,
   actor: { id?: string | null; name?: string | null }

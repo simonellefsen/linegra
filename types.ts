@@ -94,6 +94,15 @@ export interface DNASharedSegmentRowPreview {
   snps: number;
 }
 
+export type DnaConsentScope = 'derived_only' | 'raw_autosomal_storage';
+
+export interface AutosomalIndexStats {
+  calledMarkers: number;
+  noCallMarkers: number;
+  chromosomeCount: number;
+  indexVersion: 1;
+}
+
 export interface DNATest {
   id: string;
   type: DNATestType;
@@ -102,7 +111,9 @@ export interface DNATest {
   testDate?: string;
   matchDate?: string;
   isPrivate: boolean;
-  haplogroup?: string;
+  yHaplogroup?: string;
+  mtDnaHaplogroup?: string;
+  mitotree?: string;
   isConfirmed?: boolean;
   hvr1?: string;
   hvr2?: string;
@@ -110,6 +121,11 @@ export interface DNATest {
   codingRegion?: string;
   mostDistantAncestorId?: string;
   notes?: string;
+  consentGivenAt?: string;
+  consentScope?: DnaConsentScope;
+  encryptedRawPayload?: string;
+  rawMarkerIndexStats?: AutosomalIndexStats;
+  hasEncryptedRaw?: boolean;
   rawDataSummary?: DNARawDataSummary;
   rawDataPreview?: DNARawDataRowPreview[];
   sharedPersonId?: string;
@@ -131,7 +147,9 @@ export interface DNAAutosomalCandidate {
 
 export interface DNASharedMatchRecord {
   id: string;
-  source: 'dna_match' | 'dna_test';
+  source: 'dna_match' | 'dna_test' | 'family_kit';
+  /** Human label for in-tree family kits (e.g. Biological mother). */
+  familyRelationLabel?: string;
   dnaMatchId?: string;
   dnaTestId?: string;
   ownerPersonId: string;
@@ -152,6 +170,25 @@ export interface DNASharedMatchRecord {
   testId?: string;
   /** Per-segment rows from a shared-segment CSV import (enables triangulation clustering). */
   sharedSegmentsPreview?: DNASharedSegmentRowPreview[];
+}
+
+export interface UnlinkedDnaMatchRecord {
+  id: string;
+  dnaTestId: string;
+  ownerPersonId: string;
+  ownerPersonName: string;
+  matchName: string;
+  sharedCM: number | null;
+  segments: number | null;
+  longestSegment: number | null;
+  predictionLabel: string;
+  confidence: 'High' | 'Medium' | 'Low' | null;
+  fileName?: string;
+  importedAt?: string;
+  sharedSegmentsPreview?: DNASharedSegmentRowPreview[];
+  suggestedNameMatchPersonId?: string;
+  suggestedNameMatchPersonName?: string;
+  suggestedNameMatchScore?: number;
 }
 
 export interface DnaLineageResolution {
@@ -467,7 +504,7 @@ export interface User {
   isAdmin: boolean;
 }
 
-export type TreeLayoutType = 'pedigree' | 'fan' | 'descendant';
+export type TreeLayoutType = 'pedigree' | 'fan' | 'timeline' | 'map' | 'compare' | 'descendant';
 /** GEDCOM QUAY — source-citation certainty (0–3). 0 = unreliable/estimated, 1 = questionable,
  *  2 = secondary evidence, 3 = primary/direct evidence. */
 export type Quay = 0 | 1 | 2 | 3;

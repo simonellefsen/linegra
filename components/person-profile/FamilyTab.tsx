@@ -14,6 +14,7 @@ import {
 import { FamilyLayoutState, Person, Relationship, RelationshipConfidence, RelationshipStatus } from '../../types';
 import { CONFIDENCE_LEVELS, PARENT_LINK_TYPES } from './constants';
 import { getAvatarForPerson } from '../../lib/avatar';
+import { searchPersonsInTree } from '../../services/archive';
 
 interface FamilyTabProps {
   parents: Array<{ person: Person; rel: Relationship }>;
@@ -43,7 +44,19 @@ interface FamilyTabProps {
   ) => Promise<void> | void;
   onRequestAddParent?: (parentType: 'father' | 'mother') => void;
   pendingParentType?: 'father' | 'mother' | null;
+  onRequestAddSpouse?: (unionType: 'marriage' | 'partner') => void;
+  pendingSpouseUnionType?: 'marriage' | 'partner' | null;
+  onRequestAddChild?: (unionRelId: string | null) => void;
+  pendingChildUnionId?: string | null;
+  onLinkExistingSpouse?: (spouseId: string, unionType: 'marriage' | 'partner') => Promise<void> | void;
+  onLinkExistingChild?: (childId: string, unionRelId: string | null) => Promise<void> | void;
+  treeId?: string;
+  excludePersonIds?: string[];
 }
+
+type FamilyLinkMode =
+  | { kind: 'spouse'; unionType: 'marriage' | 'partner' }
+  | { kind: 'child'; unionRelId: string | null };
 
 const formatYear = (input?: string) => {
   if (!input) return null;
@@ -149,6 +162,103 @@ const RelationCard: React.FC<{
   );
 };
 
+const FamilyLinkSearch: React.FC<{
+  treeId: string;
+  excludePersonIds: string[];
+  label: string;
+  onSelect: (person: Person) => Promise<void> | void;
+  onCancel: () => void;
+}> = ({ treeId, excludePersonIds, label, onSelect, onCancel }) => {
+  const [term, setTerm] = useState('');
+  const [results, setResults] = useState<Person[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const query = term.trim();
+    if (query.length < 2) {
+      setResults([]);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    const timer = setTimeout(() => {
+      searchPersonsInTree(treeId, query, { limit: 8 })
+        .then(({ results: rows }) => {
+          if (cancelled) return;
+          const excluded = new Set(excludePersonIds);
+          setResults(rows.filter((row) => !excluded.has(row.id)));
+          setError(null);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setError(err instanceof Error ? err.message : 'Search failed.');
+          setResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [excludePersonIds, term, treeId]);
+
+  return (
+    <div className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-700">{label}</p>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-slate-800"
+        >
+          Cancel
+        </button>
+      </div>
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white">
+        <Search className="w-4 h-4 text-slate-400" />
+        <input
+          value={term}
+          onChange={(event) => setTerm(event.target.value)}
+          placeholder="Type name to search tree…"
+          className="bg-transparent border-none outline-none text-sm text-slate-700 w-full"
+          autoFocus
+        />
+      </div>
+      {loading && <p className="text-xs text-slate-500">Searching…</p>}
+      {error && <p className="text-xs text-rose-500">{error}</p>}
+      {!loading && term.trim().length >= 2 && results.length === 0 && !error && (
+        <p className="text-xs text-slate-500">No matching people found.</p>
+      )}
+      <div className="space-y-2">
+        {results.map((result) => (
+          <button
+            key={result.id}
+            type="button"
+            disabled={submittingId === result.id}
+            onClick={async () => {
+              setSubmittingId(result.id);
+              try {
+                await onSelect(result);
+              } finally {
+                setSubmittingId(null);
+              }
+            }}
+            className="w-full text-left rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:border-blue-300 hover:bg-blue-50/50 disabled:opacity-60"
+          >
+            {result.firstName} {result.lastName}
+            {result.birthDate ? <span className="text-slate-400 font-normal"> · {formatYear(result.birthDate)}</span> : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const FamilyTab: React.FC<FamilyTabProps> = ({
   parents,
   spouses,
@@ -168,6 +278,14 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   onUpdateRelationshipDetails,
   onRequestAddParent,
   pendingParentType = null,
+  onRequestAddSpouse,
+  pendingSpouseUnionType = null,
+  onRequestAddChild,
+  pendingChildUnionId,
+  onLinkExistingSpouse,
+  onLinkExistingChild,
+  treeId,
+  excludePersonIds = [],
 }) => {
   const createEmptyLayout = () => ({
     assignments: {},
@@ -306,6 +424,14 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
           canEdit={canEdit}
           onUnlinkRelationship={onUnlinkRelationship}
           onUpdateRelationshipDetails={onUpdateRelationshipDetails}
+          onRequestAddSpouse={onRequestAddSpouse}
+          pendingSpouseUnionType={pendingSpouseUnionType}
+          onRequestAddChild={onRequestAddChild}
+          pendingChildUnionId={pendingChildUnionId}
+          onLinkExistingSpouse={onLinkExistingSpouse}
+          onLinkExistingChild={onLinkExistingChild}
+          treeId={treeId}
+          excludePersonIds={excludePersonIds}
         />
         <div className="space-y-4">
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Sibling Connections</p>
@@ -357,6 +483,14 @@ interface FamilyGroupProps {
       unionType?: 'marriage' | 'partner' | null;
     }
   ) => Promise<void> | void;
+  onRequestAddSpouse?: (unionType: 'marriage' | 'partner') => void;
+  pendingSpouseUnionType?: 'marriage' | 'partner' | null;
+  onRequestAddChild?: (unionRelId: string | null) => void;
+  pendingChildUnionId?: string | null;
+  onLinkExistingSpouse?: (spouseId: string, unionType: 'marriage' | 'partner') => Promise<void> | void;
+  onLinkExistingChild?: (childId: string, unionRelId: string | null) => Promise<void> | void;
+  treeId?: string;
+  excludePersonIds?: string[];
 }
 
 const FamilyGroups: React.FC<FamilyGroupProps> = ({
@@ -372,7 +506,17 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   canEdit,
   onUnlinkRelationship,
   onUpdateRelationshipDetails,
+  onRequestAddSpouse,
+  pendingSpouseUnionType = null,
+  onRequestAddChild,
+  pendingChildUnionId,
+  onLinkExistingSpouse,
+  onLinkExistingChild,
+  treeId,
+  excludePersonIds = [],
 }) => {
+  const [linkMode, setLinkMode] = useState<FamilyLinkMode | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
   const layoutSeed = useMemo(() => {
     const baseAssignments: Record<string, string | null> = {};
     const spouseIds = new Set(spouses.map((sp) => sp.rel.id));
@@ -386,12 +530,21 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
             PARENT_LINK_TYPES.includes(rel.type)
         )
       );
-      baseAssignments[child.rel.id] = linkedSpouse?.rel.id ?? null;
+      if (linkedSpouse) {
+        baseAssignments[child.rel.id] = linkedSpouse.rel.id;
+        return;
+      }
+      if (spouses.length === 1) {
+        baseAssignments[child.rel.id] = spouses[0].rel.id;
+        return;
+      }
+      baseAssignments[child.rel.id] = null;
     });
 
     const layoutAssignments = (initialLayout?.assignments ?? {}) as Record<string, string | null>;
     Object.entries(layoutAssignments).forEach(([childId, spouseId]) => {
-      if (childIds.has(childId) && (!spouseId || spouseIds.has(spouseId))) {
+      if (!childIds.has(childId)) return;
+      if (spouseId && spouseIds.has(spouseId)) {
         baseAssignments[childId] = spouseId;
       }
     });
@@ -460,7 +613,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
     return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
   };
 
-  const activeSpouses = spouses.filter((sp) => !removedSpouseIds.has(sp.rel.id));
+  const activeSpouses = spouses;
   const activeChildren = children.filter((child) => !removedChildIds.has(child.rel.id));
 
   const draftFromRelationship = useCallback((relationship: Relationship): RelationshipDetailDraft => {
@@ -704,17 +857,13 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
     onUnlinkRelationship?.(childRelId);
   };
 
-  const handleUnlinkSpouse = (spouseId: string) => {
-    if (!canEdit) return;
-    setRemovedSpouseIds((prev) => {
-      const next = new Set(prev);
-      next.add(spouseId);
-      return next;
-    });
+  const handleUnlinkSpouse = async (spouseRelId: string) => {
+    if (!canEdit || !onUnlinkRelationship) return;
+    await onUnlinkRelationship(spouseRelId);
     setAssignments((prev) => {
       const next = { ...prev };
       Object.keys(next).forEach((childRelId) => {
-        if (next[childRelId] === spouseId) {
+        if (next[childRelId] === spouseRelId) {
           next[childRelId] = null;
         }
       });
@@ -722,10 +871,14 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
     });
     setManualOrders((prev) => {
       const next = { ...prev };
-      delete next[keyForGroup(spouseId)];
+      delete next[keyForGroup(spouseRelId)];
       return next;
     });
-    onUnlinkRelationship?.(spouseId);
+    setRemovedSpouseIds((prev) => {
+      const next = new Set(prev);
+      next.delete(spouseRelId);
+      return next;
+    });
   };
 
   const updateRelationshipDraft = (
@@ -890,11 +1043,126 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
 
   const unassignedChildren = getDisplayChildren(null);
 
+  const renderUnionActions = (unionRelId: string | null) => {
+    if (!canEdit) return null;
+    const isChildPending = pendingChildUnionId === unionRelId;
+    return (
+      <div className="flex flex-wrap gap-2 pt-1">
+        {onRequestAddChild && (
+          <button
+            type="button"
+            className="px-3 py-2 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+            onClick={() => onRequestAddChild(unionRelId)}
+            disabled={pendingChildUnionId !== undefined}
+          >
+            <Plus className="inline w-3 h-3 mr-1" />
+            {isChildPending ? 'Adding Child…' : 'Add Child'}
+          </button>
+        )}
+        {onLinkExistingChild && treeId && (
+          <button
+            type="button"
+            className="px-3 py-2 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 hover:bg-slate-100"
+            onClick={() => {
+              setLinkError(null);
+              setLinkMode({ kind: 'child', unionRelId });
+            }}
+          >
+            Link Existing Child
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
+      {canEdit && (onRequestAddSpouse || onLinkExistingSpouse) && (
+        <div className="space-y-3">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Spousal Unions</p>
+          <div className="flex flex-wrap gap-2">
+            {onRequestAddSpouse && (
+              <>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                  onClick={() => onRequestAddSpouse('marriage')}
+                  disabled={!!pendingSpouseUnionType}
+                >
+                  <Plus className="inline w-3 h-3 mr-2" />
+                  {pendingSpouseUnionType === 'marriage' ? 'Adding Spouse…' : 'Add Spouse'}
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                  onClick={() => onRequestAddSpouse('partner')}
+                  disabled={!!pendingSpouseUnionType}
+                >
+                  <Plus className="inline w-3 h-3 mr-2" />
+                  {pendingSpouseUnionType === 'partner' ? 'Adding Partner…' : 'Add Partner'}
+                </button>
+              </>
+            )}
+            {onLinkExistingSpouse && treeId && (
+              <>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100"
+                  onClick={() => {
+                    setLinkError(null);
+                    setLinkMode({ kind: 'spouse', unionType: 'marriage' });
+                  }}
+                >
+                  Link Existing Spouse
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100"
+                  onClick={() => {
+                    setLinkError(null);
+                    setLinkMode({ kind: 'spouse', unionType: 'partner' });
+                  }}
+                >
+                  Link Existing Partner
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      {linkMode && treeId && (
+        <FamilyLinkSearch
+          treeId={treeId}
+          excludePersonIds={excludePersonIds}
+          label={
+            linkMode.kind === 'spouse'
+              ? `Link ${linkMode.unionType === 'partner' ? 'partner' : 'spouse'}`
+              : 'Link child to this union'
+          }
+          onCancel={() => {
+            setLinkMode(null);
+            setLinkError(null);
+          }}
+          onSelect={async (selected) => {
+            try {
+              if (linkMode.kind === 'spouse' && onLinkExistingSpouse) {
+                await onLinkExistingSpouse(selected.id, linkMode.unionType);
+              } else if (linkMode.kind === 'child' && onLinkExistingChild) {
+                await onLinkExistingChild(selected.id, linkMode.unionRelId);
+              }
+              setLinkMode(null);
+              setLinkError(null);
+            } catch (err) {
+              setLinkError(err instanceof Error ? err.message : 'Could not link person.');
+              throw err;
+            }
+          }}
+        />
+      )}
+      {linkError && <p className="text-xs text-rose-500">{linkError}</p>}
       {activeSpouses.length === 0 && (
         <div className="space-y-4">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Spousal Unions</p>
+          {!canEdit && <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Spousal Unions</p>}
           <p className="text-xs text-slate-400 italic p-4">No partner records found.</p>
         </div>
       )}
@@ -1046,6 +1314,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
               ) : (
                 <p className="text-xs text-slate-400 italic">No children linked to this spouse.</p>
               )}
+              {renderUnionActions(spouse.rel.id)}
             </div>
           </div>
         );
@@ -1067,6 +1336,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
               Drag here to place last
             </div>
           )}
+          {renderUnionActions(null)}
         </div>
       )}
     </div>

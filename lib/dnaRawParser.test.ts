@@ -4,6 +4,7 @@ import {
   parseSharedSegmentsCsv,
   parseFtdnaAutosomalCsv,
   parseFtdnaSharedSegmentsCsv,
+  extractComparisonNamesFromFileName,
 } from './dnaRawParser';
 
 describe('parseAutosomalCsv', () => {
@@ -78,6 +79,24 @@ describe('parseSharedSegmentsCsv', () => {
     expect(summary.personName).toBe('Unknown'); // FTDNA has no person-name column
     expect(summary.segmentCount).toBe(1);
     expect(summary.totalCentimorgans).toBe(250);
+  });
+
+  it('fills the missing FTDNA person name from the export filename', () => {
+    const csv = [ftdnaHeader, 'Torb Ellefsen,3,1000,9000,250,2000'].join('\n');
+
+    const { summary } = parseSharedSegmentsCsv(
+      csv,
+      'Shared DNA segments of Simon Ellefsen and Torb Ellefsen.csv'
+    );
+
+    expect(summary.personName).toBe('Simon Ellefsen');
+    expect(summary.matchName).toBe('Torb Ellefsen');
+  });
+
+  it('extracts comparison names from shared-segment filenames', () => {
+    expect(
+      extractComparisonNamesFromFileName('Shared DNA segments of Simon Ellefsen and Torb Ellefsen.csv')
+    ).toEqual(['Simon Ellefsen', 'Torb Ellefsen']);
   });
 
   it('skips rows with non-numeric cM/SNP values', () => {

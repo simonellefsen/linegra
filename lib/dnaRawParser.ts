@@ -53,6 +53,66 @@ const estimateRelationshipFromSharedCm = (sharedCm: number): string => {
   return 'Distant cousin cluster';
 };
 
+/** Pull the two tester names from common shared-segment export filenames. */
+export const extractComparisonNamesFromFileName = (fileName: string): [string, string] | null => {
+  const base = fileName.replace(/\.[^.]+$/, '').trim();
+  const patterns = [
+    /segments?\s+of\s+(.+?)\s+and\s+(.+?)$/i,
+    /\bof\s+(.+?)\s+and\s+(.+?)$/i,
+    /^(.+?)\s+and\s+(.+?)\s+shared/i,
+    /^(.+?)\s+&\s+(.+?)$/i,
+  ];
+  for (const pattern of patterns) {
+    const match = base.match(pattern);
+    if (match?.[1] && match?.[2]) {
+      return [match[1].trim(), match[2].trim()];
+    }
+  }
+  return null;
+};
+
+const namesLookSimilar = (left: string, right: string) => {
+  const normalize = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\s-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  const a = normalize(left);
+  const b = normalize(right);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+};
+
+const applyFileNameComparisonNames = (
+  fileName: string,
+  personName: string,
+  matchName: string,
+  isFtdnaComparison: boolean
+): { personName: string; matchName: string } => {
+  const fromFile = extractComparisonNamesFromFileName(fileName);
+  if (!fromFile) {
+    return { personName, matchName };
+  }
+  const [firstName, secondName] = fromFile;
+  let nextPersonName = personName;
+  let nextMatchName = matchName;
+
+  if (!nextPersonName || nextPersonName === 'Unknown') {
+    if (isFtdnaComparison && nextMatchName && nextMatchName !== 'Unknown') {
+      nextPersonName = namesLookSimilar(nextMatchName, secondName) ? firstName : secondName;
+    } else {
+      nextPersonName = firstName;
+    }
+  }
+  if (!nextMatchName || nextMatchName === 'Unknown') {
+    nextMatchName = secondName;
+  }
+  return { personName: nextPersonName, matchName: nextMatchName };
+};
+
 export const parseAutosomalCsv = (
   csvText: string,
   fileName: string
@@ -195,6 +255,10 @@ export const parseSharedSegmentsCsv = (
   if (!segmentCount) {
     throw new Error('No shared DNA segments were found in the selected file.');
   }
+
+  const resolvedNames = applyFileNameComparisonNames(fileName, personName, matchName, isFtdnaComparison);
+  personName = resolvedNames.personName;
+  matchName = resolvedNames.matchName;
 
   return {
     summary: {

@@ -26,7 +26,7 @@ import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
 import { inferLivingStatus } from '../lib/lifespan';
-import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent } from '../services/archive';
+import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent, createPlaceholderSpouse, createPlaceholderChild, linkExistingSpouse, linkExistingChild } from '../services/archive';
 import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause, transcribeRecordImage } from '../services/ai';
 
 const serializePlaceValue = (value: string | StructuredPlace) =>
@@ -129,6 +129,7 @@ interface PersonProfileProps {
   person: Person;
   currentUser: UserType | null;
   canEditTree?: boolean;
+  closeOnSave?: boolean;
   onClose: () => void;
   onNavigateToPerson?: (person: Person) => void;
   onPersistFamilyLayout?: (personId: string, layout: FamilyLayoutState) => void;
@@ -143,6 +144,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   person,
   currentUser,
   canEditTree = false,
+  closeOnSave = false,
   onClose,
   onNavigateToPerson,
   onPersistFamilyLayout,
@@ -196,6 +198,12 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   const [shareFeedback, setShareFeedback] = useState<string>('');
   const [overlayProfile, setOverlayProfile] = useState<Person | null>(null);
   const [pendingParentType, setPendingParentType] = useState<'father' | 'mother' | null>(null);
+  const [pendingSpouseUnionType, setPendingSpouseUnionType] = useState<'marriage' | 'partner' | null>(null);
+  const [pendingChildUnionId, setPendingChildUnionId] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    setOverlayProfile(null);
+  }, [person.id]);
 
   useEffect(() => {
     setFirstName(person.firstName);
@@ -349,16 +357,25 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   }, [canEditPerson]);
 
   const parents = useMemo(() => {
-    return relationshipData
-      .filter(r => r.relatedId === person.id && PARENT_LINK_TYPES.includes(r.type))
-      .map(r => ({
-        rel: r,
-        person: relationPeople[r.personId]
-      }))
-      .filter(
-        (item): item is { rel: Relationship; person: Person } =>
-          !!item.person && (canViewPrivateRelations || !item.person.isPrivate)
-      );
+    const merged = new Map<string, { rel: Relationship; person: Person }>();
+    relationshipData
+      .filter((r) => r.relatedId === person.id && PARENT_LINK_TYPES.includes(r.type))
+      .forEach((r) => {
+        const parentPerson = relationPeople[r.personId];
+        if (!parentPerson) return;
+        if (!merged.has(parentPerson.id)) merged.set(parentPerson.id, { rel: r, person: parentPerson });
+      });
+    relationshipData
+      .filter((r) => r.type === 'child' && r.relatedId === person.id)
+      .forEach((r) => {
+        const parentPerson = relationPeople[r.personId];
+        if (!parentPerson) return;
+        if (!merged.has(parentPerson.id)) merged.set(parentPerson.id, { rel: r, person: parentPerson });
+      });
+    return Array.from(merged.values()).filter(
+      (item): item is { rel: Relationship; person: Person } =>
+        !!item.person && (canViewPrivateRelations || !item.person.isPrivate)
+    );
   }, [person.id, relationshipData, relationPeople, canViewPrivateRelations]);
 
   const spouses = useMemo(() => {
@@ -366,31 +383,46 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       .filter(r => (r.personId === person.id || r.relatedId === person.id) && ['marriage', 'partner'].includes(r.type))
       .map(r => {
         const otherId = r.personId === person.id ? r.relatedId : r.personId;
+        const relatedPerson = relationPeople[otherId];
         return {
           rel: r,
-          person: relationPeople[otherId]
+          person:
+            relatedPerson ||
+            ({
+              id: otherId,
+              treeId: person.treeId,
+              firstName: 'Unknown',
+              lastName: '',
+              gender: 'O',
+              isPrivate: false,
+            } as Person),
         };
       })
       .filter(
         (item): item is { rel: Relationship; person: Person } =>
           !!item.person && (canViewPrivateRelations || !item.person.isPrivate)
       );
-  }, [person.id, relationshipData, relationPeople, canViewPrivateRelations]);
+  }, [person.id, person.treeId, relationshipData, relationPeople, canViewPrivateRelations]);
 
   const children = useMemo(() => {
     const asParent = relationshipData
-      .filter(r => r.personId === person.id && PARENT_LINK_TYPES.includes(r.type))
-      .map(r => ({
+      .filter((r) => r.personId === person.id && PARENT_LINK_TYPES.includes(r.type))
+      .map((r) => ({
         rel: r,
-        person: relationPeople[r.relatedId]
+        person: relationPeople[r.relatedId],
       }));
     const asChildRel = relationshipData
-      .filter(r => r.personId === person.id && r.type === 'child')
-      .map(r => ({
+      .filter((r) => r.type === 'child' && r.personId === person.id)
+      .map((r) => ({
         rel: r,
-        person: relationPeople[r.relatedId]
+        person: relationPeople[r.relatedId],
       }));
-    return [...asParent, ...asChildRel].filter(
+    const merged = new Map<string, { rel: Relationship; person: Person }>();
+    [...asParent, ...asChildRel].forEach((item) => {
+      if (!item.person) return;
+      if (!merged.has(item.rel.id)) merged.set(item.rel.id, item as { rel: Relationship; person: Person });
+    });
+    return Array.from(merged.values()).filter(
       (item): item is { rel: Relationship; person: Person } =>
         !!item.person && (canViewPrivateRelations || !item.person.isPrivate)
     );
@@ -749,10 +781,15 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       await onRefreshTreeGraph?.();
       const refreshed = await fetchPersonDetails(person.id);
       onPersonUpdated?.(refreshed);
+      setRelationPeople((prev) => ({ ...prev, [refreshed.id]: refreshed }));
       setBaselineSnapshot(buildSnapshotFromPerson(refreshed));
       setIsDirty(false);
       setSaveFeedback('Saved');
       setTimeout(() => setSaveFeedback(''), 2000);
+      if (closeOnSave) {
+        onClose();
+        return;
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save changes.';
       setSaveError(message);
@@ -986,6 +1023,106 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       }
     },
     [canEditFamily, pendingParentType, person, currentUser, refreshConnections]
+  );
+
+  const assignChildToUnionLayout = useCallback(
+    (relationshipId: string, unionRelId: string | null) => {
+      const currentLayout = (person.metadata?.familyLayout as FamilyLayoutState | undefined) ?? {
+        assignments: {},
+        manualOrders: {},
+        removedSpouseIds: [],
+        removedChildIds: [],
+        removedParentIds: [],
+      };
+      onPersistFamilyLayout?.(person.id, {
+        ...currentLayout,
+        assignments: { ...currentLayout.assignments, [relationshipId]: unionRelId },
+      });
+    },
+    [onPersistFamilyLayout, person.id, person.metadata]
+  );
+
+  const handleRequestAddSpouse = useCallback(
+    async (unionType: 'marriage' | 'partner') => {
+      if (!canEditFamily || pendingSpouseUnionType) return;
+      setPendingSpouseUnionType(unionType);
+      try {
+        const result = await createPlaceholderSpouse({
+          treeId: person.treeId,
+          personId: person.id,
+          unionType,
+          actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+        });
+        setRelationPeople((prev) => ({ ...prev, [result.person.id]: result.person }));
+        await refreshConnections({ silent: true });
+        setOverlayProfile(result.person);
+      } catch (err) {
+        console.error('Failed to create spouse placeholder', err);
+        const message = err instanceof Error ? err.message : 'Could not create spouse record.';
+        setConnectionsError((prev) => prev || message);
+      } finally {
+        setPendingSpouseUnionType(null);
+      }
+    },
+    [canEditFamily, pendingSpouseUnionType, person, currentUser, refreshConnections]
+  );
+
+  const handleRequestAddChild = useCallback(
+    async (unionRelId: string | null) => {
+      if (!canEditFamily || pendingChildUnionId !== undefined) return;
+      setPendingChildUnionId(unionRelId);
+      try {
+        const result = await createPlaceholderChild({
+          treeId: person.treeId,
+          parentId: person.id,
+          actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+        });
+        setRelationPeople((prev) => ({ ...prev, [result.person.id]: result.person }));
+        assignChildToUnionLayout(result.relationshipId, unionRelId);
+        await refreshConnections({ silent: true });
+        setOverlayProfile(result.person);
+      } catch (err) {
+        console.error('Failed to create child placeholder', err);
+        const message = err instanceof Error ? err.message : 'Could not create child record.';
+        setConnectionsError((prev) => prev || message);
+      } finally {
+        setPendingChildUnionId(undefined);
+      }
+    },
+    [assignChildToUnionLayout, canEditFamily, pendingChildUnionId, person, currentUser, refreshConnections]
+  );
+
+  const handleLinkExistingSpouse = useCallback(
+    async (spouseId: string, unionType: 'marriage' | 'partner') => {
+      if (!canEditFamily) return;
+      const result = await linkExistingSpouse({
+        treeId: person.treeId,
+        personId: person.id,
+        spouseId,
+        unionType,
+        actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+      });
+      await refreshConnections({ silent: true });
+      if (result.alreadyLinked) {
+        setConnectionsError(null);
+      }
+    },
+    [canEditFamily, person, currentUser, refreshConnections]
+  );
+
+  const handleLinkExistingChild = useCallback(
+    async (childId: string, unionRelId: string | null) => {
+      if (!canEditFamily) return;
+      const result = await linkExistingChild({
+        treeId: person.treeId,
+        parentId: person.id,
+        childId,
+        actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+      });
+      assignChildToUnionLayout(result.relationshipId, unionRelId);
+      await refreshConnections({ silent: true });
+    },
+    [assignChildToUnionLayout, canEditFamily, person, currentUser, refreshConnections]
   );
 
   return (
@@ -1223,6 +1360,14 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             onUpdateRelationshipDetails={handleUpdateRelationshipDetails}
             onRequestAddParent={handleRequestAddParent}
             pendingParentType={pendingParentType}
+            onRequestAddSpouse={handleRequestAddSpouse}
+            pendingSpouseUnionType={pendingSpouseUnionType}
+            onRequestAddChild={handleRequestAddChild}
+            pendingChildUnionId={pendingChildUnionId}
+            onLinkExistingSpouse={handleLinkExistingSpouse}
+            onLinkExistingChild={handleLinkExistingChild}
+            treeId={person.treeId}
+            excludePersonIds={[person.id]}
           />
         )}
 
@@ -1302,6 +1447,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       <PersonProfile
         person={overlayProfile}
         currentUser={currentUser}
+        canEditTree={canEditTree}
+        closeOnSave
         onClose={() => {
           setOverlayProfile(null);
           refreshConnections();
@@ -1309,6 +1456,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         onNavigateToPerson={(target) => setOverlayProfile(target)}
         onPersistFamilyLayout={onPersistFamilyLayout}
         onPersonUpdated={(updated) => {
+          setRelationPeople((prev) => ({ ...prev, [updated.id]: updated }));
           if (overlayProfile && updated.id === overlayProfile.id) {
             setOverlayProfile(updated);
           }

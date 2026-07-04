@@ -82,9 +82,17 @@ The following migration families must be applied on the target Supabase project:
 - `20260212190000_dna_shared_ids.sql`
 - `20260212193000_dna_shared_ids_backfill.sql`
 
-If RPC shape changes, redeploy and ensure schema cache is refreshed before testing.
+- `20260212193000_dna_shared_ids_backfill.sql`
+- `20260704100000_dna_raw_consent_encryption.sql` (K7 consent columns, encrypted raw metadata, purge RPC)
 
-## 7. Known operational guidance
+## 8. Raw autosomal consent + encryption (K7)
+
+- Set `VITE_DNA_ENCRYPTION_KEY` in the frontend environment before enabling **Encrypted SNP index** imports.
+- Raw import on the profile DNA tab shows a consent modal: **summary only** (25-row preview) or **encrypted full index**.
+- Encrypted tests are stored with `is_private = true`, `consent_given_at`, and `consent_scope = raw_autosomal_storage`.
+- Use **Purge raw data** on the DNA tab or `admin_purge_dna_raw_data` to delete encrypted payloads.
+
+## 9. Known operational guidance
 
 - Shared-match imports should include or resolve a stable in-tree person UUID where possible.
 - For legacy files without IDs, verify counterpart mapping in Admin DNA panel before

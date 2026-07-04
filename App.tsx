@@ -3,10 +3,16 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { isSupabaseConfigured } from './lib/supabase';
 import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership } from './services/archive';
 import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, signOut, subscribeToAuthChanges } from './services/auth';
-import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole } from './types';
+import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole, TreeLayoutType } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
 import { collectDnaSupportMatchIds } from './lib/dnaSupport';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
+import FanTree from './components/InteractiveTree/FanTree';
+import TimelineView from './components/InteractiveTree/TimelineView';
+import MapView from './components/InteractiveTree/MapView';
+import CompareTreeView from './components/InteractiveTree/CompareTreeView';
+import TreeViewToolbar from './components/InteractiveTree/TreeViewToolbar';
+import { useTreeKeyboardNav } from './components/InteractiveTree/useTreeKeyboardNav';
 import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
 import TreeLandingPage, { TreeStatistics } from './components/TreeLandingPage';
@@ -92,6 +98,9 @@ const App: React.FC = () => {
   const MAX_DESCENDANT_DEPTH = 4;
   const [treeViewReady, setTreeViewReady] = useState(false);
   const [ancestorDepth, setAncestorDepth] = useState(DEFAULT_ANCESTOR_DEPTH);
+  const [treeLayoutType, setTreeLayoutType] = useState<TreeLayoutType>('pedigree');
+  const [comparePersonId, setComparePersonId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [descendantDepth, setDescendantDepth] = useState(DEFAULT_DESCENDANT_DEPTH);
   const [pedigreeFocusId, setPedigreeFocusId] = useState<string | null>(null);
   const [pedigreeHasMore, setPedigreeHasMore] = useState({ ancestors: false, descendants: false });
@@ -459,6 +468,7 @@ useEffect(() => {
         targetPerson.metadata
       );
       setAllPeople((prev) => prev.map((person) => person.id === personId ? { ...person, metadata: updatedMetadata } : person));
+      setSelectedPerson((prev) => (prev?.id === personId ? { ...prev, metadata: updatedMetadata } : prev));
     } catch (err) {
       console.error('Failed to persist family layout', err);
     }
@@ -513,6 +523,7 @@ useEffect(() => {
       : null);
   const focusPersonId = pedigreeFocusId ?? selectedPerson?.id ?? treeDefaultProbandId ?? treePeople[0]?.id;
   const focusPerson = focusPersonId ? treePeople.find((p) => p.id === focusPersonId) ?? null : null;
+  const treePeopleById = useMemo(() => new Map(treePeople.map((p) => [p.id, p])), [treePeople]);
 
   useEffect(() => {
     if (!treeViewReady || !activeTree || !supabaseActive) return;
@@ -557,6 +568,27 @@ useEffect(() => {
     if (!parent) return;
     setPedigreeFocusId(parent.id);
   }, [treeRelationships, parentalRelationshipSet, treePeople]);
+
+  useTreeKeyboardNav({
+    enabled: activeTab === 'tree' && treeViewReady,
+    focusId: focusPersonId,
+    peopleById: treePeopleById,
+    relationships: filteredRelationships,
+    onFocusChange: (personId) => {
+      setPedigreeFocusId(personId);
+      const person = treePeople.find((p) => p.id === personId);
+      if (person) setSelectedPerson(person);
+    },
+    onHome: handleFocusDefaultProband,
+    onSearchFocus: () => searchInputRef.current?.focus(),
+  });
+
+  useEffect(() => {
+    if (treeLayoutType !== 'compare' || !focusPersonId) return;
+    if (comparePersonId && comparePersonId !== focusPersonId) return;
+    const alternate = pedigreeScope.people.find((p) => p.id !== focusPersonId);
+    if (alternate) setComparePersonId(alternate.id);
+  }, [treeLayoutType, focusPersonId, comparePersonId, pedigreeScope.people]);
 
   const [treeStatistics, setTreeStatistics] = useState<TreeStatistics | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -743,7 +775,7 @@ useEffect(() => {
   );
 
   const handlePersonPatched = useCallback((updated: Person) => {
-    setSelectedPerson(updated);
+    setSelectedPerson((prev) => (prev?.id === updated.id ? updated : prev));
     setAllPeople((prev) =>
       prev.length ? prev.map((p) => (p.id === updated.id ? updated : p)) : prev
     );
@@ -1218,6 +1250,7 @@ useEffect(() => {
             <div className="relative w-full group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-slate-900 transition-colors" />
               <input 
+                ref={searchInputRef}
                 type="text" 
                 placeholder={`Query the ${activeTree?.name ?? 'Linegra Archive'}...`} 
                 className="w-full pl-12 pr-6 py-3.5 bg-slate-100/70 border-transparent rounded-[20px] outline-none text-[13px] font-medium transition-all focus:bg-white focus:ring-4 focus:ring-slate-900/5"
@@ -1347,14 +1380,79 @@ useEffect(() => {
                 <div className="space-y-10 animate-in fade-in duration-700">
                   {treeViewReady ? (
                       <>
-                        <div className="bg-white border border-slate-200 rounded-[28px] shadow-sm p-5 flex flex-wrap items-center gap-4 text-sm text-slate-600">
-                          <div>
-                            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Focus</p>
-                            <p className="font-serif font-bold text-slate-900">
-                              {focusPerson ? `${focusPerson.firstName} ${focusPerson.lastName}` : 'Select a person'}
-                            </p>
-                          </div>
-                        </div>
+                        <TreeViewToolbar
+                          layout={treeLayoutType}
+                          onLayoutChange={setTreeLayoutType}
+                          focusPerson={focusPerson}
+                          people={pedigreeScope.people}
+                          relationships={pedigreeScope.relationships}
+                          onFocusPerson={(personId) => {
+                            setPedigreeFocusId(personId);
+                            const person = treePeople.find((p) => p.id === personId);
+                            if (person) setSelectedPerson(person);
+                          }}
+                        />
+                        {treeLayoutType === 'fan' && (
+                          <FanTree
+                            people={pedigreeScope.people}
+                            relationships={pedigreeScope.relationships}
+                            allRelationships={treeRelationships}
+                            dnaMatchCmById={dnaMatchCmById}
+                            focusId={focusPersonId}
+                            selectedPersonId={selectedPerson?.id}
+                            onPersonSelect={handlePersonSelect}
+                            maxAncestors={ancestorDepth}
+                            showPlaceholders={pedigreeAllowsPlaceholders}
+                            ancestorsRemaining={pedigreeHasMore.ancestors || pedigreeScope.hasMoreAncestors}
+                            onExpandAncestors={() =>
+                              setAncestorDepth((depth) => Math.min(MAX_ANCESTOR_DEPTH, depth + 1))
+                            }
+                            onFocusHome={handleFocusDefaultProband}
+                            homeEnabled={!!focusPersonId}
+                            ancestorDepth={ancestorDepth}
+                            maxAncestorDepthLimit={MAX_ANCESTOR_DEPTH}
+                            onDecreaseAncestors={() => setAncestorDepth((d) => Math.max(1, d - 1))}
+                            onIncreaseAncestors={() =>
+                              setAncestorDepth((d) => Math.min(MAX_ANCESTOR_DEPTH, d + 1))
+                            }
+                            onResetDepths={() => {
+                              setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
+                              setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
+                            }}
+                          />
+                        )}
+                        {treeLayoutType === 'timeline' && (
+                          <TimelineView
+                            people={pedigreeScope.people}
+                            focusId={focusPersonId}
+                            selectedPersonId={selectedPerson?.id}
+                            onPersonSelect={handlePersonSelect}
+                          />
+                        )}
+                        {treeLayoutType === 'map' && (
+                          <MapView
+                            people={pedigreeScope.people}
+                            focusId={focusPersonId}
+                            selectedPersonId={selectedPerson?.id}
+                            onPersonSelect={handlePersonSelect}
+                          />
+                        )}
+                        {treeLayoutType === 'compare' && (
+                          <CompareTreeView
+                            people={filteredPeople}
+                            relationships={filteredRelationships}
+                            allRelationships={treeRelationships}
+                            dnaMatchCmById={dnaMatchCmById}
+                            focusId={focusPersonId}
+                            compareId={comparePersonId ?? undefined}
+                            onFocusSelect={handlePersonSelect}
+                            onCompareSelect={(id) => setComparePersonId(id || null)}
+                            maxAncestors={ancestorDepth}
+                            maxDescendants={descendantDepth}
+                            showPlaceholders={pedigreeAllowsPlaceholders}
+                          />
+                        )}
+                        {treeLayoutType === 'pedigree' && (
                         <PedigreeTree
                           people={pedigreeScope.people}
                           relationships={pedigreeScope.relationships}
@@ -1396,6 +1494,7 @@ useEffect(() => {
                             setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
                           }}
                         />
+                        )}
                       </>
                     ) : (
                       <div className="bg-white border border-dashed border-slate-300 rounded-[32px] p-10 text-center space-y-5 shadow-sm">
@@ -1497,6 +1596,7 @@ useEffect(() => {
 
           {selectedPerson && (
             <PersonProfile 
+              key={selectedPerson.id}
               person={selectedPerson} 
               currentUser={currentUser}
               canEditTree={canWriteActiveTree}

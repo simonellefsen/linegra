@@ -1,9 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Lock, Trash2, Dna, Upload, FileText } from 'lucide-react';
-import { DNATest } from '../../types';
+import { DnaConsentScope, DNATest } from '../../types';
 import { DNA_VENDORS, DNA_TEST_TYPES } from './constants';
 import { parseAutosomalCsv, parseSharedSegmentsCsv } from '../../lib/dnaRawParser';
 import { describeSharedLineage } from '../../lib/dnaClassification';
+import { collectHaplogroupRoutes } from '../../lib/haplogroupRoutes';
+import {
+  buildAutosomalMarkerIndex,
+  indexStatsFromIndex,
+  serializeMarkerIndex,
+} from '../../lib/dnaAutosomalIndex';
+import {
+  canStoreEncryptedRawDna,
+  encryptRawPayload,
+  MAX_INLINE_ENCRYPTED_RAW_BYTES,
+} from '../../lib/dnaRawEncryption';
+import DnaRawConsentModal from '../dna/DnaRawConsentModal';
+import HaplogroupMigrationCard from '../dna/HaplogroupMigrationCard';
+import { purgeDnaRawData } from '../../services/archive';
 
 interface DNATabProps {
   personId: string;
@@ -81,6 +95,13 @@ const DNATabInner: React.FC<DNATabProps> = ({
   const [importTargetId, setImportTargetId] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<'autosomal_raw' | 'shared_segments' | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [pendingAutosomalImport, setPendingAutosomalImport] = useState<{
+    testId: string;
+    text: string;
+    fileName: string;
+  } | null>(null);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [purgingTestId, setPurgingTestId] = useState<string | null>(null);
 
   const normalizeName = (value: string) =>
     value
@@ -137,25 +158,26 @@ const DNATabInner: React.FC<DNATabProps> = ({
     try {
       const text = await file.text();
       if (mode === 'autosomal_raw') {
-        const { summary, preview } = parseAutosomalCsv(text, file.name);
-        onUpdateTest(targetId, {
-          type: 'Autosomal',
-          rawDataSummary: summary,
-          rawDataPreview: preview
-        });
-      } else {
-        const { summary, preview } = parseSharedSegmentsCsv(text, file.name);
-        const summaryPersonMatchesProfile = nameLooksLikeProfile(summary.personName);
-        const summaryMatchMatchesProfile = nameLooksLikeProfile(summary.matchName);
-        onUpdateTest(targetId, {
-          type: 'Shared Autosomal',
-          sharedPersonId: summaryPersonMatchesProfile ? personId : undefined,
-          sharedMatchName: summary.matchName,
-          sharedMatchPersonId: summaryMatchMatchesProfile ? personId : undefined,
-          sharedSegmentSummary: summary,
-          sharedSegmentsPreview: preview
-        });
+        parseAutosomalCsv(text, file.name);
+        setPendingAutosomalImport({ testId: targetId, text, fileName: file.name });
+        setConsentOpen(true);
+        return;
       }
+      const { summary, preview } = parseSharedSegmentsCsv(text, file.name);
+      const summaryPersonMatchesProfile = nameLooksLikeProfile(summary.personName);
+      const summaryMatchMatchesProfile = nameLooksLikeProfile(summary.matchName);
+      const sharedPersonId =
+        summaryPersonMatchesProfile && !summaryMatchMatchesProfile ? personId : undefined;
+      const sharedMatchPersonId =
+        summaryMatchMatchesProfile && !summaryPersonMatchesProfile ? personId : undefined;
+      onUpdateTest(targetId, {
+        type: 'Shared Autosomal',
+        sharedPersonId,
+        sharedMatchName: summary.matchName,
+        sharedMatchPersonId,
+        sharedSegmentSummary: summary,
+        sharedSegmentsPreview: preview
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not parse DNA CSV file.';
       setImportError(message);
@@ -165,8 +187,91 @@ const DNATabInner: React.FC<DNATabProps> = ({
     }
   };
 
+  const finalizeAutosomalImport = async (scope: DnaConsentScope) => {
+    if (!pendingAutosomalImport) return;
+    setImportError(null);
+    try {
+      const { summary, preview } = parseAutosomalCsv(
+        pendingAutosomalImport.text,
+        pendingAutosomalImport.fileName
+      );
+      const updates: Partial<DNATest> = {
+        type: 'Autosomal',
+        rawDataSummary: summary,
+        consentGivenAt: new Date().toISOString(),
+        consentScope: scope,
+        isPrivate: scope === 'raw_autosomal_storage',
+      };
+      if (scope === 'raw_autosomal_storage') {
+        if (!canStoreEncryptedRawDna()) {
+          throw new Error('Encrypted storage requires VITE_DNA_ENCRYPTION_KEY in the environment.');
+        }
+        const index = buildAutosomalMarkerIndex(pendingAutosomalImport.text);
+        const encrypted = await encryptRawPayload(
+          serializeMarkerIndex(index),
+          import.meta.env.VITE_DNA_ENCRYPTION_KEY as string
+        );
+        if (encrypted.length > MAX_INLINE_ENCRYPTED_RAW_BYTES) {
+          throw new Error('Kit is too large for inline encrypted storage. Use summary-only consent.');
+        }
+        updates.encryptedRawPayload = encrypted;
+        updates.rawMarkerIndexStats = indexStatsFromIndex(index);
+        updates.hasEncryptedRaw = true;
+      } else {
+        updates.rawDataPreview = preview;
+        updates.encryptedRawPayload = undefined;
+        updates.rawMarkerIndexStats = undefined;
+        updates.hasEncryptedRaw = false;
+      }
+      onUpdateTest(pendingAutosomalImport.testId, updates);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Could not import autosomal raw file.');
+    } finally {
+      setPendingAutosomalImport(null);
+      setConsentOpen(false);
+      setImportTargetId(null);
+      setImportMode(null);
+    }
+  };
+
+  const handlePurgeRawData = async (test: DNATest) => {
+    if (!UUID_REGEX.test(test.id) || purgingTestId) return;
+    setPurgingTestId(test.id);
+    setImportError(null);
+    try {
+      await purgeDnaRawData(test.id);
+      onUpdateTest(test.id, {
+        consentGivenAt: undefined,
+        consentScope: undefined,
+        encryptedRawPayload: undefined,
+        rawMarkerIndexStats: undefined,
+        hasEncryptedRaw: false,
+        rawDataPreview: undefined,
+        rawDataSummary: undefined,
+      });
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Could not purge raw DNA data.');
+    } finally {
+      setPurgingTestId(null);
+    }
+  };
+
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <DnaRawConsentModal
+        open={consentOpen}
+        fileName={pendingAutosomalImport?.fileName || ''}
+        encryptionAvailable={canStoreEncryptedRawDna()}
+        onCancel={() => {
+          setConsentOpen(false);
+          setPendingAutosomalImport(null);
+          setImportTargetId(null);
+          setImportMode(null);
+        }}
+        onConfirm={finalizeAutosomalImport}
+      />
       <input
         ref={fileInputRef}
         type="file"
@@ -213,31 +318,53 @@ const DNATabInner: React.FC<DNATabProps> = ({
                   ))}
                 </select>
               </h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-white/5 border border-white/10 rounded-3xl">
-                  <p className="text-[10px] text-slate-400 font-black uppercase mb-1">Test Type</p>
-                  <select
-                    value={test.type}
-                    onChange={(e) => onUpdateTest(test.id, { type: e.target.value as DNATest['type'] })}
-                    className="bg-transparent border-none text-lg font-serif font-bold text-white outline-none w-full cursor-pointer"
-                  >
-                    {DNA_TEST_TYPES.map((type) => (
-                      <option key={type} value={type} className="text-slate-900">
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="p-4 bg-white/5 border border-white/10 rounded-3xl">
-                  <p className="text-[10px] text-slate-400 font-black uppercase mb-1">Haplogroup</p>
-                  <input
-                    value={test.haplogroup || ''}
-                    onChange={(e) => onUpdateTest(test.id, { haplogroup: e.target.value })}
-                    placeholder="e.g. R-M269"
-                    className="bg-transparent border-none text-lg font-serif font-bold text-white outline-none w-full"
-                  />
+              <div className="p-4 bg-white/5 border border-white/10 rounded-3xl">
+                <p className="text-[10px] text-slate-400 font-black uppercase mb-1">Test Type</p>
+                <select
+                  value={test.type}
+                  onChange={(e) => onUpdateTest(test.id, { type: e.target.value as DNATest['type'] })}
+                  className="bg-transparent border-none text-lg font-serif font-bold text-white outline-none w-full cursor-pointer"
+                >
+                  {DNA_TEST_TYPES.map((type) => (
+                    <option key={type} value={type} className="text-slate-900">
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="p-4 bg-white/5 border border-white/10 rounded-3xl">
+                <p className="text-[10px] text-slate-400 font-black uppercase mb-3">Haplogroups</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Y-DNA</p>
+                    <input
+                      value={test.yHaplogroup || ''}
+                      onChange={(e) => onUpdateTest(test.id, { yHaplogroup: e.target.value })}
+                      placeholder="e.g. I-M6155"
+                      className="bg-transparent border-none text-base font-serif font-bold text-white outline-none w-full"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1">mtDNA</p>
+                    <input
+                      value={test.mtDnaHaplogroup || ''}
+                      onChange={(e) => onUpdateTest(test.id, { mtDnaHaplogroup: e.target.value })}
+                      placeholder="e.g. U1a1a2"
+                      className="bg-transparent border-none text-base font-serif font-bold text-white outline-none w-full"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Mitotree</p>
+                    <input
+                      value={test.mitotree || ''}
+                      onChange={(e) => onUpdateTest(test.id, { mitotree: e.target.value })}
+                      placeholder="e.g. U1a1a2a1"
+                      className="bg-transparent border-none text-base font-serif font-bold text-white outline-none w-full"
+                    />
+                  </div>
                 </div>
               </div>
+              <HaplogroupMigrationCard routes={collectHaplogroupRoutes(test)} />
               {test.type === 'Autosomal' && (
                 <div className="space-y-3">
                   <button
@@ -259,6 +386,27 @@ const DNATabInner: React.FC<DNATabProps> = ({
                         {test.rawDataSummary.calledMarkers.toLocaleString()} called •{' '}
                         {test.rawDataSummary.noCallMarkers.toLocaleString()} no-calls
                       </p>
+                      {test.consentGivenAt && (
+                        <p className="text-white/60">
+                          Consent: {test.consentScope || 'derived_only'} ·{' '}
+                          {new Date(test.consentGivenAt).toLocaleString()}
+                        </p>
+                      )}
+                      {test.rawMarkerIndexStats && (
+                        <p className="text-emerald-200">
+                          Encrypted SNP index · {test.rawMarkerIndexStats.calledMarkers.toLocaleString()} called SNPs
+                        </p>
+                      )}
+                      {(test.hasEncryptedRaw || test.rawDataSummary) && UUID_REGEX.test(test.id) && (
+                        <button
+                          type="button"
+                          disabled={purgingTestId === test.id}
+                          onClick={() => handlePurgeRawData(test)}
+                          className="mt-2 px-3 py-1.5 rounded-xl border border-rose-400/40 text-[10px] font-black uppercase tracking-[0.15em] text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
+                        >
+                          {purgingTestId === test.id ? 'Purging…' : 'Purge raw data'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
