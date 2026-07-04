@@ -27,7 +27,7 @@ const xmlEscape = (value: string): string =>
     .replaceAll('"', '&quot;');
 
 export default async function handler(request: Request): Promise<Response> {
-  recordPublicCrawlEvent({
+  await recordPublicCrawlEvent({
     route: 'sitemap',
     userAgent: request.headers.get('user-agent'),
     format: 'xml',

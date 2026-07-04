@@ -30,7 +30,10 @@ const resolveVisitorRoute = (
   return null;
 };
 
-export default async function middleware(request: Request): Promise<Response | undefined> {
+export default async function middleware(
+  request: Request,
+  context?: { waitUntil?: (promise: Promise<unknown>) => void }
+): Promise<Response | undefined> {
   const userAgent = request.headers.get('user-agent');
   const url = new URL(request.url);
 
@@ -52,12 +55,17 @@ export default async function middleware(request: Request): Promise<Response | u
 
   const visitorRoute = resolveVisitorRoute(url.pathname);
   if (visitorRoute) {
-    recordPublicCrawlEvent({
+    const recordPromise = recordPublicCrawlEvent({
       route: visitorRoute.route,
       userAgent,
       resourceId: visitorRoute.resourceId,
       geo: extractRequestGeo(request),
     });
+    if (context?.waitUntil) {
+      context.waitUntil(recordPromise);
+    } else {
+      await recordPromise;
+    }
   }
 
   return undefined;

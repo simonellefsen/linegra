@@ -54,4 +54,17 @@ describe('crawlTrafficStats', () => {
     expect(labelCountryCode('NO')).toBe('Norway');
     expect(labelCountryCode('??')).toBe('Unknown country');
   });
+
+  it('maps legacy flat bot RPC payload', () => {
+    const stats = mapCrawlTrafficStats({
+      days: 7,
+      totals: { hits: 2, unique_agents: 1, llm_hits: 0 },
+      by_agent: [{ agent_bucket: 'googlebot', hits: 2 }],
+      by_route: [{ route: 'sitemap', hits: 2 }],
+      by_day: [],
+      recent: [],
+    });
+    expect(stats.bot.totals.hits).toBe(2);
+    expect(stats.bot.byAgent[0]?.agentBucket).toBe('googlebot');
+  });
 });
