@@ -37,6 +37,19 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
       },
       plugins: [react()],
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks(id) {
+              if (!id.includes('node_modules')) return;
+              if (id.includes('react-dom') || /\/react\//.test(id)) return 'react-vendor';
+              if (id.includes('@supabase')) return 'supabase';
+              if (id.includes('lucide-react')) return 'icons';
+            },
+          },
+        },
+        chunkSizeWarningLimit: 700,
+      },
       define: {
         ...definedEnv,
         'process.env.API_KEY': JSON.stringify(runtimeEnv.GEMINI_API_KEY ?? runtimeEnv.VITE_GEMINI_API_KEY ?? ''),

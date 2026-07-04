@@ -911,12 +911,18 @@ export const parseGedcom = (text: string): GedcomParseResult => {
       } else if (currentType === 'REPO' && parsedRepositories[currentId]) {
         // Repository record body: `1 NAME <archive name>` (the REPO line value is a fallback).
         if (tag === 'NAME' && value) parsedRepositories[currentId].name = value;
+        else if (level === 1) {
+          warnings.push(`Ignored repository tag "${tag}" on repository ${currentId}`);
+        }
       } else if (currentType === 'OBJE' && parsedMediaObjects[currentId]) {
         // Multimedia record body: `1 FILE` / `1 FORM` / `1 TITL` (H/P2).
         const medium = parsedMediaObjects[currentId];
         if (tag === 'FILE' && value) medium.file = value;
         else if (tag === 'FORM' && value) medium.form = value;
         else if (tag === 'TITL' && value) medium.title = value;
+        else if (level === 1) {
+          warnings.push(`Ignored multimedia tag "${tag}" on object ${currentId}`);
+        }
       }
     });
 
@@ -1220,18 +1226,27 @@ export const serializeGedcom = (people: Person[], relationships: Relationship[])
   // Deduped source registry: one xref per source document, shared across everyone who cites it (so
   // a single dødsannonce cited for both a death and a burial yields ONE `0 @S1@ SOUR` record).
   const sourceRegistry = new Map<string, { xref: string; source: Source }>();
+  const sourceIdToXref = new Map<string, string>();
   let sourceIndex = 0;
   const sourceKey = (s: { id?: string; externalId?: string }) => s.externalId || s.id || '';
   const registerSource = (s: Source): string | null => {
     const key = sourceKey(s);
     if (!key) return null;
     const existing = sourceRegistry.get(key);
-    if (existing) return existing.xref;
+    if (existing) {
+      if (s.id) sourceIdToXref.set(s.id, existing.xref);
+      if (s.externalId) sourceIdToXref.set(s.externalId, existing.xref);
+      return existing.xref;
+    }
     const xref = `@S${++sourceIndex}@`;
     sourceRegistry.set(key, { xref, source: s });
+    sourceIdToXref.set(key, xref);
+    if (s.id) sourceIdToXref.set(s.id, xref);
+    if (s.externalId) sourceIdToXref.set(s.externalId, xref);
     return xref;
   };
-  const xrefForSourceId = (id?: string): string | null => (id ? sourceRegistry.get(id)?.xref ?? null : null);
+  const xrefForSourceId = (id?: string): string | null =>
+    id ? sourceIdToXref.get(id) ?? sourceRegistry.get(id)?.xref ?? null : null;
   people.forEach((p) => (p.sources || []).forEach((s) => registerSource(s)));
 
   // Emit a vital event (BIRT/DEAT/BURI) with any citations whose event label maps to it.

@@ -10,6 +10,13 @@ import {
 import { parseMatchDisplayName } from '../lib/dnaMatchPlacement';
 import { inferLivingStatus } from '../lib/lifespan';
 import { parseQuay } from '../lib/sourceQuality';
+import {
+  assessArchiveLoad,
+  DEFAULT_PEDIGREE_ANCESTOR_DEPTH,
+  DEFAULT_PEDIGREE_DESCENDANT_DEPTH,
+  LANDING_BIRTHDAY_SCAN_LIMIT,
+} from '../lib/treePerformance';
+import { inferDefaultProbandId } from '../lib/gedcomFidelity';
 import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DNASharedSegmentRowPreview, DnaLineageResolution, UnlinkedDnaMatchRecord, AutosomalIndexStats, TreeCollaborator, TreeAccessRole } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
@@ -1060,6 +1067,11 @@ export const loadArchiveData = async (treeId: string) => {
   }));
   const relationships = (relationshipRows || []).map(mapDbRelationship);
 
+  const assessment = assessArchiveLoad(people.length, relationships.length);
+  if (assessment.exceedsWarnThreshold && typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+    console.warn(`[treePerformance] ${assessment.message}`);
+  }
+
   return { people, relationships };
 };
 
@@ -1074,8 +1086,8 @@ export interface PedigreeScopeArchive {
 export const loadPedigreeScope = async (
   treeId: string,
   focusPersonId: string | null,
-  maxAncestorDepth = 2,
-  maxDescendantDepth = 1
+  maxAncestorDepth = DEFAULT_PEDIGREE_ANCESTOR_DEPTH,
+  maxDescendantDepth = DEFAULT_PEDIGREE_DESCENDANT_DEPTH
 ): Promise<PedigreeScopeArchive> => {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');
@@ -1127,7 +1139,7 @@ export const fetchThisMonthHighlights = async (treeId: string, limit = 3): Promi
     )
     .eq('tree_id', treeId)
     .not('birth_date_text', 'is', null)
-    .limit(200);
+    .limit(LANDING_BIRTHDAY_SCAN_LIMIT);
   if (error) throw new Error(error.message);
   const filtered = (data || []).filter((row) => {
     if (!row.birth_date_text) return false;
@@ -3480,7 +3492,11 @@ const recordAuditLogs = async (entries: Array<{ tree_id: string; actor_id: strin
   await chunkedInsert('audit_logs', entries);
 };
 
-export const importGedcomToSupabase = async (treeId: string, data: { people: Person[]; relationships: Relationship[] }, actor?: ImportActor | null) => {
+export const importGedcomToSupabase = async (
+  treeId: string,
+  data: { people: Person[]; relationships: Relationship[] },
+  actor?: ImportActor | null
+): Promise<{ probandId: string | null }> => {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase credentials are missing.');
   }
@@ -3667,14 +3683,24 @@ export const importGedcomToSupabase = async (treeId: string, data: { people: Per
     status: 'completed',
     stats: { people: personRows.length, relationships: relationshipRows.length }
   });
+
+  const inferredProbandId = inferDefaultProbandId(data.people, data.relationships);
+  const mappedProbandId = inferredProbandId ? personIdMap.get(inferredProbandId) ?? null : null;
+  if (mappedProbandId) {
+    await updateTreeSettings(treeId, { probandId: mappedProbandId }, actor);
+  }
+
   console.info('[Linegra] GEDCOM import synced to Supabase', {
     treeId,
     people: personRows.length,
     relationships: relationshipRows.length,
     events: events.length,
     sources: sources.length,
-    citations: citations.length
+    citations: citations.length,
+    probandId: mappedProbandId,
   });
+
+  return { probandId: mappedProbandId };
 };
 export interface SupabaseTreeStatistics {
   totalIndividuals: number;

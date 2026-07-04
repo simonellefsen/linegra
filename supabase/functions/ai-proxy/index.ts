@@ -17,8 +17,8 @@
 //
 // Auth/abuse: Supabase's gateway requires the project `apikey` header on every invocation, so only
 // this app can call it. There is NO per-user JWT check (the local admin has no real auth session —
-// see roadmap A) and NO per-tree/day cap in this pass. Until roadmap A / the Phase 3 cap lands,
-// treat that as the residual abuse surface. The key itself is never returned to the caller.
+// see roadmap A) and a per-tree/day spend cap (Phase 3) enforced before relaying requests.
+// Test Connection (`testKey`) bypasses the cap so admins can verify keys even when a tree is over budget.
 
 const SUPABASE_URL = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -91,6 +91,47 @@ const readProviderSettings = async (): Promise<ProviderSettings | null> => {
   if (!resp.ok) return null;
   const rows = (await resp.json()) as ProviderSettings[];
   return rows?.[0] ?? null;
+};
+
+interface BudgetCheckResult {
+  allowed: boolean;
+  reason?: string;
+  global_spend_today?: number;
+  global_cap_usd?: number | null;
+  tree_spend_today?: number;
+  tree_cap_usd?: number | null;
+}
+
+const checkUsageBudget = async (treeId: string | null): Promise<BudgetCheckResult> => {
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return { allowed: true };
+  const treeUuid =
+    typeof treeId === "string" && UUID_RE.test(treeId) ? treeId : null;
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/rpc/check_ai_usage_budget`, {
+      method: "POST",
+      headers: {
+        apikey: SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ payload_tree_id: treeUuid }),
+    });
+    if (!resp.ok) return { allowed: true };
+    const row = (await resp.json()) as BudgetCheckResult;
+    return row?.allowed === false ? row : { allowed: true, ...row };
+  } catch {
+    return { allowed: true };
+  }
+};
+
+const budgetExceededMessage = (budget: BudgetCheckResult): string => {
+  if (budget.reason === "daily_tree_cap_exceeded") {
+    return `Daily AI budget for this tree is exhausted ($${Number(budget.tree_spend_today ?? 0).toFixed(4)} / $${Number(budget.tree_cap_usd ?? 0).toFixed(2)}).`;
+  }
+  if (budget.reason === "daily_global_cap_exceeded") {
+    return `Daily global AI budget is exhausted ($${Number(budget.global_spend_today ?? 0).toFixed(4)} / $${Number(budget.global_cap_usd ?? 0).toFixed(2)}).`;
+  }
+  return "Daily AI budget exhausted.";
 };
 
 const logUsage = async (row: {
@@ -258,6 +299,32 @@ Deno.serve(async (req) => {
   }
   if (!Array.isArray(messages)) {
     return json({ error: "Missing messages array." }, 400);
+  }
+
+  if (!testKey) {
+    const budget = await checkUsageBudget(treeId);
+    if (!budget.allowed) {
+      const message = budgetExceededMessage(budget);
+      await logUsage({
+        treeId,
+        actorId,
+        purpose,
+        model: effectiveModel || null,
+        usage: null,
+        cost: 0,
+        latencyMs: 0,
+        status: "error",
+        error: `budget: ${budget.reason ?? "exceeded"}`,
+      });
+      return json(
+        {
+          error: message,
+          code: "AI_BUDGET_EXCEEDED",
+          budget,
+        },
+        429,
+      );
+    }
   }
 
   const started = performance.now();

@@ -27,7 +27,9 @@ GEDCOM is the genealogy interchange format. Linegra supports tolerant import and
 2. `ImportExport.tsx` parses it client-side into `Person[]` + `Relationship[]`, collecting
    **warnings for unsupported/ignored tags**.
 3. Records are bound to the **selected tree** and persisted via `importGedcomToSupabase`,
-   which writes persons/relationships/places/events/sources and records the run in
+   which writes persons/relationships/places/events/sources/citations, infers a
+   **`defaultProbandId`** (parentless + descendant-heavy anchor via
+   [../../lib/gedcomFidelity.ts](../../lib/gedcomFidelity.ts)), and records the run in
    `gedcom_imports` (`status`, `stats`, `log`).
 
 See the diagram in [../architecture.md](../architecture.md#4-gedcom-import-pipeline).
@@ -48,14 +50,13 @@ See the diagram in [../architecture.md](../architecture.md#4-gedcom-import-pipel
 ## Gotchas
 
 - Large GEDCOM imports are an "expensive workflow" — must show progress (SPEC §7).
-- Round-trip (import → export → diff) is **not** yet covered by tests — see
-  [../roadmap.md](../roadmap.md) item E.
+- Import→export regression helpers live in [../../lib/gedcomFidelity.ts](../../lib/gedcomFidelity.ts)
+  (`summarizeGedcomArchive`, `diffGedcomArchiveSummaries`); citation PAGE/QUAY/DATA round-trip is
+  unit-tested (roadmap **E**, done 2026-07-04).
 
 ## GEDCOM 7.0
 
-The importer/exporter currently target GEDCOM **5.5.1** (all fixtures are `GEDC.VERS 5.5.1`). The
-plan to align the schema + code with **GEDCOM 7.0** (while still importing 5.x) — including a known
-correctness bug where `CONC`/`CONT` continuation lines are not concatenated, so long notes are
-dropped — is in [../sources/gedcom7-alignment.md](../sources/gedcom7-alignment.md) (roadmap item H).
+The importer accepts **5.x and 7.x**; the exporter emits **GEDCOM 7.0 only**. Full alignment
+history is in [../sources/gedcom7-alignment.md](../sources/gedcom7-alignment.md) (roadmap item H, complete).
 
 Runbook: [../runbooks/gedcom-import.md](../runbooks/gedcom-import.md).

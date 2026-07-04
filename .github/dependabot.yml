@@ -1,0 +1,30 @@
+# Automated dependency update PRs (security + patch/minor bumps).
+# https://docs.github.com/en/code-security/dependabot
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      dev-tooling:
+        patterns:
+          - eslint*
+          - '@eslint/*'
+          - '@typescript-eslint/*'
+          - typescript
+          - vite*
+          - vitest*
+          - '@vitejs/*'
+          - globals
+          - husky
+          - '@types/*'
+      runtime:
+        patterns:
+          - react*
+          - '@supabase/*'
+          - lucide-react
+          - '@vercel/*'

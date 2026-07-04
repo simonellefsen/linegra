@@ -1,0 +1,264 @@
+-- Roadmap N Phase 3: per-tree/day AI spend caps enforced server-side in ai-proxy.
+
+update public.ai_provider_settings
+set metadata = coalesce(metadata, '{}'::jsonb) || jsonb_build_object(
+  'caps_enabled', coalesce((metadata->>'caps_enabled')::boolean, true),
+  'daily_global_cost_cap_usd', coalesce(nullif((metadata->>'daily_global_cost_cap_usd')::numeric, 0), 5),
+  'daily_tree_cost_cap_usd', coalesce(nullif((metadata->>'daily_tree_cost_cap_usd')::numeric, 0), 1)
+)
+where provider = 'openrouter';
+
+create or replace function public.check_ai_usage_budget(payload_tree_id uuid default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caps_enabled boolean;
+  global_cap numeric;
+  tree_cap numeric;
+  global_spend numeric;
+  tree_spend numeric;
+  day_start timestamptz := date_trunc('day', now() at time zone 'utc');
+begin
+  select
+    coalesce((metadata->>'caps_enabled')::boolean, true),
+    nullif((metadata->>'daily_global_cost_cap_usd')::numeric, 0),
+    nullif((metadata->>'daily_tree_cost_cap_usd')::numeric, 0)
+  into caps_enabled, global_cap, tree_cap
+  from public.ai_provider_settings
+  where provider = 'openrouter';
+
+  select coalesce(sum(cost_estimate), 0)
+  into global_spend
+  from public.ai_usage_logs
+  where created_at >= day_start
+    and status = 'ok';
+
+  tree_spend := 0;
+  if payload_tree_id is not null then
+    select coalesce(sum(cost_estimate), 0)
+    into tree_spend
+    from public.ai_usage_logs
+    where tree_id = payload_tree_id
+      and created_at >= day_start
+      and status = 'ok';
+  end if;
+
+  if not coalesce(caps_enabled, false) then
+    return jsonb_build_object(
+      'allowed', true,
+      'caps_enabled', false,
+      'global_spend_today', global_spend,
+      'tree_spend_today', tree_spend
+    );
+  end if;
+
+  if global_cap is not null and global_spend >= global_cap then
+    return jsonb_build_object(
+      'allowed', false,
+      'reason', 'daily_global_cap_exceeded',
+      'caps_enabled', true,
+      'global_spend_today', global_spend,
+      'global_cap_usd', global_cap,
+      'tree_spend_today', tree_spend,
+      'tree_cap_usd', tree_cap
+    );
+  end if;
+
+  if payload_tree_id is not null and tree_cap is not null and tree_spend >= tree_cap then
+    return jsonb_build_object(
+      'allowed', false,
+      'reason', 'daily_tree_cap_exceeded',
+      'caps_enabled', true,
+      'global_spend_today', global_spend,
+      'global_cap_usd', global_cap,
+      'tree_spend_today', tree_spend,
+      'tree_cap_usd', tree_cap
+    );
+  end if;
+
+  return jsonb_build_object(
+    'allowed', true,
+    'caps_enabled', true,
+    'global_spend_today', global_spend,
+    'global_cap_usd', global_cap,
+    'tree_spend_today', tree_spend,
+    'tree_cap_usd', tree_cap
+  );
+end;
+$$;
+
+revoke all on function public.check_ai_usage_budget(uuid) from public, anon, authenticated;
+grant execute on function public.check_ai_usage_budget(uuid) to service_role;
+
+drop function if exists public.admin_get_ai_settings_metadata();
+
+create or replace function public.admin_get_ai_settings_metadata()
+returns table (
+  provider text,
+  enabled boolean,
+  model text,
+  base_url text,
+  has_api_key boolean,
+  caps_enabled boolean,
+  daily_global_cost_cap_usd numeric,
+  daily_tree_cost_cap_usd numeric,
+  updated_at timestamptz,
+  updated_by text
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    s.provider,
+    s.enabled,
+    s.model,
+    s.base_url,
+    (nullif(btrim(coalesce(s.api_key, '')), '') is not null) as has_api_key,
+    coalesce((s.metadata->>'caps_enabled')::boolean, true) as caps_enabled,
+    coalesce((s.metadata->>'daily_global_cost_cap_usd')::numeric, 5) as daily_global_cost_cap_usd,
+    coalesce((s.metadata->>'daily_tree_cost_cap_usd')::numeric, 1) as daily_tree_cost_cap_usd,
+    s.updated_at,
+    s.updated_by
+  from public.ai_provider_settings s
+  order by s.provider;
+$$;
+
+create or replace function public.admin_get_ai_budget_status()
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  select public.check_ai_usage_budget(null);
+$$;
+
+revoke all on function public.admin_get_ai_budget_status() from public, anon;
+grant execute on function public.admin_get_ai_budget_status() to authenticated;
+
+drop function if exists public.admin_upsert_ai_settings(text, boolean, text, text, text, text);
+
+create or replace function public.admin_upsert_ai_settings(
+  payload_provider text default 'openrouter',
+  payload_enabled boolean default true,
+  payload_api_key text default null,
+  payload_model text default null,
+  payload_base_url text default null,
+  payload_actor_name text default 'System',
+  payload_caps_enabled boolean default null,
+  payload_daily_global_cost_cap_usd numeric default null,
+  payload_daily_tree_cost_cap_usd numeric default null
+)
+returns table (
+  provider text,
+  enabled boolean,
+  model text,
+  base_url text,
+  has_api_key boolean,
+  caps_enabled boolean,
+  daily_global_cost_cap_usd numeric,
+  daily_tree_cost_cap_usd numeric,
+  updated_at timestamptz,
+  updated_by text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_provider text := coalesce(nullif(btrim(payload_provider), ''), 'openrouter');
+  normalized_model text;
+  normalized_base_url text;
+  normalized_api_key text;
+  saved_row public.ai_provider_settings;
+  next_metadata jsonb;
+begin
+  if normalized_provider <> 'openrouter' then
+    raise exception 'Unsupported AI provider: %', normalized_provider;
+  end if;
+
+  normalized_model := coalesce(nullif(btrim(payload_model), ''), 'nvidia/nemotron-nano-12b-v2-vl:free');
+  normalized_base_url := coalesce(nullif(btrim(payload_base_url), ''), 'https://openrouter.ai/api/v1');
+  normalized_api_key := nullif(btrim(coalesce(payload_api_key, '')), '');
+
+  select coalesce(metadata, '{}'::jsonb)
+  into next_metadata
+  from public.ai_provider_settings
+  where provider = normalized_provider;
+
+  next_metadata := coalesce(next_metadata, '{}'::jsonb);
+
+  if payload_caps_enabled is not null then
+    next_metadata := next_metadata || jsonb_build_object('caps_enabled', payload_caps_enabled);
+  end if;
+  if payload_daily_global_cost_cap_usd is not null then
+    next_metadata := next_metadata || jsonb_build_object(
+      'daily_global_cost_cap_usd', greatest(payload_daily_global_cost_cap_usd, 0)
+    );
+  end if;
+  if payload_daily_tree_cost_cap_usd is not null then
+    next_metadata := next_metadata || jsonb_build_object(
+      'daily_tree_cost_cap_usd', greatest(payload_daily_tree_cost_cap_usd, 0)
+    );
+  end if;
+
+  insert into public.ai_provider_settings as settings (
+    provider,
+    enabled,
+    api_key,
+    model,
+    base_url,
+    metadata,
+    updated_at,
+    updated_by
+  )
+  values (
+    normalized_provider,
+    coalesce(payload_enabled, true),
+    normalized_api_key,
+    normalized_model,
+    normalized_base_url,
+    next_metadata,
+    now(),
+    coalesce(nullif(btrim(payload_actor_name), ''), 'System')
+  )
+  on conflict on constraint ai_provider_settings_pkey do update
+  set
+    enabled = excluded.enabled,
+    api_key = coalesce(excluded.api_key, settings.api_key),
+    model = excluded.model,
+    base_url = excluded.base_url,
+    metadata = next_metadata,
+    updated_at = now(),
+    updated_by = excluded.updated_by
+  returning settings.* into saved_row;
+
+  return query
+  select
+    saved_row.provider,
+    saved_row.enabled,
+    saved_row.model,
+    saved_row.base_url,
+    (nullif(btrim(coalesce(saved_row.api_key, '')), '') is not null) as has_api_key,
+    coalesce((saved_row.metadata->>'caps_enabled')::boolean, true) as caps_enabled,
+    coalesce((saved_row.metadata->>'daily_global_cost_cap_usd')::numeric, 5) as daily_global_cost_cap_usd,
+    coalesce((saved_row.metadata->>'daily_tree_cost_cap_usd')::numeric, 1) as daily_tree_cost_cap_usd,
+    saved_row.updated_at,
+    saved_row.updated_by;
+end;
+$$;
+
+revoke all on function public.admin_upsert_ai_settings(
+  text, boolean, text, text, text, text, boolean, numeric, numeric
+) from public, anon;
+grant execute on function public.admin_upsert_ai_settings(
+  text, boolean, text, text, text, text, boolean, numeric, numeric
+) to authenticated;
+
+revoke all on function public.admin_get_ai_settings_metadata() from public, anon;
+grant execute on function public.admin_get_ai_settings_metadata() to authenticated;
+
+select pg_notify('pgrst', 'reload schema');

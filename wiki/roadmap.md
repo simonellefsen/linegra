@@ -63,11 +63,20 @@ person/place mappers); consider component/UI tests (would need jsdom).
 - shared-cM ranges doc maintained: [sources/dna-cm-ranges.md](sources/dna-cm-ranges.md) cross-links
   the `supportsRelationshipHops` thresholds that drive the verdict.
 
-### E. GEDCOM fidelity
+### E. GEDCOM fidelity — DONE 2026-07-04
 - Audit unsupported-tag warning coverage; ensure source+citation context is preserved on import
   (SPEC §5). Consider round-trip tests (import → export → diff).
 - After import, set a sensible `defaultProbandId` on the new tree so the interactive tree opens on
   a chosen root rather than the arbitrary `treePeople[0]` (see 2026-06-20 tree-switch fix in log).
+
+> **Done 2026-07-04:** [../lib/gedcomFidelity.ts](../lib/gedcomFidelity.ts) adds
+> `inferDefaultProbandId` (parentless + descendant-heavy anchor), `summarizeGedcomArchive`, and
+> `diffGedcomArchiveSummaries` for import→export regression tests (+4 tests in
+> [../lib/gedcomFidelity.test.ts](../lib/gedcomFidelity.test.ts)). `importGedcomToSupabase` now
+> persists `defaultProbandId` via `updateTreeSettings` and returns the mapped UUID; post-import UI
+> refreshes the active tree and focuses the pedigree on that person ([../App.tsx](../App.tsx)).
+> Parser warnings extended for unsupported REPO/OBJE tags; citation PAGE/QUAY/DATA round-trip covered
+> by tests. See [integrations/gedcom.md](integrations/gedcom.md).
 
 ### H. GEDCOM 7.0 alignment — full gap analysis in [sources/gedcom7-alignment.md](sources/gedcom7-alignment.md)
 Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing 5.x. Phased:
@@ -151,9 +160,25 @@ Structure the schema + code around FamilySearch GEDCOM 7.0 while still importing
 - Possible follow-ups: persist the cache to `localStorage` across sessions; add deterministic
   fallbacks for `generateBio` / `analyzeHistoricalEra` (currently still key-dependent).
 
-### G. Performance guardrails
-- SPEC §7 demands no full-tree hydration. Add a lightweight check/benchmark on large trees
-  (the 37 P. Gamby CSV / Big-Andersen GEDCOM fixtures in the repo root are useful test data).
+### G. Performance guardrails — DONE 2026-07-04
+SPEC §7 demands no full-tree hydration for default views. The interactive tree already uses
+`load_pedigree_scope` (scoped RPC) via `loadPedigreeScope` in [../services/archive.ts](../services/archive.ts);
+App state holds only the current scope, not the full archive.
+
+> **Done 2026-07-04:** [../lib/treePerformance.ts](../lib/treePerformance.ts) centralizes depth caps,
+> default/expanded view budgets (people + relationships), search/landing scan limits, and
+> `evaluatePedigreeScopeBudget` / `measurePedigreeScopeCompute` helpers. [../lib/treePerformance.test.ts](../lib/treePerformance.test.ts)
+> benchmarks `computePedigreeScope` on synthetic binary trees and on local `.ged` fixtures when present
+> (Big-Andersen, etc. — same gitignored pattern as `gedcomParser.test.ts`). Dev-only console warning when
+> `loadArchiveData` exceeds 500 people (admin book/research panels). Constants wired through `App.tsx` and
+> `loadPedigreeScope` defaults.
+>
+> **Build performance (2026-07-04):** removed unused `d3` / `@google/genai` deps and the stale
+> `index.html` importmap (Vite bundles everything). Vite `manualChunks` splits react / supabase /
+> lucide; Administrator panels are `React.lazy` code-split. Vitest runs with `pool: 'threads'`.
+> **Dependency security (2026-07-04):** weekly `npm audit` hygiene; Dependabot grouped PRs;
+> [runbooks/dependency-security.md](runbooks/dependency-security.md). Runtime priority:
+> `@supabase/supabase-js` 2.x; defer ESLint 10 / Vite 8 / TypeScript 6 until dedicated migrations.
 
 ### I. Historical calendar & date conversion (hard; design carefully) — see [sources/historical-dates.md](sources/historical-dates.md)
 Julian ↔ Gregorian is **not** a single global toggle — Gregorian adoption ranged from 1582
@@ -264,9 +289,8 @@ replacing the layout engine in [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.
   [../lib/treeExport.ts](../lib/treeExport.ts) (Export menu on tree toolbar).
 - **L7. Side-by-side person / tree compare — DONE 2026-07-04.** Dual pedigree scopes with person pickers
   ([../components/InteractiveTree/CompareTreeView.tsx](../components/InteractiveTree/CompareTreeView.tsx)).
-- **Virtualization for large trees folds under existing G / SPEC §7**, not a new L item — G already
-  covers "no full-tree hydration."
-- **L track complete (L1–L7).** Next themed groups: **M5** (public book viewer), **N Phase 3** (AI spend cap).
+- Virtualization for large trees folds under **G** (performance guardrails) / SPEC §7**, not a new L item.
+- **L track complete (L1–L7).** **N Phase 3** (AI spend cap) is done. Next themed groups: **A** (multi-user auth polish) or remaining **M** items.
 
 ### M. AI family books & biography editing
 Builds on J. Extends SPEC §3.5 (admin workspace) and adds a public viewer; grounding policy ties to
@@ -361,7 +385,8 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
 > service-role key (optional `OPENROUTER_API_KEY` secret override), so the admin "enter key / Test Connection"
 > UI is unchanged. The key leaves the browser but stays in the DB (plaintext, as before; encrypt-at-rest is a
 > later hardening). `verify_jwt=false` (local admin has no JWT — see A); the gateway still requires the
-> publishable key, which is the residual abuse surface until the Phase 3 cap / roadmap A lands.
+> publishable key; per-tree/day caps (Phase 3) further limit spend. Real auth (roadmap A) remains the
+> long-term abuse hardening.
 > **Done 2026-07-02 — Phase 2 (usage logging + spend view):** a new `ai_usage_logs` table (migration
 > `20260702120000`) + `admin_get_ai_usage_summary(days)` RPC (SECURITY DEFINER); the function logs each call's
 > model/tokens/estimated-cost/tree, and a new **AI Usage** section in
@@ -369,8 +394,16 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
 > `fetchAiUsageSummary` in [../services/archive.ts](../services/archive.ts)) shows rolling 7/30/90-day totals,
 > per-purpose and per-tree. AI family-book composition threads `treeId` (`BookGenerationOptions.treeId`) for
 > per-tree attribution; other calls are logged by purpose only. 255 tests (+7). Deployed to the linked project.
-> **Deferred (Phase 3):** a per-tree/day **hard cap** — over-budget calls would block server-side and the
-> client falls back to its deterministic path. Until then the function is publishable-key gated only.
+> **Done 2026-07-04 — Phase 3 (per-tree/day spend cap):** migration `20260704120000` adds
+> `check_ai_usage_budget(tree_id)` (UTC calendar-day spend from `ai_usage_logs`, caps in
+> `ai_provider_settings.metadata`) and extends `admin_upsert_ai_settings` / `admin_get_ai_settings_metadata`
+> with cap fields. The ai-proxy checks budget before relay (returns **429** +
+> `{ code: "AI_BUDGET_EXCEEDED" }`; admin **Test Connection** bypasses via `testKey`). Cap controls +
+> today's spend live in **Administrator → Database → AI Settings**
+> ([../components/admin/AdminDatabasePanel.tsx](../components/admin/AdminDatabasePanel.tsx)).
+> Over-budget calls log as errors and the client falls back to deterministic paths
+> ([../lib/aiUsageBudget.ts](../lib/aiUsageBudget.ts)).
+> **N track complete (Phase 1–3).**
 
 Previously every OpenRouter call ran **client-side** with `Authorization: Bearer ${apiKey}`, so the key
 reached the browser and anyone who could read settings or sniff traffic could exfiltrate it and spend
@@ -419,14 +452,80 @@ transcription already shipped. Keep raw name text verbatim (same fidelity rule a
 
 ### S. Full UI internationalization + public share surface
 Books are i18n'd (`lib/bookI18n.ts`) but the **app chrome is English-only**, while the product is
-public-first. Localize the whole UI (da default + sv/no/en, reuse the `bookI18n` pattern), add
-per-person/tree **OpenGraph share cards** and a sitemap for public trees (SEO). Pairs with M5 (public
-book viewer) and A (multi-user).
+public-first. Localize the whole UI (da default + sv/no/en, reuse the `bookI18n` pattern). Per-entity
+OpenGraph cards and crawlable public URLs live under roadmap **U** (crawler + agent discoverability).
+Pairs with M5 (public book viewer) and A (multi-user).
 
 ### T. Data portability, backup & admin undo
 `audit_logs` already records every mutation with actor + details. Leverage it: a one-click
 **revert/undo** for recent admin actions, scheduled full-tree **JSON/GEDCOM-7 backup**, and a GDPR
 "export everything for person/tree" + hard-delete path (ties to K7's deletable-on-demand rule).
+
+### U. Crawler & agent discoverability (SEO + LLM webfetch)
+Genealogy archives are meant to be **found and traversed** — by humans, classic search crawlers
+(Google, Bing, DuckDuckGo), and the newer wave of **LLM / agent fetchers** (ChatGPT browse, Perplexity,
+Claude web fetch, Gemini URL context, research bots, etc.). Today the app is a **client-rendered SPA**:
+`index.html` carries only generic OG tags, public books at `/book/:id` hydrate in JS, and person/tree
+deep links (`?tree=&person=`) have **no server HTML**, no sitemap, and no machine-readable graph —
+so bots see an empty shell unless they execute JavaScript (many don't, or do so unreliably).
+
+**Goal:** any bot — search indexer or research agent — can **land on a stable URL**, read who someone
+is, follow parent/child/spouse links like a human would, and understand tree/book context without
+guessing the app's internal state. Respect **privacy** (`RESN`, living persons, non-public trees) on
+every surface; only `is_public` trees/books and non-restricted persons appear in crawlable indexes.
+
+**Design note:** deeper URL/schema policy → `sources/crawler-agent-discoverability.md` (to be written).
+Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship vocabulary), and **S**
+(share-card copy/i18n).
+
+*Classic search crawlers (HTML-first):*
+
+- **U1. Server-rendered public shells (highest leverage).** For public routes — tree home, person
+  profile, book viewer — return **initial HTML with content** (Vercel SSR/ISR, Supabase Edge HTML, or
+  a lightweight prerender pass). Minimum viable payload: person name, vital dates/places, relationship
+  links as real `<a href="…">`, narrative excerpt, sources list. Without this, SEO is mostly cosmetic.
+- **U2. Stable, canonical URL scheme.** Document and enforce patterns, e.g.
+  `/tree/:treeSlugOrId`, `/tree/:id/person/:personId`, `/book/:id` — with `<link rel="canonical">` and
+  redirects from legacy `?tree=&person=` query URLs. Breadcrumb markup (`BreadcrumbList` JSON-LD).
+- **U3. `robots.txt` + dynamic `sitemap.xml`.** Allow public prefixes; disallow admin/auth/API. Sitemap
+  lists every **public** tree landing page, person page, and book URL (respect `RESN` / living flags —
+  omit restricted persons). Optional `sitemap-index` when trees are large; chunk person URLs per tree.
+- **U4. Per-entity meta + Schema.org.** OpenGraph/Twitter cards per person/tree/book (title, description,
+  image). JSON-LD: `Person` (name, birth/death, `sameAs` for external ids), `WebSite`/`Organization` for
+  the archive, `CreativeWork`/`Book` for family books. Use existing structured dates/places from GEDCOM
+  P1 where safe to expose.
+- **U5. Crawlable tree index & relationship graph in HTML.** A public tree landing page listing
+  persons (paginated, filterable) with links — not only the interactive SVG pedigree. Each person page
+  exposes **typed relationship sections** (parents, spouses, children, siblings) as link lists so
+  crawlers can walk the graph without simulating pan/zoom.
+
+*LLM / agent fetchers (machine-readable navigation):*
+
+- **U6. `llms.txt` (+ optional `llms-full.txt`).** Site-root agent-oriented index (emerging convention,
+  analogous to `robots.txt`): what Linegra is, how public URLs work, privacy rules, and links to docs
+  or sample person/tree URLs. Helps agents that prefetch site policy before deep-fetching.
+- **U7. Alternate **plain / markdown** representations.** For public person/tree/book URLs, offer
+  `?format=md` or `Accept: text/markdown` (or dedicated `/person/:id.md` paths) returning a concise,
+  link-rich summary: vitals, relationships with absolute URLs, bio excerpt, source citations. Optimized
+  for token-budget fetchers that prefer text over DOM parsing. Same privacy gates as HTML.
+- **U8. JSON-LD / JSON API for agents.** Small, cacheable **`/api/public/person/:id`** (or Edge Function)
+  returning normalized person + relationship edges + book back-links — for agents that request JSON
+  directly. Include `rel: parent|child|spouse`, `href`, and human-readable `relationshipLabel` (reuse
+  [../lib/relationshipCalculator.ts](../lib/relationshipCalculator.ts)). Rate-limit + cache headers.
+- **U9. Internal link hygiene in rendered markup.** Avoid `javascript:` or click-only div navigation on
+  public pages; every traversable edge in the tree should be a **followable anchor** with descriptive
+  `title`/`aria-label` ("Father: …", "Child: …"). Helps both accessibility and agent heuristics that
+  score `<a>` tags over canvas/SVG.
+- **U10. Bot observability & policy.** Log agent/crawler hits on public routes (User-Agent buckets:
+  `Googlebot`, `GPTBot`, `ClaudeBot`, `PerplexityBot`, etc.) in admin metrics; document opt-out in
+  `robots.txt` where desired. Optional `noai` / `noimageai` meta for restricted media later.
+
+*Privacy & sequencing:*
+
+- **Never** expose living/restricted persons in sitemap, `llms.txt`, or alternate formats — reuse
+  `RESN` + `inferLivingStatus` gates already used for GEDCOM export.
+- **Sequencing:** U1 + U2 (rendered HTML + URLs) → U3 + U4 (sitemap + schema) → U5 (graph index) →
+  U6–U8 (agent-specific formats) → U9–U10 (polish). Can ship book prerender (M5) before full tree SSR.
 
 ## Maintenance note (2026-06-23)
 The 2026-06-22/23 work (M-series editing arc, L1, K1, husky hooks, DNA panel fixes) is **committed and
@@ -443,16 +542,15 @@ the "newest at top" history. Also: two untracked artifacts sit in the working tr
 
 ## How to pick the next item
 Two lenses:
-- **N (server-side AI proxy) Phase 1+2 is now DONE** (2026-07-02): the OpenRouter key is out of the
-  browser and per-call spend is logged. The remaining N work is the **Phase 3 per-tree/day cap** —
-  worth doing before a wide public audience can reach the app (the proxy is publishable-key gated
-  only until then).
-- **For product leverage → A (multi-user auth)** — it unblocks M5 (public book viewer) and live
-  verification of the book features (the local admin can't read saved books today; see the RLS note).
+- **N (server-side AI proxy) is complete** (Phases 1–3, 2026-07-04): key server-side, usage logged, and
+  per-tree/day caps enforced in ai-proxy. Residual abuse surface is publishable-key gating until roadmap **A**
+  (real auth sessions).
+- **For product leverage → A (multi-user auth)** — OAuth polish, ownership transfer, invite inbox; also
+  hardens public surfaces (books, trees).
 
-For user-facing progress on the themed groups (small, high-visibility wins): the **L interactive tree
-track (L1–L7) is complete.** Next themed groups: **M5** (public book viewer, gated on auth), or
-**N Phase 3** (AI spend cap).
+For user-facing progress on the themed groups: the **L interactive tree track (L1–L7)** and **M5 public book
+viewer** are complete. **G** (performance guardrails) and **E** (GEDCOM fidelity) are done. Strong next
+picks: **A** (auth), **U** (crawler/agent discoverability for public trees).
 
 > **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit
 > owner* on the same region. True triangulation/Leeds also requires the two matches to share that

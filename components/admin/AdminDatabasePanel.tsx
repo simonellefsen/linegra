@@ -4,13 +4,17 @@ import { FamilyLayoutAudit } from '../../types';
 import {
   DEFAULT_OPENROUTER_BASE_URL,
   DEFAULT_OPENROUTER_MODEL,
+  DEFAULT_DAILY_GLOBAL_AI_COST_CAP_USD,
+  DEFAULT_DAILY_TREE_AI_COST_CAP_USD,
 } from '../../lib/aiSettings';
 import {
   fetchAdminAISettingsMetadata,
+  fetchAdminAiBudgetStatus,
   saveAdminAISettings,
   testOpenRouterConnection,
 } from '../../services/ai';
 import { fetchAiUsageSummary, AiUsageSummary } from '../../services/archive';
+import { AiBudgetStatus } from '../../lib/aiUsageBudget';
 
 interface AdminDatabasePanelProps {
   actorName?: string;
@@ -40,6 +44,10 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
   const [testing, setTesting] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [capsEnabled, setCapsEnabled] = useState(true);
+  const [dailyGlobalCap, setDailyGlobalCap] = useState(String(DEFAULT_DAILY_GLOBAL_AI_COST_CAP_USD));
+  const [dailyTreeCap, setDailyTreeCap] = useState(String(DEFAULT_DAILY_TREE_AI_COST_CAP_USD));
+  const [budgetStatus, setBudgetStatus] = useState<AiBudgetStatus | null>(null);
 
   const [usage, setUsage] = useState<AiUsageSummary | null>(null);
   const [usageDays, setUsageDays] = useState(30);
@@ -69,6 +77,21 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
   }, [supabaseActive, usageDays]);
 
   useEffect(() => {
+    if (!supabaseActive) return;
+    let cancelled = false;
+    fetchAdminAiBudgetStatus()
+      .then((status) => {
+        if (!cancelled) setBudgetStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setBudgetStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [supabaseActive, usageDays]);
+
+  useEffect(() => {
     let cancelled = false;
 
     if (!supabaseActive) {
@@ -90,6 +113,9 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
         setModel(stored.model || DEFAULT_OPENROUTER_MODEL);
         setBaseUrl(stored.baseUrl || DEFAULT_OPENROUTER_BASE_URL);
         setHasApiKey(stored.hasApiKey);
+        setCapsEnabled(stored.capsEnabled);
+        setDailyGlobalCap(String(stored.dailyGlobalCostCapUsd));
+        setDailyTreeCap(String(stored.dailyTreeCostCapUsd));
       } catch (error) {
         if (cancelled) return;
         setTestMessage(error instanceof Error ? error.message : 'Failed to load central AI settings.');
@@ -120,12 +146,19 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
         model,
         baseUrl,
         actorName,
+        capsEnabled,
+        dailyGlobalCostCapUsd: Number(dailyGlobalCap) || 0,
+        dailyTreeCostCapUsd: Number(dailyTreeCap) || 0,
       });
       const stored = metadata.providers.openrouter;
       setApiKey('');
       setModel(stored.model || DEFAULT_OPENROUTER_MODEL);
       setBaseUrl(stored.baseUrl || DEFAULT_OPENROUTER_BASE_URL);
       setHasApiKey(stored.hasApiKey);
+      setCapsEnabled(stored.capsEnabled);
+      setDailyGlobalCap(String(stored.dailyGlobalCostCapUsd));
+      setDailyTreeCap(String(stored.dailyTreeCostCapUsd));
+      setBudgetStatus(await fetchAdminAiBudgetStatus());
       setSaveMessage('AI settings saved centrally in Supabase.');
     } catch (error) {
       setTestMessage(error instanceof Error ? error.message : 'Failed to save central AI settings.');
@@ -214,6 +247,72 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
                 className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none"
               />
             </label>
+          </div>
+          <div className="border border-slate-200 bg-white rounded-2xl p-4 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Daily spend caps</p>
+                <p className="text-sm text-slate-500 mt-1">
+                  Enforced server-side in ai-proxy (UTC calendar day). Set 0 for unlimited on a dimension.
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={capsEnabled}
+                  onChange={(event) => setCapsEnabled(event.target.checked)}
+                  className="rounded border-slate-300"
+                />
+                Caps enabled
+              </label>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 block">
+                  Global cap (USD / day)
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={dailyGlobalCap}
+                  onChange={(event) => setDailyGlobalCap(event.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 block">
+                  Per-tree cap (USD / day)
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={dailyTreeCap}
+                  onChange={(event) => setDailyTreeCap(event.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none"
+                />
+              </label>
+            </div>
+            {budgetStatus?.caps_enabled !== false && (
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                  <p className="font-bold text-slate-500 uppercase tracking-widest text-[10px]">Global today</p>
+                  <p className="font-serif font-bold text-slate-900">
+                    ${Number(budgetStatus?.global_spend_today ?? 0).toFixed(4)}
+                    {budgetStatus?.global_cap_usd != null && budgetStatus.global_cap_usd > 0
+                      ? ` / $${Number(budgetStatus.global_cap_usd).toFixed(2)}`
+                      : ' (unlimited)'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                  <p className="font-bold text-slate-500 uppercase tracking-widest text-[10px]">Status</p>
+                  <p className={`font-bold ${budgetStatus?.allowed === false ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    {budgetStatus?.allowed === false ? 'Over budget' : 'Within budget'}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-4 items-center">
             <button

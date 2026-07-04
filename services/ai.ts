@@ -16,6 +16,7 @@ import {
   StoredAISettings,
   StoredAISettingsMetadata,
 } from "../lib/aiSettings";
+import { AI_BUDGET_EXCEEDED_CODE, AiBudgetStatus, parseAiBudgetStatus } from "../lib/aiUsageBudget";
 
 type RuntimeEnv = Record<string, string | undefined>;
 
@@ -25,6 +26,9 @@ interface AISettingsMetadataRow {
   model: string | null;
   base_url: string | null;
   has_api_key: boolean | null;
+  caps_enabled: boolean | null;
+  daily_global_cost_cap_usd: number | null;
+  daily_tree_cost_cap_usd: number | null;
   updated_at: string | null;
   updated_by: string | null;
 }
@@ -46,6 +50,9 @@ interface SaveAdminAISettingsInput {
   model?: string;
   baseUrl?: string;
   actorName?: string;
+  capsEnabled?: boolean;
+  dailyGlobalCostCapUsd?: number;
+  dailyTreeCostCapUsd?: number;
 }
 
 type RuntimeConfigOptions = {
@@ -171,6 +178,11 @@ const mapMetadataRows = (rows: AISettingsMetadataRow[] | null): StoredAISettings
         model: openrouter.model ?? DEFAULT_OPENROUTER_MODEL,
         baseUrl: openrouter.base_url ?? DEFAULT_OPENROUTER_BASE_URL,
         hasApiKey: openrouter.has_api_key ?? false,
+        capsEnabled: openrouter.caps_enabled ?? defaults.providers.openrouter.capsEnabled,
+        dailyGlobalCostCapUsd:
+          openrouter.daily_global_cost_cap_usd ?? defaults.providers.openrouter.dailyGlobalCostCapUsd,
+        dailyTreeCostCapUsd:
+          openrouter.daily_tree_cost_cap_usd ?? defaults.providers.openrouter.dailyTreeCostCapUsd,
         updatedAt: openrouter.updated_at,
         updatedBy: openrouter.updated_by,
       },
@@ -227,6 +239,9 @@ export const saveAdminAISettings = async ({
   model,
   baseUrl,
   actorName,
+  capsEnabled,
+  dailyGlobalCostCapUsd,
+  dailyTreeCostCapUsd,
 }: SaveAdminAISettingsInput) => {
   const { data, error } = await supabase.rpc('admin_upsert_ai_settings', {
     payload_provider: provider,
@@ -235,6 +250,11 @@ export const saveAdminAISettings = async ({
     payload_model: model?.trim() || null,
     payload_base_url: baseUrl?.trim() || null,
     payload_actor_name: actorName?.trim() || 'System',
+    payload_caps_enabled: typeof capsEnabled === 'boolean' ? capsEnabled : null,
+    payload_daily_global_cost_cap_usd:
+      typeof dailyGlobalCostCapUsd === 'number' ? dailyGlobalCostCapUsd : null,
+    payload_daily_tree_cost_cap_usd:
+      typeof dailyTreeCostCapUsd === 'number' ? dailyTreeCostCapUsd : null,
   });
 
   if (error) {
@@ -243,6 +263,14 @@ export const saveAdminAISettings = async ({
 
   // No client-side key cache to refresh — the ai-proxy Edge Function reads the key server-side.
   return mapMetadataRows((data ?? []) as AISettingsMetadataRow[]);
+};
+
+export const fetchAdminAiBudgetStatus = async (): Promise<AiBudgetStatus> => {
+  const { data, error } = await supabase.rpc('admin_get_ai_budget_status');
+  if (error) {
+    throw new Error(error.message);
+  }
+  return parseAiBudgetStatus(data) ?? { allowed: true };
 };
 
 // ── Server-side proxy (roadmap N) ─────────────────────────────────────────────
@@ -429,14 +457,16 @@ const postToAiProxy = async (
 
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
-    let message = `AI proxy request failed: ${response.status}`;
+    let parsed: (ProxyResponse & { code?: string }) | null = null;
     try {
-      const parsed = detail ? (JSON.parse(detail) as ProxyResponse) : null;
-      if (parsed?.error) message = parsed.error;
+      parsed = detail ? (JSON.parse(detail) as ProxyResponse & { code?: string }) : null;
     } catch {
-      // keep the status-only message
+      parsed = null;
     }
-    throw new Error(message);
+    if (parsed?.code === AI_BUDGET_EXCEEDED_CODE && parsed.error) {
+      throw new Error(parsed.error);
+    }
+    throw new Error(parsed?.error ?? `AI proxy request failed: ${response.status}`);
   }
   return (await response.json()) as ProxyResponse;
 };

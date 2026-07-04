@@ -26,7 +26,7 @@ For full context, also read the canonical top-level docs:
   normalization, AI family books, and how this wiki is maintained.
 - **decisions/** — Architectural/tech decisions with rationale.
 - **integrations/** — Supabase, OpenRouter, GEDCOM, and DNA CSV format details.
-- **runbooks/** — Operational procedures (build/test/deploy, migrations, imports).
+- **runbooks/** — Operational procedures (build/test/deploy, migrations, imports, dependency security).
 - **sources/** — External references (GEDCOM tag notes, shared-cM relationship ranges).
 
 ## Quick Navigation for Agents
@@ -37,7 +37,8 @@ For full context, also read the canonical top-level docs:
    [concepts/ai-assisted-normalization.md](concepts/ai-assisted-normalization.md).
 2. **Current state & plan**: this index, [roadmap.md](roadmap.md), recent [log.md](log.md) entries.
 3. **How to change things safely**: [../AGENT.md](../AGENT.md), [decisions/](decisions/README.md),
-   [runbooks/build-test-deploy.md](runbooks/build-test-deploy.md).
+   [runbooks/build-test-deploy.md](runbooks/build-test-deploy.md),
+   [runbooks/dependency-security.md](runbooks/dependency-security.md).
 4. **Data & persistence**: [schema.md](schema.md), [integrations/supabase.md](integrations/supabase.md).
 5. **External truth**: [sources/gedcom-spec.md](sources/gedcom-spec.md),
    [sources/dna-cm-ranges.md](sources/dna-cm-ranges.md).

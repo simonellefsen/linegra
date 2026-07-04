@@ -21,6 +21,9 @@ export interface StoredAISettingsMetadata {
   providers: {
     openrouter: Omit<OpenRouterSettings, 'apiKey'> & {
       hasApiKey: boolean;
+      capsEnabled: boolean;
+      dailyGlobalCostCapUsd: number;
+      dailyTreeCostCapUsd: number;
     };
   };
 }
@@ -52,6 +55,9 @@ export const setCachedAISettings = (settings: StoredAISettings | null) => {
   cachedAISettings = settings;
 };
 
+export const DEFAULT_DAILY_GLOBAL_AI_COST_CAP_USD = 5;
+export const DEFAULT_DAILY_TREE_AI_COST_CAP_USD = 1;
+
 export const getDefaultAISettingsMetadata = (): StoredAISettingsMetadata => {
   const defaults = buildDefaults();
   return {
@@ -62,6 +68,9 @@ export const getDefaultAISettingsMetadata = (): StoredAISettingsMetadata => {
         model: defaults.providers.openrouter.model,
         baseUrl: defaults.providers.openrouter.baseUrl,
         hasApiKey: false,
+        capsEnabled: true,
+        dailyGlobalCostCapUsd: DEFAULT_DAILY_GLOBAL_AI_COST_CAP_USD,
+        dailyTreeCostCapUsd: DEFAULT_DAILY_TREE_AI_COST_CAP_USD,
         updatedAt: defaults.providers.openrouter.updatedAt,
         updatedBy: defaults.providers.openrouter.updatedBy,
       },

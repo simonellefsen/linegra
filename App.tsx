@@ -1,10 +1,17 @@
 
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership } from './services/archive';
 import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, signOut, subscribeToAuthChanges } from './services/auth';
 import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole, TreeLayoutType } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
+import {
+  DEFAULT_PEDIGREE_ANCESTOR_DEPTH,
+  DEFAULT_PEDIGREE_DESCENDANT_DEPTH,
+  MAX_PEDIGREE_ANCESTOR_DEPTH,
+  MAX_PEDIGREE_DESCENDANT_DEPTH,
+  SEARCH_PAGE_SIZE,
+} from './lib/treePerformance';
 import { collectDnaSupportMatchIds } from './lib/dnaSupport';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
 import FanTree from './components/InteractiveTree/FanTree';
@@ -17,12 +24,7 @@ import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
 import TreeLandingPage, { TreeStatistics } from './components/TreeLandingPage';
 import AdminTreesPanel from './components/AdminTreesPanel';
-import AdminDnaPanel from './components/AdminDnaPanel';
 import AdminSectionTabs, { AdminSection } from './components/admin/AdminSectionTabs';
-import AdminDatabasePanel from './components/admin/AdminDatabasePanel';
-import AdminGedcomPanel from './components/admin/AdminGedcomPanel';
-import AdminResearchPanel from './components/admin/AdminResearchPanel';
-import BookComposerPanel from './components/admin/BookComposerPanel';
 import AdminNukeModal from './components/admin/AdminNukeModal';
 import { getAvatarForPerson } from './lib/avatar';
 import { 
@@ -40,6 +42,12 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+
+const AdminDnaPanel = lazy(() => import('./components/AdminDnaPanel'));
+const AdminDatabasePanel = lazy(() => import('./components/admin/AdminDatabasePanel'));
+const AdminGedcomPanel = lazy(() => import('./components/admin/AdminGedcomPanel'));
+const AdminResearchPanel = lazy(() => import('./components/admin/AdminResearchPanel'));
+const BookComposerPanel = lazy(() => import('./components/admin/BookComposerPanel'));
 
 const PARENTAL_REL_TYPES: Relationship['type'][] = [
   'bio_father',
@@ -92,16 +100,12 @@ const App: React.FC = () => {
   const [layoutAudits, setLayoutAudits] = useState<FamilyLayoutAudit[]>([]);
   const [auditOffset, setAuditOffset] = useState(0);
   const [auditTotal, setAuditTotal] = useState(0);
-  const DEFAULT_ANCESTOR_DEPTH = 2;
-  const DEFAULT_DESCENDANT_DEPTH = 1;
-  const MAX_ANCESTOR_DEPTH = 8;
-  const MAX_DESCENDANT_DEPTH = 4;
   const [treeViewReady, setTreeViewReady] = useState(false);
-  const [ancestorDepth, setAncestorDepth] = useState(DEFAULT_ANCESTOR_DEPTH);
+  const [ancestorDepth, setAncestorDepth] = useState(DEFAULT_PEDIGREE_ANCESTOR_DEPTH);
   const [treeLayoutType, setTreeLayoutType] = useState<TreeLayoutType>('pedigree');
   const [comparePersonId, setComparePersonId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [descendantDepth, setDescendantDepth] = useState(DEFAULT_DESCENDANT_DEPTH);
+  const [descendantDepth, setDescendantDepth] = useState(DEFAULT_PEDIGREE_DESCENDANT_DEPTH);
   const [pedigreeFocusId, setPedigreeFocusId] = useState<string | null>(null);
   const [pedigreeHasMore, setPedigreeHasMore] = useState({ ancestors: false, descendants: false });
   const graphLoadKeyRef = useRef<string | null>(null);
@@ -117,7 +121,6 @@ const App: React.FC = () => {
   const [searchModalBaseResults, setSearchModalBaseResults] = useState<Person[]>([]);
   const [searchModalResults, setSearchModalResults] = useState<Person[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFiltersState>(() => createDefaultSearchFilters());
-  const SEARCH_PAGE_SIZE = 40;
   const [searchPage, setSearchPage] = useState(0);
   const [searchTotal, setSearchTotal] = useState(0);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -298,8 +301,8 @@ useEffect(() => {
 
   useEffect(() => {
     setTreeViewReady(false);
-    setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
-    setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
+    setAncestorDepth(DEFAULT_PEDIGREE_ANCESTOR_DEPTH);
+    setDescendantDepth(DEFAULT_PEDIGREE_DESCENDANT_DEPTH);
     setAllPeople([]);
     setAllRelationships([]);
     graphLoadKeyRef.current = null;
@@ -552,7 +555,7 @@ useEffect(() => {
     const targetFocusId = focusPersonId ?? treeDefaultProbandId;
     if (!targetFocusId) return;
     setPedigreeFocusId(targetFocusId);
-    setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
+    setAncestorDepth(DEFAULT_PEDIGREE_ANCESTOR_DEPTH);
     setDescendantDepth(0);
   }, [focusPersonId, treeDefaultProbandId]);
 
@@ -1083,13 +1086,25 @@ useEffect(() => {
       return;
     }
     try {
-      await importGedcomToSupabase(activeTreeId, data, currentUser);
+      const { probandId } = await importGedcomToSupabase(activeTreeId, data, currentUser);
       graphLoadKeyRef.current = null;
+      const updatedTrees = await ensureTrees();
+      const ordered = [...updatedTrees].sort((a, b) => a.name.localeCompare(b.name));
+      setTrees(ordered);
+      const refreshedActive =
+        ordered.find((tree) => tree.id === activeTreeId) ?? activeTree ?? ordered[0] ?? null;
+      if (refreshedActive) {
+        setActiveTree(refreshedActive);
+      }
       await fetchAdminTreeStats();
+      const focusId = probandId ?? pedigreeFocusId ?? treeDefaultProbandId ?? null;
+      if (probandId) {
+        setPedigreeFocusId(probandId);
+      }
       setActiveTab('tree');
-      if (treeViewReady && activeTree) {
-        const focusId = pedigreeFocusId ?? treeDefaultProbandId ?? null;
-        await loadPedigreeGraph(activeTree, focusId, ancestorDepth, descendantDepth, { force: true });
+      setTreeViewReady(true);
+      if (refreshedActive) {
+        await loadPedigreeGraph(refreshedActive, focusId, ancestorDepth, descendantDepth, { force: true });
       }
     } catch (err) {
       console.error('Failed to import GEDCOM to Supabase', err);
@@ -1405,19 +1420,19 @@ useEffect(() => {
                             showPlaceholders={pedigreeAllowsPlaceholders}
                             ancestorsRemaining={pedigreeHasMore.ancestors || pedigreeScope.hasMoreAncestors}
                             onExpandAncestors={() =>
-                              setAncestorDepth((depth) => Math.min(MAX_ANCESTOR_DEPTH, depth + 1))
+                              setAncestorDepth((depth) => Math.min(MAX_PEDIGREE_ANCESTOR_DEPTH, depth + 1))
                             }
                             onFocusHome={handleFocusDefaultProband}
                             homeEnabled={!!focusPersonId}
                             ancestorDepth={ancestorDepth}
-                            maxAncestorDepthLimit={MAX_ANCESTOR_DEPTH}
+                            maxAncestorDepthLimit={MAX_PEDIGREE_ANCESTOR_DEPTH}
                             onDecreaseAncestors={() => setAncestorDepth((d) => Math.max(1, d - 1))}
                             onIncreaseAncestors={() =>
-                              setAncestorDepth((d) => Math.min(MAX_ANCESTOR_DEPTH, d + 1))
+                              setAncestorDepth((d) => Math.min(MAX_PEDIGREE_ANCESTOR_DEPTH, d + 1))
                             }
                             onResetDepths={() => {
-                              setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
-                              setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
+                              setAncestorDepth(DEFAULT_PEDIGREE_ANCESTOR_DEPTH);
+                              setDescendantDepth(DEFAULT_PEDIGREE_DESCENDANT_DEPTH);
                             }}
                           />
                         )}
@@ -1469,29 +1484,29 @@ useEffect(() => {
                           siblingHints={siblingHints}
                           childHints={childHints}
                           onExpandAncestors={() =>
-                            setAncestorDepth((depth) => Math.min(MAX_ANCESTOR_DEPTH, depth + 1))
+                            setAncestorDepth((depth) => Math.min(MAX_PEDIGREE_ANCESTOR_DEPTH, depth + 1))
                           }
                           onExpandDescendants={() =>
-                            setDescendantDepth((depth) => Math.min(MAX_DESCENDANT_DEPTH, depth + 1))
+                            setDescendantDepth((depth) => Math.min(MAX_PEDIGREE_DESCENDANT_DEPTH, depth + 1))
                           }
                           onExpandSiblings={handleExpandSiblings}
                           onFocusHome={handleFocusDefaultProband}
                           homeEnabled={!!focusPersonId}
                           ancestorDepth={ancestorDepth}
                           descendantDepth={descendantDepth}
-                          maxAncestorDepthLimit={MAX_ANCESTOR_DEPTH}
-                          maxDescendantDepthLimit={MAX_DESCENDANT_DEPTH}
+                          maxAncestorDepthLimit={MAX_PEDIGREE_ANCESTOR_DEPTH}
+                          maxDescendantDepthLimit={MAX_PEDIGREE_DESCENDANT_DEPTH}
                           onDecreaseAncestors={() => setAncestorDepth((d) => Math.max(1, d - 1))}
                           onIncreaseAncestors={() =>
-                            setAncestorDepth((d) => Math.min(MAX_ANCESTOR_DEPTH, d + 1))
+                            setAncestorDepth((d) => Math.min(MAX_PEDIGREE_ANCESTOR_DEPTH, d + 1))
                           }
                           onDecreaseDescendants={() => setDescendantDepth((d) => Math.max(0, d - 1))}
                           onIncreaseDescendants={() =>
-                            setDescendantDepth((d) => Math.min(MAX_DESCENDANT_DEPTH, d + 1))
+                            setDescendantDepth((d) => Math.min(MAX_PEDIGREE_DESCENDANT_DEPTH, d + 1))
                           }
                           onResetDepths={() => {
-                            setAncestorDepth(DEFAULT_ANCESTOR_DEPTH);
-                            setDescendantDepth(DEFAULT_DESCENDANT_DEPTH);
+                            setAncestorDepth(DEFAULT_PEDIGREE_ANCESTOR_DEPTH);
+                            setDescendantDepth(DEFAULT_PEDIGREE_DESCENDANT_DEPTH);
                           }}
                         />
                         )}
@@ -1527,6 +1542,13 @@ useEffect(() => {
               )
             )}
             {activeTab === 'records' && showAdministratorTab && (
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-16 text-slate-400">
+                    <Loader2 className="w-8 h-8 animate-spin" />
+                  </div>
+                }
+              >
               <div className="space-y-8 max-w-6xl mx-auto py-6">
                 <AdminSectionTabs section={adminSection} onChange={setAdminSection} />
                 {adminSection === 'database' && currentUser?.isSuperAdmin && (
@@ -1591,6 +1613,7 @@ useEffect(() => {
                   />
                 )}
               </div>
+              </Suspense>
             )}
           </div>
 

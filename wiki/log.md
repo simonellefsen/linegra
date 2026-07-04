@@ -11,6 +11,21 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+## 2026-07-04 — GEDCOM fidelity + build performance (roadmap E + G)
+
+**GEDCOM fidelity (E):** [../lib/gedcomFidelity.ts](../lib/gedcomFidelity.ts) infers
+`defaultProbandId` on import (parentless + descendant-heavy anchor) and persists it via
+`updateTreeSettings`; post-import UI refreshes the tree and focuses the pedigree on that person.
+Citation PAGE/QUAY/DATA round-trip tests added; parser now warns on unsupported REPO/OBJE tags.
+
+**Build performance (G extension):** removed unused `d3` / `@google/genai`; dropped stale
+`index.html` importmap; Vite `manualChunks` + lazy-loaded Administrator panels; Vitest thread
+pool; `npm run build:app` for fast bundle-only iteration.
+
+**Dependency security:** `npm audit` **17 → 0** CVEs after upgrading `@supabase/supabase-js`
+(2.45→2.110), Vitest 2→4, Vite 6.4.3, and ESLint/React patches. Added Dependabot +
+[runbooks/dependency-security.md](runbooks/dependency-security.md).
+
 ## 2026-07-02 — Server-side OpenRouter proxy + usage metering (roadmap N, Phase 1+2)
 
 The OpenRouter API key no longer reaches the browser. All AI calls now route through a new Supabase

@@ -11,7 +11,9 @@ npm run lint         # eslint . --max-warnings=0   (zero warnings allowed)
 npm run typecheck    # tsc --noEmit
 npm test             # vitest run (unit tests for pure logic)
 npm run test:watch   # vitest in watch mode
-npm run build        # runs lint + typecheck + vite build
+npm run build        # runs lint + typecheck + test + vite build
+npm run build:app    # vite production build only (skip gates — local bundle iteration)
+make build-app       # same as build:app
 npm run preview      # serve the production build locally
 ```
 
@@ -19,7 +21,20 @@ Lint, typecheck, **unit tests**, and vite build **must all pass** before handoff
 enforces the same. `npm test` (Vitest) is **wired into `npm run build`**
 (`lint → typecheck → test → vite build`), so a failing test blocks the deploy. Tests live next
 to the code as `lib/*.test.ts` and cover the pure logic (DNA parsing/classification, GEDCOM
-parsing, place parsing, AI cache).
+parsing, place parsing, AI cache). Vitest uses `pool: 'threads'` for faster local/CI runs.
+
+### Bundle / build performance (roadmap G)
+
+- **Dead deps removed:** `d3` and `@google/genai` (force-graph / AI Studio leftovers).
+- **Code splitting:** Administrator panels load via `React.lazy`; Vite `manualChunks` splits
+  `react-vendor`, `supabase`, and `icons` (lucide).
+- **Stale importmap removed** from `index.html` — Vite bundles all runtime deps.
+- Iterating on bundle size only? Use `npm run build:app` / `make build-app` (skips lint/tsc/test).
+
+### Dependency security
+
+See [dependency-security.md](dependency-security.md) for upgrade policy, `npm audit` workflow,
+and Dependabot config (`.github/dependabot.yml`).
 
 > **Fixtures are gitignored.** `*.ged` / `*.csv` are not committed, so they are absent in CI.
 > Unit tests use inline synthetic data; the real-fixture GEDCOM smoke test uses
