@@ -27,8 +27,11 @@ git/code 2026-07-02.
 **Still open:**
 - OAuth providers (Google/GitHub) — email-only for now.
 - Ownership transfer between accounts.
-- Collaborator-facing “pending invites” inbox in the UI (acceptance runs automatically on sign-in when emails match).
 - Backfill `log.md` for 2026-06-22→07 auth work.
+
+**Shipped 2026-07-04 (invites inbox):**
+- `list_my_pending_collaborator_invites()` RPC + **Researcher Profile → Tree invitations** panel.
+- Home banner when pending invites remain (e.g. email mismatch); auto-accept still runs on sign-in/session restore.
 
 ### B. Retire / consolidate the legacy force graph — DONE 2026-06-26
 Deleted [../components/FamilyTree.tsx](../components/FamilyTree.tsx). It could never render:
@@ -461,7 +464,7 @@ Pairs with M5 (public book viewer) and A (multi-user).
 **revert/undo** for recent admin actions, scheduled full-tree **JSON/GEDCOM-7 backup**, and a GDPR
 "export everything for person/tree" + hard-delete path (ties to K7's deletable-on-demand rule).
 
-### U. Crawler & agent discoverability (SEO + LLM webfetch)
+### U. Crawler & agent discoverability (SEO + LLM webfetch) — IN PROGRESS 2026-07-04
 Genealogy archives are meant to be **found and traversed** — by humans, classic search crawlers
 (Google, Bing, DuckDuckGo), and the newer wave of **LLM / agent fetchers** (ChatGPT browse, Perplexity,
 Claude web fetch, Gemini URL context, research bots, etc.). Today the app is a **client-rendered SPA**:
@@ -474,9 +477,19 @@ is, follow parent/child/spouse links like a human would, and understand tree/boo
 guessing the app's internal state. Respect **privacy** (`RESN`, living persons, non-public trees) on
 every surface; only `is_public` trees/books and non-restricted persons appear in crawlable indexes.
 
-**Design note:** deeper URL/schema policy → `sources/crawler-agent-discoverability.md` (to be written).
+**Design note:** [sources/crawler-agent-discoverability.md](sources/crawler-agent-discoverability.md).
 Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship vocabulary), and **S**
 (share-card copy/i18n).
+
+**Shipped 2026-07-04 (foundation slice):**
+- **U2** canonical paths `/tree/:id`, `/tree/:id/person/:pid` + legacy query redirect (`lib/publicRoutes.ts`, `App.tsx`).
+- **U3** `public/robots.txt`, dynamic `/sitemap.xml` via `api/sitemap.xml.ts` + `list_public_sitemap_entries` RPC.
+- **U6** `public/llms.txt` agent index.
+- **U1/U4/U5** Edge HTML shells: `api/public/person/[personId].ts`, `api/public/tree/[treeId].ts`, JSON-LD + OG meta.
+- **U7/U8** `?format=md` / JSON person API on the same route.
+- **U10** crawler User-Agent buckets + `public_crawl_hit` logs; `middleware.ts` serves HTML to bots on `/tree/*`; visitor (non-bot) hits + geo on public pages; admin Traffic panel with agent drill-down.
+
+**Still open:** book HTML prerender for crawlers, sitemap-index chunking, `noai` media meta, full in-app link hygiene audit (U9), **traffic rollup** (hour/day/week/month/year aggregates to cap `public_crawl_events` growth).
 
 *Classic search crawlers (HTML-first):*
 
@@ -484,41 +497,56 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
   profile, book viewer — return **initial HTML with content** (Vercel SSR/ISR, Supabase Edge HTML, or
   a lightweight prerender pass). Minimum viable payload: person name, vital dates/places, relationship
   links as real `<a href="…">`, narrative excerpt, sources list. Without this, SEO is mostly cosmetic.
+  _Person + tree shells shipped via Edge API; book shell still open._
 - **U2. Stable, canonical URL scheme.** Document and enforce patterns, e.g.
   `/tree/:treeSlugOrId`, `/tree/:id/person/:personId`, `/book/:id` — with `<link rel="canonical">` and
   redirects from legacy `?tree=&person=` query URLs. Breadcrumb markup (`BreadcrumbList` JSON-LD).
+  _Shipped 2026-07-04._
 - **U3. `robots.txt` + dynamic `sitemap.xml`.** Allow public prefixes; disallow admin/auth/API. Sitemap
   lists every **public** tree landing page, person page, and book URL (respect `RESN` / living flags —
   omit restricted persons). Optional `sitemap-index` when trees are large; chunk person URLs per tree.
+  _Shipped 2026-07-04 (no sitemap-index yet)._
 - **U4. Per-entity meta + Schema.org.** OpenGraph/Twitter cards per person/tree/book (title, description,
   image). JSON-LD: `Person` (name, birth/death, `sameAs` for external ids), `WebSite`/`Organization` for
   the archive, `CreativeWork`/`Book` for family books. Use existing structured dates/places from GEDCOM
   P1 where safe to expose.
+  _Person/tree JSON-LD + OG in HTML shells; client SPA meta still generic._
 - **U5. Crawlable tree index & relationship graph in HTML.** A public tree landing page listing
   persons (paginated, filterable) with links — not only the interactive SVG pedigree. Each person page
   exposes **typed relationship sections** (parents, spouses, children, siblings) as link lists so
   crawlers can walk the graph without simulating pan/zoom.
+  _Tree index + person relationship sections shipped in Edge HTML._
 
 *LLM / agent fetchers (machine-readable navigation):*
 
 - **U6. `llms.txt` (+ optional `llms-full.txt`).** Site-root agent-oriented index (emerging convention,
   analogous to `robots.txt`): what Linegra is, how public URLs work, privacy rules, and links to docs
   or sample person/tree URLs. Helps agents that prefetch site policy before deep-fetching.
+  _Shipped `llms.txt` 2026-07-04._
 - **U7. Alternate **plain / markdown** representations.** For public person/tree/book URLs, offer
   `?format=md` or `Accept: text/markdown` (or dedicated `/person/:id.md` paths) returning a concise,
   link-rich summary: vitals, relationships with absolute URLs, bio excerpt, source citations. Optimized
   for token-budget fetchers that prefer text over DOM parsing. Same privacy gates as HTML.
+  _Person markdown shipped._
 - **U8. JSON-LD / JSON API for agents.** Small, cacheable **`/api/public/person/:id`** (or Edge Function)
   returning normalized person + relationship edges + book back-links — for agents that request JSON
   directly. Include `rel: parent|child|spouse`, `href`, and human-readable `relationshipLabel` (reuse
   [../lib/relationshipCalculator.ts](../lib/relationshipCalculator.ts)). Rate-limit + cache headers.
+  _Person JSON shipped with cache headers; rate-limit TBD._
 - **U9. Internal link hygiene in rendered markup.** Avoid `javascript:` or click-only div navigation on
   public pages; every traversable edge in the tree should be a **followable anchor** with descriptive
   `title`/`aria-label` ("Father: …", "Child: …"). Helps both accessibility and agent heuristics that
   score `<a>` tags over canvas/SVG.
 - **U10. Bot observability & policy.** Log agent/crawler hits on public routes (User-Agent buckets:
-  `Googlebot`, `GPTBot`, `ClaudeBot`, `PerplexityBot`, etc.) in admin metrics; document opt-out in
-  `robots.txt` where desired. Optional `noai` / `noimageai` meta for restricted media later.
+  `Googlebot`, `GPTBot`, `ClaudeBot`, `PerplexityBot`, etc.) and human visitor hits (geo from edge
+  headers, no IP storage) in admin metrics; document opt-out in `robots.txt` where desired. Optional
+  `noai` / `noimageai` meta for restricted media later.
+  _Logging + robots policy shipped; admin Traffic panel (bot drill-down + visitor geo) shipped 2026-07-04._
+- **U10a. Traffic rollup & retention.** Raw `public_crawl_events` rows are fine for launch but will
+  grow without bound. Add scheduled aggregation into **hour / day / week / month / year** summary
+  tables (hits by agent, route, country; optional unique-resource counts) and prune or archive raw
+  events after a retention window. Admin panel reads rollups for long windows; recent drill-down keeps
+  a short raw tail. Goal: bounded storage and faster stats RPCs as traffic scales.
 
 *Privacy & sequencing:*
 
@@ -526,6 +554,7 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
   `RESN` + `inferLivingStatus` gates already used for GEDCOM export.
 - **Sequencing:** U1 + U2 (rendered HTML + URLs) → U3 + U4 (sitemap + schema) → U5 (graph index) →
   U6–U8 (agent-specific formats) → U9–U10 (polish). Can ship book prerender (M5) before full tree SSR.
+  _Foundation slice (U1–U8 partial, U10 logs) shipped 2026-07-04._
 
 ## Maintenance note (2026-06-23)
 The 2026-06-22/23 work (M-series editing arc, L1, K1, husky hooks, DNA panel fixes) is **committed and

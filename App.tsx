@@ -2,7 +2,8 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership } from './services/archive';
-import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, signOut, subscribeToAuthChanges } from './services/auth';
+import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, listMyPendingCollaboratorInvites, signOut, subscribeToAuthChanges } from './services/auth';
+import { buildPersonUrl, buildTreeUrl, canonicalizeLegacyPublicUrl, parsePublicRouteFromLocation } from './lib/publicRoutes';
 import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole, TreeLayoutType } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
 import {
@@ -22,6 +23,7 @@ import TreeViewToolbar from './components/InteractiveTree/TreeViewToolbar';
 import { useTreeKeyboardNav } from './components/InteractiveTree/useTreeKeyboardNav';
 import PersonProfile from './components/PersonProfile';
 import AuthModal from './components/AuthModal';
+import ResearcherProfilePage from './components/profile/ResearcherProfilePage';
 import TreeLandingPage, { TreeStatistics } from './components/TreeLandingPage';
 import AdminTreesPanel from './components/AdminTreesPanel';
 import AdminSectionTabs, { AdminSection } from './components/admin/AdminSectionTabs';
@@ -39,7 +41,8 @@ import {
   Menu,
   X,
   SlidersHorizontal,
-  CheckCircle2
+  CheckCircle2,
+  Mail
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -47,6 +50,7 @@ const AdminDnaPanel = lazy(() => import('./components/AdminDnaPanel'));
 const AdminDatabasePanel = lazy(() => import('./components/admin/AdminDatabasePanel'));
 const AdminGedcomPanel = lazy(() => import('./components/admin/AdminGedcomPanel'));
 const AdminResearchPanel = lazy(() => import('./components/admin/AdminResearchPanel'));
+const AdminCrawlTrafficPanel = lazy(() => import('./components/admin/AdminCrawlTrafficPanel'));
 const BookComposerPanel = lazy(() => import('./components/admin/BookComposerPanel'));
 
 const PARENTAL_REL_TYPES: Relationship['type'][] = [
@@ -83,6 +87,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authSuccessMessage, setAuthSuccessMessage] = useState<string | null>(null);
+  const [pendingInviteCount, setPendingInviteCount] = useState(0);
   const emailCallbackPending = useRef(false);
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
   const [adminSection, setAdminSection] = useState<AdminSection>('gedcom');
@@ -393,7 +398,11 @@ useEffect(() => {
         if (ordered.length) {
           let selected = ordered[0];
           if (typeof window !== 'undefined') {
-            const treeIdFromUrl = new URL(window.location.href).searchParams.get('tree');
+            const route = parsePublicRouteFromLocation(window.location);
+            const treeIdFromUrl =
+              route.kind === 'tree' || route.kind === 'person'
+                ? route.treeId
+                : new URL(window.location.href).searchParams.get('tree');
             const matchedTree = treeIdFromUrl ? ordered.find((tree) => tree.id === treeIdFromUrl) : null;
             if (matchedTree) {
               selected = matchedTree;
@@ -433,6 +442,50 @@ useEffect(() => {
   useEffect(() => {
     fetchAdminTreeStats();
   }, [fetchAdminTreeStats]);
+
+  const refreshPendingInvites = useCallback(async () => {
+    if (!currentUser) {
+      setPendingInviteCount(0);
+      return;
+    }
+    try {
+      const invites = await listMyPendingCollaboratorInvites();
+      setPendingInviteCount(invites.length);
+    } catch (err) {
+      console.error('Failed to load pending collaborator invites', err);
+      setPendingInviteCount(0);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    void refreshPendingInvites();
+  }, [refreshPendingInvites]);
+
+  const handleCollaboratorInvitesAccepted = useCallback(
+    async (acceptedCount: number) => {
+      if (acceptedCount <= 0) return;
+      try {
+        const updatedTrees = await ensureTrees();
+        const ordered = [...updatedTrees].sort((a, b) => a.name.localeCompare(b.name));
+        setTrees(ordered);
+        if (!activeTree && ordered.length) {
+          setActiveTree(ordered[0]);
+        } else if (activeTree && !ordered.some((tree) => tree.id === activeTree.id) && ordered.length) {
+          setActiveTree(ordered[0]);
+        }
+        await fetchAdminTreeStats();
+        setAuthSuccessMessage(
+          acceptedCount === 1
+            ? 'Accepted 1 tree invitation — the shared tree is now in your sidebar.'
+            : `Accepted ${acceptedCount} tree invitations — shared trees are now in your sidebar.`
+        );
+        await refreshPendingInvites();
+      } catch (err) {
+        console.error('Failed to refresh trees after accepting invites', err);
+      }
+    },
+    [activeTree, fetchAdminTreeStats, refreshPendingInvites]
+  );
 
   useEffect(() => {
     if (!supabaseActive || !canWriteActiveTree || !activeTreeId) {
@@ -753,15 +806,6 @@ useEffect(() => {
       if (person && !person.detailsLoaded) {
         handleEnsurePersonDetails(person.id);
       }
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href);
-        if (person) {
-          url.searchParams.set('person', person.id);
-        } else {
-          url.searchParams.delete('person');
-        }
-        window.history.replaceState({}, '', url);
-      }
     },
     [handleEnsurePersonDetails, canViewPrivate]
   );
@@ -819,6 +863,7 @@ useEffect(() => {
   const handleAuthenticated = () => {
     setShowAuthModal(false);
     void fetchAdminTreeStats();
+    void refreshPendingInvites();
   };
 
   const handleLogout = async () => {
@@ -829,12 +874,21 @@ useEffect(() => {
     }
     setCurrentUser(null);
     setAdminTrees([]);
+    setPendingInviteCount(0);
   };
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const url = new URL(window.location.href);
-    const personId = url.searchParams.get('person');
+    const canonical = canonicalizeLegacyPublicUrl();
+    if (canonical) {
+      window.history.replaceState({}, '', canonical);
+    }
+    const route = parsePublicRouteFromLocation(window.location);
+    if (route.kind === 'person') {
+      setPendingPersonId(route.personId);
+      return;
+    }
+    const personId = new URL(window.location.href).searchParams.get('person');
     if (personId) {
       setPendingPersonId(personId);
     }
@@ -842,14 +896,17 @@ useEffect(() => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const url = new URL(window.location.href);
-    if (activeTreeId) {
-      url.searchParams.set('tree', activeTreeId);
-    } else {
-      url.searchParams.delete('tree');
+    if (parsePublicRouteFromLocation(window.location).kind === 'book') return;
+    if (activeTab === 'records' || activeTab === 'profile') return;
+    const selectedPersonId = selectedPerson?.id ?? null;
+    if (selectedPersonId && activeTreeId) {
+      window.history.replaceState({}, '', buildPersonUrl(activeTreeId, selectedPersonId));
+      return;
     }
-    window.history.replaceState({}, '', url);
-  }, [activeTreeId]);
+    if (activeTreeId) {
+      window.history.replaceState({}, '', buildTreeUrl(activeTreeId));
+    }
+  }, [activeTreeId, selectedPerson?.id, activeTab]);
 
   useEffect(() => {
     if (!pendingPersonId) return;
@@ -1354,6 +1411,43 @@ useEffect(() => {
                 </button>
               </div>
             )}
+            {currentUser && pendingInviteCount > 0 && (
+              <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-900 px-6 py-4 rounded-2xl flex flex-wrap items-center gap-3">
+                <Mail className="w-5 h-5 shrink-0" />
+                <p className="text-sm font-semibold flex-1 min-w-[12rem]">
+                  You have {pendingInviteCount} pending tree invitation
+                  {pendingInviteCount === 1 ? '' : 's'}.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('profile')}
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-black uppercase tracking-[0.2em]"
+                >
+                  Review
+                </button>
+              </div>
+            )}
+            {activeTab === 'profile' && (
+              currentUser ? (
+                <ResearcherProfilePage
+                  user={currentUser}
+                  onSignOut={() => void handleLogout()}
+                  onInvitesAccepted={(acceptedCount) => void handleCollaboratorInvitesAccepted(acceptedCount)}
+                />
+              ) : (
+                <div className="bg-white border border-slate-200 rounded-[32px] p-12 text-center space-y-4 shadow-sm">
+                  <h2 className="text-3xl font-serif font-bold text-slate-900">Researcher Profile</h2>
+                  <p className="text-slate-500">Sign in to manage invitations and account settings.</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthModal(true)}
+                    className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-[0.3em]"
+                  >
+                    Sign in
+                  </button>
+                </div>
+              )
+            )}
             {activeTab === 'home' && (
               activeTree ? (
                 <TreeLandingPage
@@ -1550,7 +1644,11 @@ useEffect(() => {
                 }
               >
               <div className="space-y-8 max-w-6xl mx-auto py-6">
-                <AdminSectionTabs section={adminSection} onChange={setAdminSection} />
+                <AdminSectionTabs
+                  section={adminSection}
+                  onChange={setAdminSection}
+                  showCrawlTraffic={!!currentUser?.isSuperAdmin}
+                />
                 {adminSection === 'database' && currentUser?.isSuperAdmin && (
                   <AdminDatabasePanel
                     actorName={currentUser?.name}
@@ -1611,6 +1709,9 @@ useEffect(() => {
                     relationships={treeRelationships}
                     onOpenPerson={handleAdminOpenPerson}
                   />
+                )}
+                {adminSection === 'traffic' && currentUser?.isSuperAdmin && (
+                  <AdminCrawlTrafficPanel supabaseActive={supabaseActive} />
                 )}
               </div>
               </Suspense>

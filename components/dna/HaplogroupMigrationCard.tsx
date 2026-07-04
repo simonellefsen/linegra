@@ -1,17 +1,42 @@
 import React from 'react';
-import { ArrowRight, MapPin } from 'lucide-react';
-import type { HaplogroupRouteInfo } from '../../lib/haplogroupRoutes';
+import { ArrowRight, Info, MapPin } from 'lucide-react';
+import type { HaplogroupRouteInfo, UnresolvedHaplogroup } from '../../lib/haplogroupRoutes';
 
 interface HaplogroupMigrationCardProps {
   routes: HaplogroupRouteInfo[];
+  unresolved?: UnresolvedHaplogroup[];
 }
 
-const HaplogroupMigrationCard: React.FC<HaplogroupMigrationCardProps> = ({ routes }) => {
-  if (!routes.length) return null;
+const HaplogroupMigrationCard: React.FC<HaplogroupMigrationCardProps> = ({
+  routes,
+  unresolved = [],
+}) => {
+  const hasHaplogroupInput = routes.length > 0 || unresolved.length > 0;
+  if (!hasHaplogroupInput) return null;
 
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
       <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">Migration routes</p>
+      {unresolved.map((item) => (
+        <div
+          key={`unresolved-${item.line}-${item.haplogroup}`}
+          className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-4 space-y-2"
+        >
+          <div className="flex items-start gap-2">
+            <Info className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-amber-50">
+                {item.line}: <span className="font-serif">{item.haplogroup}</span>
+              </p>
+              <p className="text-xs text-amber-100/80 mt-1 leading-relaxed">
+                No migration route in Linegra&apos;s reference dataset yet. This haplogroup is valid —
+                we just haven&apos;t curated geographic steps for this clade. Nordic-focused entries
+                (U5, I/R Y-DNA, etc.) were added first; more macro-haplogroups are planned.
+              </p>
+            </div>
+          </div>
+        </div>
+      ))}
       {routes.map((route) => (
         <div
           key={`${route.line}-${route.haplogroup}`}
@@ -22,6 +47,11 @@ const HaplogroupMigrationCard: React.FC<HaplogroupMigrationCardProps> = ({ route
             <div>
               <p className="text-sm font-bold text-white">
                 {route.line}: <span className="font-serif">{route.haplogroup}</span>
+                {route.inferred && (
+                  <span className="ml-2 text-[9px] font-black uppercase tracking-[0.15em] text-sky-200/70 align-middle">
+                    Inferred
+                  </span>
+                )}
               </p>
               {route.mitotreeTerminal && (
                 <p className="text-[11px] text-white/55 mt-0.5">

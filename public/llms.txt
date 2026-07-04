@@ -1,0 +1,38 @@
+# Linegra — agent-oriented site index (llms.txt)
+# https://linegra.app
+
+> Linegra is a genealogy archive with interactive pedigree views, GEDCOM import/export,
+> family books, and AI-assisted research. Public content is read-only; living and private
+> persons are excluded from crawl indexes.
+
+## Public URL patterns
+
+- Site home: https://linegra.app/
+- Public tree landing: https://linegra.app/tree/{treeUuid}
+- Public person profile: https://linegra.app/tree/{treeUuid}/person/{personUuid}
+- Shared family book: https://linegra.app/book/{bookUuid}
+
+Legacy query URLs (`?tree=&person=`) redirect to the canonical paths above.
+
+## Machine-readable alternates
+
+- Sitemap: https://linegra.app/sitemap.xml
+- Person JSON: https://linegra.app/api/public/person/{personUuid}
+- Person Markdown: https://linegra.app/api/public/person/{personUuid}?format=md
+- Person HTML (crawler shell): https://linegra.app/api/public/person/{personUuid}?format=html
+- Tree index HTML: https://linegra.app/api/public/tree/{treeUuid}?format=html
+
+## Privacy rules
+
+- Only `is_public` family trees appear in indexes.
+- Living persons, private profiles (`is_private`), and restricted notes/media are omitted.
+- Family books must be explicitly shared (`is_public`) and marked complete.
+
+## Documentation
+
+- Product overview: https://linegra.app (human UI)
+- Repository wiki (behavior, schema, roadmap): see project `wiki/` in source.
+
+## Contact
+
+Use the in-app administrator flow for tree access requests. Do not scrape authenticated `/records` routes.

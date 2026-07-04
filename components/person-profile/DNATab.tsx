@@ -4,7 +4,7 @@ import { DnaConsentScope, DNATest } from '../../types';
 import { DNA_VENDORS, DNA_TEST_TYPES } from './constants';
 import { parseAutosomalCsv, parseSharedSegmentsCsv } from '../../lib/dnaRawParser';
 import { describeSharedLineage } from '../../lib/dnaClassification';
-import { collectHaplogroupRoutes } from '../../lib/haplogroupRoutes';
+import { analyzeHaplogroupCoverage } from '../../lib/haplogroupRoutes';
 import {
   buildAutosomalMarkerIndex,
   indexStatsFromIndex,
@@ -364,7 +364,7 @@ const DNATabInner: React.FC<DNATabProps> = ({
                   </div>
                 </div>
               </div>
-              <HaplogroupMigrationCard routes={collectHaplogroupRoutes(test)} />
+              <HaplogroupMigrationCard {...analyzeHaplogroupCoverage(test)} />
               {test.type === 'Autosomal' && (
                 <div className="space-y-3">
                   <button

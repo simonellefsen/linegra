@@ -1,6 +1,7 @@
 import type { AuthChangeEvent, Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { mapPendingCollaboratorInvite } from '../lib/collaboratorInvites';
 import { supabase } from '../lib/supabase';
-import type { TreeAccessRole, User, UserRole } from '../types';
+import type { PendingCollaboratorInvite, TreeAccessRole, User, UserRole } from '../types';
 
 const avatarUrlFor = (user: SupabaseUser, displayName: string) =>
   (user.user_metadata?.avatar_url as string | undefined) ||
@@ -121,6 +122,15 @@ export const acceptPendingCollaboratorInvites = async (): Promise<number> => {
   return Number(data ?? 0);
 };
 
+export const listMyPendingCollaboratorInvites = async (): Promise<PendingCollaboratorInvite[]> => {
+  const { data, error } = await supabase.rpc('list_my_pending_collaborator_invites');
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row: Record<string, unknown>) => mapPendingCollaboratorInvite(row));
+};
+
+const shouldAutoAcceptCollaboratorInvites = (event: AuthChangeEvent) =>
+  event === 'SIGNED_IN' || event === 'INITIAL_SESSION';
+
 export const getMyTreeRole = async (treeId: string): Promise<TreeAccessRole> => {
   const { data, error } = await supabase.rpc('get_my_tree_role', { target_tree_id: treeId });
   if (error) throw new Error(error.message);
@@ -138,6 +148,9 @@ export const subscribeToAuthChanges = (onChange: AuthChangeHandler) =>
   supabase.auth.onAuthStateChange((event, session) => {
     void (async () => {
       try {
+        if (session?.user && shouldAutoAcceptCollaboratorInvites(event)) {
+          await acceptPendingCollaboratorInvites();
+        }
         const mapped = await resolveSessionUser(session);
         onChange(mapped, event);
       } catch (err) {
@@ -150,5 +163,8 @@ export const subscribeToAuthChanges = (onChange: AuthChangeHandler) =>
 export const getInitialSessionUser = async (): Promise<User | null> => {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw new Error(error.message);
+  if (data.session?.user) {
+    await acceptPendingCollaboratorInvites();
+  }
   return resolveSessionUser(data.session);
 };
