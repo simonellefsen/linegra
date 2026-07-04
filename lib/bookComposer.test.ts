@@ -194,7 +194,7 @@ describe('buildChapterFacts', () => {
 
     expect(facts.birthYear).toBe(1850);
     expect(facts.spouseNames).toEqual(['Partner']);
-    expect(facts.parentNames.sort()).toEqual(['Dad', 'Mom']);
+    expect(facts.parentNames?.sort()).toEqual(['Dad', 'Mom']);
     expect(facts.childNames).toEqual(['Child1']);
     expect(facts.siblingNames).toEqual(['Sibling']);
   });

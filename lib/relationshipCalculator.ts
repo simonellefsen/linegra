@@ -182,14 +182,10 @@ export const computeRelationship = (
   const mrca = commonAncestorIds[0];
   const pathDownA = pathDown(mrca, personAId, a.prev); // [mrca, …, A]
   const pathDownB = pathDown(mrca, personBId, b.prev); // [mrca, …, B]
-  let pathPersonIds: string[] = [];
-  if (pathDownA && pathDownB) {
-    const aToMrca = [...pathDownA].reverse(); // [A, …, mrca]
-    const mrcaToB = pathDownB.slice(1); // […, B] (drop the shared mrca)
-    pathPersonIds = [...aToMrca, ...mrcaToB];
-  } else {
-    pathPersonIds = [personAId, personBId];
-  }
+  const pathPersonIds =
+    pathDownA && pathDownB
+      ? [...[...pathDownA].reverse(), ...pathDownB.slice(1)]
+      : [personAId, personBId];
 
   const result: RelationshipResult = {
     label,
