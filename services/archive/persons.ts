@@ -418,6 +418,12 @@ export const updatePersonProfile = async (
         sharedMatchPersonId = personId;
       }
     }
+    if (!sharedPersonId && summaryMatchLooksLikeFocus && summaryPersonId && summaryPersonId !== personId) {
+      sharedPersonId = summaryPersonId;
+    }
+    if (!sharedMatchPersonId && summaryPersonLooksLikeFocus && summaryMatchId && summaryMatchId !== personId) {
+      sharedMatchPersonId = summaryMatchId;
+    }
     if (!sharedPersonId && sharedMatchPersonId === personId && uniqueAutosomalTesterId && uniqueAutosomalTesterId !== personId) {
       // FTDNA comparison CSV omits tester name; when exactly one autosomal tester exists
       // in this tree, bind that tester as the shared-person side.

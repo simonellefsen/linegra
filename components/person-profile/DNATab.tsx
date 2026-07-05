@@ -20,7 +20,7 @@ import SharedSegmentImportModal from '../dna/SharedSegmentImportModal';
 import HaplogroupMigrationCard from '../dna/HaplogroupMigrationCard';
 import { purgeDnaRawData } from '../../services/archive';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase';
-import { mapDbRowToNameLookup } from '../../lib/dnaPersonNameVariants';
+import { mapDbRowToNameLookup, rankPersonNameMatches } from '../../lib/dnaPersonNameVariants';
 import type { DNASharedSegmentRowPreview, DNASharedSegmentSummary } from '../../types';
 import type { SharedImportNameRow } from '../../lib/dnaSharedImportOwner';
 import type { SharedSegmentImportConfirmPayload } from '../dna/SharedSegmentImportModal';
@@ -132,6 +132,12 @@ const nameForTreePerson = (people: SharedImportNameRow[], id: string) => {
   if (!row) return null;
   return [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || null;
 };
+
+const resolveNameToTreePersonId = (
+  people: SharedImportNameRow[],
+  name: string,
+  excludePersonId?: string
+) => rankPersonNameMatches(name, people, excludePersonId)[0]?.id ?? null;
 
 const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
   personId,
@@ -594,8 +600,11 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
                         {test.sharedSegmentSummary.fileName}
                       </p>
                       {(() => {
-                        const parties = resolveSharedAutosomalParties(test, (id) =>
-                          nameForTreePerson(treePeople, id)
+                        const parties = resolveSharedAutosomalParties(
+                          personId,
+                          test,
+                          (id) => nameForTreePerson(treePeople, id),
+                          (name, excludeId) => resolveNameToTreePersonId(treePeople, name, excludeId)
                         );
                         return (
                           <>
