@@ -15,7 +15,13 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
-## 2026-07-05 — K8f DNA cluster labels, painter tooltips, badge click-through
+## 2026-07-05 — K9 candidate-branch hypothesis for unplaced matches
+
+**K9:** `lib/dnaUncoveredBranches.ts` ranks ancestor couples in the cM generation band with weak/no
+DNA coverage; `uncovered_branch` suggestions in K3 with research to-dos; pedigree amber coverage-gap
+halos + **Hypothesis in tree** highlight from the DNA panel.
+
+---
 
 **K8f:** Leeds clusters named from K2 MRCA (`lib/dnaClusterLabels.ts`); unclustered matches listed by
 name; segment painter sticky hover tooltip (segment + total cM); pedigree/fan DNA badges show

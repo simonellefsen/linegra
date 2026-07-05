@@ -36,6 +36,8 @@ interface FanTreeProps {
   onIncreaseAncestors?: () => void;
   onResetDepths?: () => void;
   onDnaBadgeClick?: (personId: string) => void;
+  coverageGapPersonIds?: Set<string>;
+  hypothesisPersonIds?: Set<string>;
 }
 
 const cardWidth = 160;
@@ -87,6 +89,8 @@ const FanTree: React.FC<FanTreeProps> = ({
   onIncreaseAncestors,
   onResetDepths,
   onDnaBadgeClick,
+  coverageGapPersonIds,
+  hypothesisPersonIds,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [minimapOpen, setMinimapOpen] = useState(false);
@@ -271,6 +275,9 @@ const FanTree: React.FC<FanTreeProps> = ({
                 : 0;
               const dnaCm = node.person ? dnaCmByPersonId.get(node.person.id) : undefined;
               const generation = Math.abs(node.column);
+              const isHypothesis = !!node.person && hypothesisPersonIds?.has(node.person.id);
+              const hasCoverageGap =
+                !!node.person && !isHypothesis && coverageGapPersonIds?.has(node.person.id);
 
               return (
                 <button
@@ -280,7 +287,13 @@ const FanTree: React.FC<FanTreeProps> = ({
                     isPlaceholder
                       ? 'bg-white/70 border-dashed border-slate-300 text-slate-400'
                       : 'bg-white border-slate-200',
-                    isSelected ? 'ring-4 ring-blue-300' : '',
+                    isSelected
+                      ? 'ring-4 ring-blue-300'
+                      : isHypothesis
+                        ? 'ring-4 ring-amber-500'
+                        : hasCoverageGap
+                          ? 'ring-2 ring-amber-300'
+                          : '',
                   ].join(' ')}
                   style={{ left: pos.left, top: pos.top, width: cardWidth, height: cardHeight }}
                   disabled={!node.person}

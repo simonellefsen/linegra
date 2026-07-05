@@ -52,6 +52,10 @@ interface PedigreeTreeProps {
   onResetDepths?: () => void;
   /** Opens the admin DNA panel focused on this person (K8f). */
   onDnaBadgeClick?: (personId: string) => void;
+  /** Ancestor couples with weak/no DNA coverage (K9 amber halo). */
+  coverageGapPersonIds?: Set<string>;
+  /** Active K9 hypothesis branch — stronger highlight. */
+  hypothesisPersonIds?: Set<string>;
 }
 
 const horizontalSpacing = 220;
@@ -123,6 +127,8 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   onIncreaseDescendants,
   onResetDepths,
   onDnaBadgeClick,
+  coverageGapPersonIds,
+  hypothesisPersonIds,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [minimapOpen, setMinimapOpen] = useState(false);
@@ -314,6 +320,8 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-white/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 shadow-sm backdrop-blur max-w-[72%]">
         <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-emerald-600" />DNA-backed</span>
         <span className="flex items-center gap-1"><Dna className="w-3 h-3 text-emerald-700" />Badge · N matches · strongest cM</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-full ring-2 ring-amber-300" />Coverage gap</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-full ring-2 ring-amber-500" />K9 hypothesis</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-indigo-600" />Confirmed</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-[2px] w-4 rounded-full bg-slate-400" />Assumed</span>
         <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-slate-300" />Speculative</span>
@@ -555,6 +563,9 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
               ? dnaSupportByPersonId.get(node.person.id)?.size ?? 0
               : 0;
             const dnaCm = node.person ? dnaCmByPersonId.get(node.person.id) : undefined;
+            const isHypothesis = !!node.person && hypothesisPersonIds?.has(node.person.id);
+            const hasCoverageGap =
+              !!node.person && !isHypothesis && coverageGapPersonIds?.has(node.person.id);
             const cardClasses = [
               'absolute',
               'rounded-[24px]',
@@ -564,7 +575,13 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
               'transition-all',
               'border',
               isPlaceholder ? 'bg-white/70 border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-500' : 'bg-white border-slate-200',
-              isSelected ? 'ring-4 ring-blue-300' : '',
+              isSelected
+                ? 'ring-4 ring-blue-300'
+                : isHypothesis
+                  ? 'ring-4 ring-amber-500'
+                  : hasCoverageGap
+                    ? 'ring-2 ring-amber-300'
+                    : '',
             ].join(' ');
             return (
               <button

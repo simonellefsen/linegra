@@ -19,12 +19,11 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 
 ## DNA analysis (roadmap K9 — new feature)
 
-- [ ] **K9 — Candidate-branch hypothesis for unplaced matches.** Join cM→generation-band
+- [x] **K9 — Candidate-branch hypothesis for unplaced matches.** Join cM→generation-band
       prediction + cluster exclusion + per-line DNA coverage gaps into a ranked "this match most
       likely connects via ancestor couple X" suggestion with research to-dos. Pedigree UI: amber
       coverage-gap halo (inverse of the DNA badges) + hypothesis mode highlighting candidate
-      branches. Motivating case: Tia Edelman (118.8 cM, no triangulation → uncovered
-      Frederik Sophus Valdemar Andersen / Olga Augusta Andersen line).
+      branches. `lib/dnaUncoveredBranches.ts`, `uncovered_branch` in `dnaMatchPlacement.ts`.
 
 ## DNA panel (screenshot review 2026-07-05 — roadmap K8)
 
