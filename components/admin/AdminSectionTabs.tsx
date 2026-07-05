@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type AdminSection = 'database' | 'trees' | 'gedcom' | 'dna' | 'books' | 'research' | 'traffic';
+export type AdminSection = 'database' | 'trees' | 'gedcom' | 'dna' | 'books' | 'research' | 'traffic' | 'errors';
 
 interface AdminSectionTabsProps {
   section: AdminSection;
@@ -23,7 +23,7 @@ const AdminSectionTabs: React.FC<AdminSectionTabsProps> = ({
   showCrawlTraffic = false,
 }) => {
   const tabs = showCrawlTraffic
-    ? [...BASE_TABS, { id: 'traffic' as const, label: 'Traffic' }]
+    ? [...BASE_TABS, { id: 'traffic' as const, label: 'Traffic' }, { id: 'errors' as const, label: 'Errors' }]
     : BASE_TABS;
 
   return (

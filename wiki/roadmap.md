@@ -706,9 +706,9 @@ public crawl surfaces, Edge APIs, and multi-user auth now live, failures happen 
 is watching. Zero-new-deps path available: reuse the `public_crawl_events` pattern.
 - **V1. Top-level `ErrorBoundary`** around the app shell (and one around each lazy-loaded admin
   panel) with a friendly reload UI — a crash in one panel shouldn't take down the archive.
-- **V2. Client error capture.** `window.onerror` / `unhandledrejection` → a small `client_errors`
-  table via RPC (message, stack hash, route, UA bucket; no PII), surfaced in an admin panel with
-  daily rollup — same shape as the Traffic panel. Rate-limit inserts per session.
+- **V2. Client error capture.** ~~`window.onerror` / `unhandledrejection` → a small `client_errors`
+  table via RPC~~ **Done (2026-07-05):** `record_client_error` RPC + session rate limit +
+  `AdminClientErrorsPanel` daily rollup (message + stack hash only; no PII).
 - **V3. Edge/API error surfacing.** ai-proxy and `/api/public/*` failures currently live only in
   Vercel/Supabase logs. Log non-2xx counts into the same table (or `ai_usage_logs.error` already
   exists for AI) and show them in the admin Database/Traffic panels.

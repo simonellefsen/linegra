@@ -61,7 +61,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       tree directory JSON, tree HTML/md shells, and pagination markers.
 - [x] **V1 — Top-level React ErrorBoundary** (+ per lazy admin panel); today any render crash
       white-screens the SPA.
-- [ ] **V2 — Client error capture** → `client_errors` table via RPC, admin panel rollup
+- [x] **V2 — Client error capture** → `client_errors` table via RPC, admin panel rollup
       (reuse the `public_crawl_events` pattern; no new deps).
 - [ ] **V3 — Edge/API error surfacing** in admin panels (ai-proxy + `/api/public/*` non-2xx).
 - [ ] **X — E2E smoke pack** (5 flows): public-tree browse, sign-in, pedigree + profile open,

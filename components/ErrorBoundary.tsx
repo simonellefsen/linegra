@@ -1,4 +1,5 @@
 import React from 'react';
+import { recordClientError } from '../lib/clientErrorTelemetry';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -19,6 +20,12 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('ErrorBoundary caught render error', error, info.componentStack);
+    void recordClientError({
+      kind: 'boundary',
+      message: error.message,
+      stack: error.stack ?? info.componentStack,
+      source: this.props.title ?? null,
+    });
   }
 
   private handleReload = () => {

@@ -15,7 +15,13 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
-## 2026-07-05 — U15 person source citations on public shells
+## 2026-07-05 — V2 client error capture
+
+**V2:** `client_errors` table + `record_client_error` / `admin_get_client_error_stats` RPCs;
+`installClientErrorReporting()` in `index.tsx`; ErrorBoundary reports boundary crashes; superadmin
+**Errors** admin tab with daily rollup (`AdminClientErrorsPanel`).
+
+---
 
 **U15:** Person crawl payloads load tree-scoped sources + citations; HTML/md/JSON-LD shells expose a
 **Sources** section (`lib/publicCrawlSources.ts`). `llms.txt` documents family-page alternates.
