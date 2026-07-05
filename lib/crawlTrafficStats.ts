@@ -21,6 +21,7 @@ export interface CrawlTrafficRecentRow {
   route: string;
   agentBucket: string;
   resourceId?: string | null;
+  resourceKey?: string | null;
   responseFormat?: string | null;
   userAgent?: string | null;
 }
@@ -38,6 +39,7 @@ export interface VisitorRecentRow {
   region?: string | null;
   city?: string | null;
   resourceId?: string | null;
+  resourceKey?: string | null;
 }
 
 export interface BotTrafficStats {
@@ -123,6 +125,7 @@ const mapBotRecent = (row: Record<string, unknown>): CrawlTrafficRecentRow => ({
   route: String(row.route ?? 'unknown'),
   agentBucket: String(row.agent_bucket ?? 'unknown'),
   resourceId: typeof row.resource_id === 'string' ? row.resource_id : null,
+  resourceKey: typeof row.resource_key === 'string' ? row.resource_key : null,
   responseFormat: typeof row.response_format === 'string' ? row.response_format : null,
   userAgent: typeof row.user_agent === 'string' ? row.user_agent : null,
 });
@@ -140,6 +143,7 @@ const mapVisitorRecent = (row: Record<string, unknown>): VisitorRecentRow => ({
   region: typeof row.region === 'string' ? row.region : null,
   city: typeof row.city === 'string' ? row.city : null,
   resourceId: typeof row.resource_id === 'string' ? row.resource_id : null,
+  resourceKey: typeof row.resource_key === 'string' ? row.resource_key : null,
 });
 
 const asRows = <T>(value: unknown, mapper: (row: Record<string, unknown>) => T): T[] =>

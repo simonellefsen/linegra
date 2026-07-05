@@ -11,8 +11,13 @@ import {
   X,
 } from 'lucide-react';
 import { labelCountryCode, labelCrawlerAgent } from '../../lib/crawlTrafficStats';
+import { crawlTrafficResourceCacheKey } from '../../lib/crawlTrafficResourceLabels';
 import { formatGeoLocation } from '../../lib/requestGeo';
-import { fetchAdminCrawlTrafficStats, type CrawlTrafficStats } from '../../services/crawlTraffic';
+import {
+  fetchAdminCrawlTrafficStats,
+  type CrawlTrafficResourceLabel,
+  type CrawlTrafficStats,
+} from '../../services/crawlTraffic';
 
 interface AdminCrawlTrafficPanelProps {
   supabaseActive: boolean;
@@ -23,10 +28,51 @@ const formatUtc = (value: string | null | undefined): string => {
   return new Date(value).toISOString().replace('T', ' ').slice(0, 19);
 };
 
+const CrawlTrafficResourceCell: React.FC<{
+  route: string;
+  resourceId?: string | null;
+  resourceKey?: string | null;
+  labels: Record<string, CrawlTrafficResourceLabel>;
+}> = ({ route, resourceId, resourceKey, labels }) => {
+  if (!resourceId && !resourceKey) {
+    return <span className="text-slate-400">—</span>;
+  }
+  const resolved = labels[crawlTrafficResourceCacheKey({ route, resourceId, resourceKey })];
+  if (resolved?.href) {
+    return (
+      <a
+        href={resolved.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-violet-700 hover:underline font-medium max-w-[16rem] truncate inline-block"
+        title={resolved.raw}
+      >
+        {resolved.label}
+      </a>
+    );
+  }
+  if (resolved?.label) {
+    return (
+      <span className="text-slate-700 font-medium max-w-[16rem] truncate inline-block" title={resolved.raw}>
+        {resolved.label}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="font-mono text-xs text-slate-500 max-w-[12rem] truncate inline-block"
+      title={resourceId ?? resourceKey ?? undefined}
+    >
+      {resourceId ?? resourceKey}
+    </span>
+  );
+};
+
 const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabaseActive }) => {
   const [days, setDays] = useState(30);
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
   const [stats, setStats] = useState<CrawlTrafficStats | null>(null);
+  const [resourceLabels, setResourceLabels] = useState<Record<string, CrawlTrafficResourceLabel>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,12 +83,16 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabas
     setError(null);
     fetchAdminCrawlTrafficStats(days, { agentFilter })
       .then((summary) => {
-        if (!cancelled) setStats(summary);
+        if (!cancelled) {
+          setStats(summary.stats);
+          setResourceLabels(summary.resourceLabels);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load traffic stats.');
           setStats(null);
+          setResourceLabels({});
         }
       })
       .finally(() => {
@@ -286,8 +336,13 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabas
                             </td>
                             <td className="px-4 py-2 text-slate-600">{row.route}</td>
                             <td className="px-4 py-2 text-slate-600">{row.responseFormat || '—'}</td>
-                            <td className="px-4 py-2 font-mono text-xs text-slate-500 max-w-[12rem] truncate">
-                              {row.resourceId || '—'}
+                            <td className="px-4 py-2">
+                              <CrawlTrafficResourceCell
+                                route={row.route}
+                                resourceId={row.resourceId}
+                                resourceKey={row.resourceKey}
+                                labels={resourceLabels}
+                              />
                             </td>
                           </tr>
                         ))}
@@ -435,8 +490,13 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabas
                               {formatGeoLocation(row.countryCode, row.city, row.region) || '—'}
                             </td>
                             <td className="px-4 py-2 text-slate-600">{row.route}</td>
-                            <td className="px-4 py-2 font-mono text-xs text-slate-500 max-w-[12rem] truncate">
-                              {row.resourceId || '—'}
+                            <td className="px-4 py-2">
+                              <CrawlTrafficResourceCell
+                                route={row.route}
+                                resourceId={row.resourceId}
+                                resourceKey={row.resourceKey}
+                                labels={resourceLabels}
+                              />
                             </td>
                           </tr>
                         ))}

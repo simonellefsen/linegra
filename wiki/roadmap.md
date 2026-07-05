@@ -252,6 +252,25 @@ that gates raw data.
   Policy: [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md).
 - **Sequencing:** K7 → K6 → K1 → K5 — **complete.**
 
+**K10. Family kits are 1-hop only — tested grandparents/siblings/cousins never surface (BUG, found
+2026-07-05).** Reported case: Helle Andersen has a full autosomal kit and is Pernille's grandmother
+(Helle → Niels → Pernille = **2 hops**), but neither shows on the other's DNA panel.
+[list_family_autosomal_kits](../supabase/migrations/20260703191000_list_family_autosomal_kits.sql)
+only joins **direct parent ↔ child** edges (parent-type where `related_id = focus`, or a `child`
+edge) — so grandparents, grandchildren, siblings, aunts/uncles, and cousins are all invisible, even
+though the whole point of "in-tree family kits" is to surface tested relatives for validation and
+triangulation. The other surfacing path (`dna_matches` rows) needs an explicit pairwise CSV, which a
+raw full-kit upload doesn't create, so there's no fallback. **Fix:** enumerate *all* in-tree
+autosomal kits and compute each relative's relationship to the focus with the existing
+[relationshipCalculator.ts](../lib/relationshipCalculator.ts) `computeRelationship` (already returns
+"grandparent" / "2nd cousin once removed" + MRCA + generation counts), including everyone within a
+sane distance (e.g. ≤ N meioses). Label the family-kit card with the real relationship and, since the
+relationship is known, **show the expected shared-cM range** and flag a raw-kit comparison (K6) when
+both kits have SNP data (a grandmother should share ~1300–2300 cM — verifiable). Prefer doing the
+hop-walk in TS via the pedigree scope + relationshipCalculator (reuses tested code) over a recursive
+SQL CTE. Pure parts unit-testable; add fixtures for grandparent, sibling, 1C, 1C1R. **This is the
+"why doesn't it show they're related?" bug — high priority.**
+
 **K9. Candidate-branch hypothesis for unplaced matches ("where does Tia fit?") — DONE 2026-07-05.**
 The motivating case: Tia Edelman shares 118.8 cM / 6 segments with the tester (2nd–3rd cousin
 band) but triangulates with nothing — because she belongs to a branch with **no DNA coverage
@@ -618,7 +637,8 @@ and the metrics that make it *actionable* rather than a hit counter.
 *Actionability:*
 - **U18f — Resolve resource UUIDs to names.** "0fd167f2-…" tells the admin nothing; join to
   persons/trees and render "Pernille Gether Gamby (person)" linking to the public page
-  (admin-only panel, so names are fine).
+  (admin-only panel, so names are fine). **DONE 2026-07-05** — batch resolve in
+  `services/crawlTraffic.ts` + `lib/crawlTrafficResourceLabels.ts`; recent tables link to public URLs.
 - **U18g — Self-traffic exclusion.** The admin's own browsing inflates visitor counts; tag hits
   from signed-in sessions (or a device cookie) and default the panel to "exclude my traffic."
 - **U18h — Chart scaling.** A single hit renders as a full-width bar; use a fixed axis over the

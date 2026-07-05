@@ -15,6 +15,14 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — U18f crawl resource labels in traffic panel
+
+**U18:** Recent bot/visitor rows resolve UUIDs to person/tree/book/family names with links to
+public crawl URLs; slug `resource_key` rows humanized as fallback.
+`lib/crawlTrafficResourceLabels.ts`, `services/crawlTraffic.ts`, `AdminCrawlTrafficPanel.tsx`.
+
+---
+
 ## 2026-07-05 — U18e crawl event dedupe
 
 **U18:** Minute-bucket idempotency in `record_public_crawl_event` (route + resource key + UA);
