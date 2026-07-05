@@ -54,6 +54,7 @@ const AdminDatabasePanel = lazy(() => import('./components/admin/AdminDatabasePa
 const AdminGedcomPanel = lazy(() => import('./components/admin/AdminGedcomPanel'));
 const AdminResearchPanel = lazy(() => import('./components/admin/AdminResearchPanel'));
 const AdminCrawlTrafficPanel = lazy(() => import('./components/admin/AdminCrawlTrafficPanel'));
+const AdminClientErrorsPanel = lazy(() => import('./components/admin/AdminClientErrorsPanel'));
 const BookComposerPanel = lazy(() => import('./components/admin/BookComposerPanel'));
 
 const PARENTAL_REL_TYPES: Relationship['type'][] = [
@@ -1916,6 +1917,11 @@ useEffect(() => {
                 {adminSection === 'traffic' && currentUser?.isSuperAdmin && (
                   <ErrorBoundary title="Crawl traffic panel failed to load">
                   <AdminCrawlTrafficPanel supabaseActive={supabaseActive} />
+                  </ErrorBoundary>
+                )}
+                {adminSection === 'errors' && currentUser?.isSuperAdmin && (
+                  <ErrorBoundary title="Client errors panel failed to load">
+                  <AdminClientErrorsPanel supabaseActive={supabaseActive} />
                   </ErrorBoundary>
                 )}
               </div>
