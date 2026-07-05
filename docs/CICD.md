@@ -29,20 +29,37 @@ npm run build
 Vercel deploy. Run `npm test` (or `npm run test:watch`) directly while iterating; tests live
 next to the code they cover as `lib/*.test.ts`.
 
-## Require CI on `main` (roadmap W2)
+## Require CI on `main` (roadmap W2) — **active**
 
-Branch protection is not enabled yet. To block merges until `build` is green (Dependabot
-included), a repo admin can create a ruleset:
+Ruleset **Require CI on main** is enforced on the default branch (`build` must be green).
+Verify anytime:
 
 ```bash
-gh api repos/{owner}/{repo}/rulesets -X POST --input - <<'EOF'
+gh api "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/rulesets" \
+  --jq '.[] | select(.name=="Require CI on main") | {id, enforcement, name}'
+```
+
+To inspect the required check:
+
+```bash
+OWNER_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+RULESET_ID=$(gh api "repos/$OWNER_REPO/rulesets" --jq '.[] | select(.name=="Require CI on main") | .id')
+gh api "repos/$OWNER_REPO/rulesets/$RULESET_ID" \
+  --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks'
+```
+
+If missing, a repo admin can create it with:
+
+```bash
+OWNER_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh api "repos/$OWNER_REPO/rulesets" -X POST --input - <<'EOF'
 {
   "name": "Require CI on main",
   "target": "branch",
   "enforcement": "active",
   "conditions": {
     "ref_name": {
-      "include": ["refs/heads/main"],
+      "include": ["~DEFAULT_BRANCH"],
       "exclude": []
     }
   },

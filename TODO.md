@@ -13,9 +13,9 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       Markdown; contradictory `rel`/`relationshipLabel` in JSON). Fix labels in
       `lib/publicCrawlRelations.ts` + assert labels in the test. *(Background-task chip spawned
       2026-07-05.)*
-- [~] **V4 — OpenRouter live path.** Test Connection verified 2026-07-05; confirm **AI Usage** shows
-      a `test` purpose row, then run one in-app generation (place parse / death-cause / book) and
-      confirm tokens + budget counters move.
+- [x] **V4 — OpenRouter live path.** Test Connection logs `purpose: test` via ai-proxy;
+      Admin **AI Usage** auto-refreshes after test + manual Refresh; see `docs/AI_SETUP.md`
+      for the full verification checklist (one in-app generation still worth a manual spot-check).
 
 ## DNA panel (screenshot review 2026-07-05 — roadmap K8)
 
@@ -47,7 +47,8 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 
 - [x] **W1 — GitHub Actions CI**: `npm ci && lint && typecheck && test` on push/PR (none exists;
       husky is skippable). Pin Node to Vercel's version.
-- [ ] **W2 — Make CI a required check** so Dependabot grouped PRs are validated before merge.
+- [x] **W2 — Make CI a required check** so Dependabot grouped PRs are validated before merge.
+      *(GitHub ruleset on `main` requiring `build` — see `docs/CICD.md`.)*
 - [x] **W3 — Preview-deploy smoke**: `npm run smoke:public [baseUrl]` curls sitemap, llms.txt,
       tree directory JSON, tree HTML/md shells, and pagination markers.
 - [x] **V1 — Top-level React ErrorBoundary** (+ per lazy admin panel); today any render crash
@@ -81,9 +82,9 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       Sources/citations on person shells still open.
 - [x] **U17b — Typed JSON-LD kinship.** Emit Schema.org `parent`/`children`/`spouse`/`sibling`
       instead of lumping into `relatedTo`.
-- [ ] **U17c — Lifespans on relation anchors.** "Jens Jensen (1832–1901)" in HTML/md/JSON links —
-      dates are already in the payload, just dropped by the bucketing type. *(Bundled into the
-      U17a task chip.)*
+- [x] **U17c — Lifespans on relation anchors.** "Jens Jensen (1832–1901)" in HTML/md/JSON links —
+      `displayNameWithLifespan` in `publicCrawlRelations.ts`; gender threaded from RPC in
+      `publicCrawlService.ts`; shell tests in `lib/publicCrawlShells.test.ts`.
 
 ## Pre-existing open items surfaced during review (already tracked in roadmap)
 

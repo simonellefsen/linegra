@@ -106,3 +106,21 @@ supabase db push
 
 OpenRouter recommends sending `HTTP-Referer` + `X-Title`; the service includes
 Linegra defaults, but update `services/ai.ts` if branding changes.
+
+## Verifying ai-proxy usage logging (roadmap V4)
+
+All OpenRouter calls go through the `ai-proxy` Edge Function, which writes a row
+to `ai_usage_logs` (purpose, model, tokens, estimated cost). The Administrator
+**Database → AI Usage** panel reads that table via `admin_get_ai_usage_summary`.
+
+1. Save a valid OpenRouter key under **AI Settings**.
+2. Click **Test Connection**. On success the panel refreshes automatically and
+   should show a **`test`** row under **By purpose** (one call, small token count).
+3. Run any in-app AI feature (e.g. Vital tab **AI Normalize** on cause of death,
+   or place parsing). Click **Refresh** on AI Usage and confirm totals and the
+   matching purpose bucket increase; **Daily spend caps** should reflect today's
+   estimated cost.
+
+If the test row is missing, confirm migrations through `ai_usage_logs` are
+applied (`supabase db push`) and that your account has superadmin access to the
+proxy.

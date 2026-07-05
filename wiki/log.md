@@ -15,6 +15,19 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — V4 AI usage refresh + U17c crawl lifespans + W2 ruleset
+
+**V4:** `AdminDatabasePanel` refreshes **AI Usage** + budget after **Test Connection**; manual
+**Refresh** button; success message cites the `test` purpose bucket when present. Checklist in
+`docs/AI_SETUP.md`.
+
+**U17c:** Relation anchor names include lifespan suffixes in HTML/md/JSON-LD; `gender` mapped from
+`load_person_family_connections` in `publicCrawlService.ts`; `lib/publicCrawlShells.test.ts`.
+
+**W2:** GitHub ruleset on `main` requiring CI **`build`** (user-configured; documented in `docs/CICD.md`).
+
+---
+
 ## 2026-07-05 — Family union UX + K3 unknown-match cards (K8d)
 
 **Family tab:** Single **Add union** + **Link existing person** actions; new spouse placeholders default

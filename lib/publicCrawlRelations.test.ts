@@ -33,7 +33,7 @@ describe('publicCrawlRelations', () => {
       relationships,
       [
         { id: FOCUS, treeId: TREE, firstName: 'Ada', lastName: 'Lovelace', gender: 'F' },
-        { id: FATHER, treeId: TREE, firstName: 'Lord', lastName: 'Byron', gender: 'M' },
+        { id: FATHER, treeId: TREE, firstName: 'Lord', lastName: 'Byron', gender: 'M', birthDate: '1788', deathDate: '1824' },
         {
           id: CHILD,
           treeId: TREE,
@@ -48,7 +48,7 @@ describe('publicCrawlRelations', () => {
     );
     expect(groups.parents).toHaveLength(1);
     expect(groups.parents[0]?.relationshipLabel).toBe('Father');
-    expect(groups.parents[0]?.name).toBe('Lord Byron');
+    expect(groups.parents[0]?.name).toBe('Lord Byron (1788–1824)');
     expect(groups.children[0]?.relationshipLabel).toBe('Daughter');
     expect(groups.children[0]?.name).toBe('Anne King (1840–1910)');
     expect(groups.children[0]?.href).toContain(CHILD);
