@@ -45,11 +45,12 @@ and `/sitemap.xml` edge routes are available. Local `vite preview` does not serv
 
 ### CI (`e2e-smoke` job)
 
-After `build`, the workflow waits for the matching Vercel deployment
-(`patrickedqvist/wait-for-vercel-preview`) and sets `E2E_BASE_URL` to that URL before running
-Playwright.
+After `build`, `scripts/ci-resolve-vercel-preview.mjs` reads the deployment URL from the GitHub
+Deployments API (no unauthenticated probe — Vercel Deployment Protection returns **401** to CI
+runners even when the link works in your logged-in browser). Playwright then sends
+`x-vercel-protection-bypass` on every request.
 
-Preview deployments with **Deployment Protection** require the automation bypass header. Copy the
+Preview deployments with **Deployment Protection** require the automation bypass secret. Copy the
 secret from Vercel → Project → Settings → Deployment Protection → **Protection Bypass for
 Automation** into a GitHub repository secret (same value).
 

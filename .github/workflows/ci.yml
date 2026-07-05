@@ -34,13 +34,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Wait for Vercel deployment
-        uses: patrickedqvist/wait-for-vercel-preview@v1.3.2
+      - name: Resolve Vercel deployment URL
         id: vercel
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          max_timeout: 300
-          vercel_environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+        env:
+          VERCEL_DEPLOY_ENV: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Preview' }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/ci-resolve-vercel-preview.mjs
       - run: npm run build:app
       - run: npm run test:e2e:local
       - name: Deployed E2E smoke (Vercel preview / production)
