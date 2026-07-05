@@ -252,7 +252,7 @@ that gates raw data.
   Policy: [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md).
 - **Sequencing:** K7 → K6 → K1 → K5 — **complete.**
 
-**K9. Candidate-branch hypothesis for unplaced matches ("where does Tia fit?") — proposed 2026-07-05.**
+**K9. Candidate-branch hypothesis for unplaced matches ("where does Tia fit?") — DONE 2026-07-05.**
 The motivating case: Tia Edelman shares 118.8 cM / 6 segments with the tester (2nd–3rd cousin
 band) but triangulates with nothing — because she belongs to a branch with **no DNA coverage
 yet**. The pedigree badges already form a per-line coverage map; K9 combines the three signals the

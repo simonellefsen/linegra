@@ -15,6 +15,7 @@ import {
   SEARCH_PAGE_SIZE,
 } from './lib/treePerformance';
 import { collectDnaSupportMatchIds } from './lib/dnaSupport';
+import { collectCoverageGapPersonIds } from './lib/dnaUncoveredBranches';
 import PedigreeTree from './components/InteractiveTree/PedigreeTree';
 import FanTree from './components/InteractiveTree/FanTree';
 import TimelineView from './components/InteractiveTree/TimelineView';
@@ -1224,12 +1225,45 @@ useEffect(() => {
   }, []);
 
   const [dnaPanelFocusPersonId, setDnaPanelFocusPersonId] = useState<string | null>(null);
+  const [dnaHypothesis, setDnaHypothesis] = useState<{
+    matchId: string;
+    personIds: Set<string>;
+  } | null>(null);
 
   const handleOpenDnaPanelForPerson = useCallback((personId: string) => {
     setDnaPanelFocusPersonId(personId);
     setActiveTab('records');
     setAdminSection('dna');
   }, []);
+
+  const handleShowHypothesisInTree = useCallback(
+    (input: { matchId: string; couplePersonIds: [string, string] }) => {
+      setDnaHypothesis({
+        matchId: input.matchId,
+        personIds: new Set(input.couplePersonIds),
+      });
+      setPedigreeFocusId(input.couplePersonIds[0]);
+      setActiveTab('tree');
+      setTreeViewReady(true);
+      graphLoadKeyRef.current = null;
+    },
+    []
+  );
+
+  const coverageGapPersonIds = useMemo(() => {
+    if (!focusPersonId || !treeRelationships.length) return new Set<string>();
+    const resolveName = (personId: string) => {
+      const person = treePeople.find((row) => row.id === personId);
+      if (!person) return personId;
+      return `${person.firstName || ''} ${person.lastName || ''}`.trim() || personId;
+    };
+    return collectCoverageGapPersonIds(
+      focusPersonId,
+      treeRelationships,
+      resolveName,
+      dnaMatchCmById
+    );
+  }, [focusPersonId, treeRelationships, treePeople, dnaMatchCmById]);
 
   const handleNukeConfirm = useCallback(async () => {
     if (!supabaseActive) {
@@ -1677,6 +1711,8 @@ useEffect(() => {
                               setDescendantDepth(DEFAULT_PEDIGREE_DESCENDANT_DEPTH);
                             }}
                             onDnaBadgeClick={showAdministratorTab ? handleOpenDnaPanelForPerson : undefined}
+                            coverageGapPersonIds={showAdministratorTab ? coverageGapPersonIds : undefined}
+                            hypothesisPersonIds={dnaHypothesis?.personIds}
                           />
                         )}
                         {treeLayoutType === 'timeline' && (
@@ -1753,6 +1789,8 @@ useEffect(() => {
                             setDescendantDepth(DEFAULT_PEDIGREE_DESCENDANT_DEPTH);
                           }}
                           onDnaBadgeClick={showAdministratorTab ? handleOpenDnaPanelForPerson : undefined}
+                          coverageGapPersonIds={showAdministratorTab ? coverageGapPersonIds : undefined}
+                          hypothesisPersonIds={dnaHypothesis?.personIds}
                         />
                         )}
                       </>
@@ -1849,6 +1887,8 @@ useEffect(() => {
                     onOpenPerson={handleAdminOpenPerson}
                     onViewLineageInTree={handleViewLineageInTree}
                     focusPersonId={dnaPanelFocusPersonId}
+                    dnaMatchCmById={dnaMatchCmById}
+                    onShowHypothesisInTree={handleShowHypothesisInTree}
                   />
                   </ErrorBoundary>
                 )}

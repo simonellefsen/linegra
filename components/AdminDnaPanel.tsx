@@ -53,6 +53,11 @@ interface AdminDnaPanelProps {
   onViewLineageInTree?: (personId: string) => void | Promise<void>;
   /** When set (e.g. from pedigree DNA badge), selects this tester in the panel. */
   focusPersonId?: string | null;
+  dnaMatchCmById?: Map<string, number>;
+  onShowHypothesisInTree?: (input: {
+    matchId: string;
+    couplePersonIds: [string, string];
+  }) => void;
 }
 
 const formatVitals = (birthYear?: string | null, deathYear?: string | null) => {
@@ -82,6 +87,8 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   onOpenPerson,
   onViewLineageInTree,
   focusPersonId,
+  dnaMatchCmById,
+  onShowHypothesisInTree,
 }) => {
   const [candidates, setCandidates] = useState<DNAAutosomalCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
@@ -298,12 +305,28 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                   score: match.suggestedNameMatchScore || 0,
                 }
               : null,
+            focusPersonId: selectedPersonId,
+            relationships,
+            dnaMatchCmById,
+            matchClusterIndex: clusterIndexByMatchId.get(match.id) ?? null,
+            resolvePersonName,
           }
         )
       );
     });
     return map;
-  }, [unlinkedMatches, mrcaCandidates, linkedMatchSegmentInputs, clusterGroups, minClusterCm]);
+  }, [
+    unlinkedMatches,
+    mrcaCandidates,
+    linkedMatchSegmentInputs,
+    clusterGroups,
+    minClusterCm,
+    selectedPersonId,
+    relationships,
+    dnaMatchCmById,
+    clusterIndexByMatchId,
+    resolvePersonName,
+  ]);
 
   const handleCreateDnaMatchPerson = async (match: UnlinkedDnaMatchRecord) => {
     if (!treeId || !selectedPersonId || placingMatchId) return;
@@ -984,6 +1007,11 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                               Top suggestion
                             </span>
                           )}
+                          {suggestion.kind === 'uncovered_branch' && (
+                            <span className="block text-[10px] font-black uppercase tracking-[0.15em] text-amber-700 mb-1">
+                              Uncovered branch (K9)
+                            </span>
+                          )}
                           {suggestion.anchorPersonName ? (
                             <button
                               type="button"
@@ -999,6 +1027,25 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                           )}
                           {' — '}
                           {suggestion.rationale}
+                          {suggestion.researchTodo && (
+                            <p className="mt-1 text-slate-500">{suggestion.researchTodo}</p>
+                          )}
+                          {suggestion.kind === 'uncovered_branch' &&
+                            suggestion.couplePersonIds &&
+                            onShowHypothesisInTree && (
+                              <button
+                                type="button"
+                                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-amber-900 hover:bg-amber-100"
+                                onClick={() =>
+                                  onShowHypothesisInTree({
+                                    matchId: match.id,
+                                    couplePersonIds: suggestion.couplePersonIds!,
+                                  })
+                                }
+                              >
+                                Hypothesis in tree
+                              </button>
+                            )}
                         </li>
                       ))}
                     </ul>

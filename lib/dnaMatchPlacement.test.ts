@@ -83,4 +83,63 @@ describe('suggestUnknownMatchPlacements', () => {
     );
     expect(suggestions.some((item) => item.kind === 'cluster_line')).toBe(true);
   });
+
+  it('suggests uncovered_branch when focus tree and cM band have a gap couple', () => {
+    const FOCUS = 'focus';
+    const FATHER = 'father';
+    const MOTHER = 'mother';
+    const PGF = 'pgf';
+    const PGM = 'pgm';
+    const PGGF = 'pggf';
+    const PGGM = 'pgggm';
+    const PGFATHER = 'pgfather';
+    const PGMOTHER = 'pgmother';
+    const TREE = 'tree-1';
+    const rel = (
+      id: string,
+      personId: string,
+      relatedId: string,
+      type: import('../types').Relationship['type']
+    ): import('../types').Relationship => ({
+      id,
+      treeId: TREE,
+      personId,
+      relatedId,
+      type,
+      status: 'current',
+    });
+    const relationships = [
+      rel('r1', FATHER, FOCUS, 'bio_father'),
+      rel('r2', MOTHER, FOCUS, 'bio_mother'),
+      rel('r3', PGF, FATHER, 'bio_father'),
+      rel('r4', PGM, FATHER, 'bio_mother'),
+      rel('r5', PGGF, PGF, 'bio_father'),
+      rel('r6', PGGM, PGF, 'bio_mother'),
+      rel('r7', PGFATHER, PGGF, 'bio_father'),
+      rel('r8', PGMOTHER, PGGF, 'bio_mother'),
+    ];
+    const names: Record<string, string> = {
+      [PGFATHER]: 'Frederik',
+      [PGMOTHER]: 'Olga',
+    };
+    const suggestions = suggestUnknownMatchPlacements(
+      {
+        matchId: 'unknown-tia',
+        matchName: 'Tia Edelman',
+        sharedCM: 118.8,
+        segments: 6,
+        predictionLabel: '3rd cousin cluster',
+        segmentsPreview: [],
+      },
+      {
+        mrcaCandidates: [],
+        linkedMatches: [],
+        clusterGroups: [],
+        focusPersonId: FOCUS,
+        relationships,
+        resolvePersonName: (id) => names[id] || id,
+      }
+    );
+    expect(suggestions.some((item) => item.kind === 'uncovered_branch')).toBe(true);
+  });
 });

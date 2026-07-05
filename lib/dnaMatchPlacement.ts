@@ -4,6 +4,7 @@
 import { clusterSharedSegments, type ClusterSegment } from './dnaClustering';
 import { formatNameMatchRationale, normalizeNameMatchScore } from './dnaNameMatch';
 import type { MrcaCandidate } from './dnaMrcaSuggestions';
+import { suggestUncoveredBranchCandidates } from './dnaUncoveredBranches';
 
 export interface UnknownMatchInput {
   matchId: string;
@@ -27,12 +28,15 @@ export interface NameMatchCandidate {
 }
 
 export interface PlacementSuggestion {
-  kind: 'link_existing' | 'under_mrca' | 'cluster_line' | 'unplaced';
+  kind: 'link_existing' | 'under_mrca' | 'cluster_line' | 'uncovered_branch' | 'unplaced';
   anchorPersonId?: string;
   anchorPersonName?: string;
+  /** Second person when the anchor is an ancestor couple (K9). */
+  couplePersonIds?: [string, string];
   relationshipLabel: string;
   rationale: string;
   score: number;
+  researchTodo?: string;
 }
 
 export interface PlacementContext {
@@ -41,6 +45,11 @@ export interface PlacementContext {
   clusterGroups: string[][];
   nameMatchCandidate?: NameMatchCandidate | null;
   minClusterCm?: number;
+  focusPersonId?: string;
+  relationships?: import('../types').Relationship[];
+  dnaMatchCmById?: Map<string, number> | Record<string, number>;
+  matchClusterIndex?: number | null;
+  resolvePersonName?: (personId: string) => string;
 }
 
 /** Split a display name into first / last for placeholder person creation. */
@@ -133,6 +142,43 @@ export const suggestUnknownMatchPlacements = (
       score: 300 - index * 20 + candidate.supportingMatchIds.length * 15,
     });
   });
+
+  if (context.focusPersonId && context.relationships?.length) {
+    const matchClusterIndices =
+      context.matchClusterIndex != null && context.matchClusterIndex >= 0
+        ? [context.matchClusterIndex]
+        : clusterPeers.length
+          ? [
+              context.clusterGroups.findIndex((group) =>
+                clusterPeers.some((peerId) => group.includes(peerId))
+              ),
+            ].filter((index) => index >= 0)
+          : [];
+
+    suggestUncoveredBranchCandidates({
+      focusPersonId: context.focusPersonId,
+      sharedCM: unknown.sharedCM,
+      segments: unknown.segments,
+      relationships: context.relationships,
+      resolveName: context.resolvePersonName ?? ((personId) => personId),
+      dnaMatchCmById: context.dnaMatchCmById,
+      matchClusterIndices,
+      mrcaCandidates: context.mrcaCandidates,
+    })
+      .slice(0, 3)
+      .forEach((candidate, index) => {
+        suggestions.push({
+          kind: 'uncovered_branch',
+          anchorPersonId: candidate.couple.personAId,
+          anchorPersonName: `${candidate.couple.personAName} & ${candidate.couple.personBName}`,
+          couplePersonIds: [candidate.couple.personAId, candidate.couple.personBId],
+          relationshipLabel: candidate.bandLabel,
+          rationale: candidate.rationale,
+          researchTodo: candidate.researchTodo,
+          score: candidate.score - index * 15,
+        });
+      });
+  }
 
   suggestions.push({
     kind: 'unplaced',
