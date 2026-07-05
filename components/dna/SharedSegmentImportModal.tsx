@@ -188,7 +188,11 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
                 onChange={(event) => setOwnerPersonId(event.target.value)}
                 className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-slate-800"
               >
-                <option value="">Select autosomal tester…</option>
+                {!ownerPersonId && (
+                  <option value="" disabled>
+                    Select autosomal tester…
+                  </option>
+                )}
                 {autosomalTesters.map((person) => (
                   <option key={person.id} value={person.id}>
                     {[person.first_name, person.last_name].filter(Boolean).join(' ')}

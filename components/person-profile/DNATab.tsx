@@ -133,9 +133,11 @@ const SharedKitOwnerField: React.FC<{
           }}
           className="max-w-full rounded-lg border border-white/20 bg-slate-900/80 px-2 py-1 text-xs font-semibold text-white outline-none focus:border-blue-300"
         >
-          <option value="" className="text-slate-900">
-            Select autosomal tester…
-          </option>
+          {!kitOwnerPersonId && (
+            <option value="" disabled className="text-slate-900">
+              Select autosomal tester…
+            </option>
+          )}
           {kitOwnerPersonId && !storedOwnerIsTester && (
             <option value={kitOwnerPersonId} className="text-slate-900">
               {kitOwnerDisplayName !== 'Unknown' ? kitOwnerDisplayName : kitOwnerPersonId}
