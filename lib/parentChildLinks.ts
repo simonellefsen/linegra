@@ -62,6 +62,34 @@ export interface ParentLinkForUnion {
   gender?: Person['gender'] | null;
 }
 
+export interface ParentLinkRef {
+  parentId: string;
+  type: RelationshipType;
+}
+
+export const childHasTypedParentRole = (
+  links: ParentLinkRef[],
+  role: 'bio_father' | 'bio_mother',
+  exceptParentId?: string
+): boolean =>
+  links.some((link) => link.type === role && (!exceptParentId || link.parentId !== exceptParentId));
+
+/** Do not auto-link a coparent when the child already has that biological parent role filled. */
+export const shouldSkipCoparentChildLink = (
+  existingLinks: ParentLinkRef[],
+  parentId: string,
+  parentGender: Person['gender'] | null
+): boolean => {
+  const targetType = inferParentRelationshipType(parentGender);
+  if (targetType === 'bio_father') {
+    return childHasTypedParentRole(existingLinks, 'bio_father', parentId);
+  }
+  if (targetType === 'bio_mother') {
+    return childHasTypedParentRole(existingLinks, 'bio_mother', parentId);
+  }
+  return false;
+};
+
 /** Father–mother pairs that should share a spousal union when linked to the same child. */
 export const inferParentPairsForUnion = (links: ParentLinkForUnion[]): Array<[string, string]> => {
   const fathers: string[] = [];

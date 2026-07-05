@@ -5,6 +5,7 @@ import {
   inferParentPairsForUnion,
   inferParentRelationshipType,
   parentLinkReadsAsFather,
+  shouldSkipCoparentChildLink,
 } from './parentChildLinks';
 
 const rel = (partial: Partial<Relationship> & Pick<Relationship, 'id' | 'personId' | 'relatedId' | 'type'>): Relationship =>
@@ -58,5 +59,18 @@ describe('parentChildLinks', () => {
       ])
     ).toEqual([['dad', 'mom']]);
     expect(inferParentPairsForUnion([{ parentId: 'dad', type: 'bio_father' }])).toEqual([]);
+  });
+
+  it('skips coparent auto-link when the child already has that biological parent', () => {
+    const links = [
+      { parentId: 'wilhelm', type: 'bio_father' as const },
+      { parentId: 'margaretha', type: 'bio_mother' as const },
+    ];
+    expect(shouldSkipCoparentChildLink(links, 'maria', 'F')).toBe(true);
+    expect(shouldSkipCoparentChildLink(links, 'wilhelm', 'M')).toBe(false);
+    expect(shouldSkipCoparentChildLink(links, 'maria', 'M')).toBe(true);
+    expect(shouldSkipCoparentChildLink([{ parentId: 'wilhelm', type: 'bio_father' }], 'hanne', 'F')).toBe(
+      false
+    );
   });
 });
