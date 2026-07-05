@@ -358,6 +358,7 @@ export interface FamilyLayoutAudit {
 export interface FamilyTree {
   id: string;
   name: string;
+  slug?: string | null;
   description?: string | null;
   ownerId?: string | null;
   isPublic: boolean;

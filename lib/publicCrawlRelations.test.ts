@@ -32,14 +32,62 @@ describe('publicCrawlRelations', () => {
       TREE,
       relationships,
       [
-        { id: FOCUS, treeId: TREE, firstName: 'Ada', lastName: 'Lovelace' },
-        { id: FATHER, treeId: TREE, firstName: 'Lord', lastName: 'Byron' },
-        { id: CHILD, treeId: TREE, firstName: 'Anne', lastName: 'King' },
+        { id: FOCUS, treeId: TREE, firstName: 'Ada', lastName: 'Lovelace', gender: 'F' },
+        { id: FATHER, treeId: TREE, firstName: 'Lord', lastName: 'Byron', gender: 'M' },
+        {
+          id: CHILD,
+          treeId: TREE,
+          firstName: 'Anne',
+          lastName: 'King',
+          gender: 'F',
+          birthDate: '1840',
+          deathDate: '1910',
+        },
       ],
       'https://linegra.app'
     );
     expect(groups.parents).toHaveLength(1);
+    expect(groups.parents[0]?.relationshipLabel).toBe('Father');
     expect(groups.parents[0]?.name).toBe('Lord Byron');
+    expect(groups.children[0]?.relationshipLabel).toBe('Daughter');
+    expect(groups.children[0]?.name).toBe('Anne King (1840–1910)');
     expect(groups.children[0]?.href).toContain(CHILD);
+    expect(groups.children[0]?.rel).toBe('child');
+    expect(groups.children[0]?.relationshipType).toBe('child');
+  });
+
+  it('labels siblings as siblings, not with the parental role', () => {
+    const SIBLING = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const groups = bucketPublicCrawlRelationships(
+      FOCUS,
+      TREE,
+      [
+        {
+          id: 'r1',
+          treeId: TREE,
+          personId: FATHER,
+          relatedId: FOCUS,
+          type: 'bio_father',
+          status: 'current',
+        },
+        {
+          id: 'r2',
+          treeId: TREE,
+          personId: FATHER,
+          relatedId: SIBLING,
+          type: 'bio_father',
+          status: 'current',
+        },
+      ],
+      [
+        { id: FOCUS, treeId: TREE, firstName: 'Ada', lastName: 'Lovelace' },
+        { id: FATHER, treeId: TREE, firstName: 'Lord', lastName: 'Byron' },
+        { id: SIBLING, treeId: TREE, firstName: 'Byron', lastName: 'King' },
+      ],
+      'https://linegra.app'
+    );
+    expect(groups.siblings).toHaveLength(1);
+    expect(groups.siblings[0]?.relationshipLabel).toBe('Sibling');
+    expect(groups.siblings[0]?.rel).toBe('sibling');
   });
 });

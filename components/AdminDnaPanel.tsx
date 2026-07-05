@@ -813,6 +813,10 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
               const suggestions = placementByUnlinkedId.get(match.id) || [];
               const topSuggestion = suggestions[0];
               const linkSuggestion = suggestions.find((item) => item.kind === 'link_existing');
+              const linkTargetPersonId =
+                linkSuggestion?.anchorPersonId || match.suggestedNameMatchPersonId || null;
+              const linkTargetPersonName =
+                linkSuggestion?.anchorPersonName || match.suggestedNameMatchPersonName || null;
               const isPlacing = placingMatchId === match.id;
               return (
                 <div
@@ -828,15 +832,15 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                       {match.fileName && <p className="text-xs text-slate-400 truncate max-w-xl">{match.fileName}</p>}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {linkSuggestion?.anchorPersonId && (
+                      {linkTargetPersonId && linkTargetPersonName && (
                         <button
                           type="button"
                           disabled={isPlacing}
-                          onClick={() => handleLinkUnlinkedToPerson(match, linkSuggestion.anchorPersonId!)}
+                          onClick={() => handleLinkUnlinkedToPerson(match, linkTargetPersonId)}
                           className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
                         >
                           <Link2 className="w-3.5 h-3.5" />
-                          Link to {linkSuggestion.anchorPersonName}
+                          Link to {linkTargetPersonName}
                         </button>
                       )}
                       <button

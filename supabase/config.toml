@@ -364,12 +364,11 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
-# Roadmap N — OpenRouter proxy. verify_jwt = false because the caller is the app shell (local admin
-# has no Supabase Auth session yet — see roadmap A). The gateway still requires the project publishable
-# `apikey` header, which bounds invocation to this project. A per-tree/day cap (Phase 3) or real auth
-# (roadmap A) closes the residual abuse surface.
+# Roadmap N — OpenRouter proxy. verify_jwt = true: callers must send a signed-in user's access token
+# in Authorization (plus the project publishable `apikey`). testKey pings require superadmin inside the
+# function. Per-tree/day caps (Phase 3) apply to normal relay requests.
 [functions.ai-proxy]
-verify_jwt = false
+verify_jwt = true
 
 [analytics]
 enabled = true

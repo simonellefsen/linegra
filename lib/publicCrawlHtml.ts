@@ -8,6 +8,7 @@ import { buildPersonUrl, buildTreeUrl, getPublicSiteOrigin } from './publicRoute
 export interface PublicPersonHtmlInput {
   treeId: string;
   treeName: string;
+  treeSlug?: string | null;
   person: {
     id: string;
     firstName?: string | null;
@@ -26,9 +27,11 @@ export interface PublicPersonHtmlInput {
 export interface PublicTreeHtmlInput {
   treeId: string;
   treeName: string;
+  treeSlug?: string | null;
   description?: string | null;
   persons: { id: string; name: string; birthDate?: string | null; deathDate?: string | null }[];
   origin?: string;
+  page?: number;
 }
 
 const escapeHtml = (value: string): string =>
@@ -55,8 +58,18 @@ const renderLinkList = (
 export const renderPublicPersonHtml = (input: PublicPersonHtmlInput): string => {
   const origin = getPublicSiteOrigin(input.origin);
   const name = formatPersonDisplayName(input.person);
-  const canonical = buildPersonUrl(input.treeId, input.person.id, origin);
-  const treeUrl = buildTreeUrl(input.treeId, origin);
+  const treeRef = { id: input.treeId, slug: input.treeSlug };
+  const canonical = buildPersonUrl(
+    treeRef,
+    {
+      id: input.person.id,
+      firstName: input.person.firstName,
+      lastName: input.person.lastName,
+      birthDate: input.person.birthDate,
+    },
+    origin
+  );
+  const treeUrl = buildTreeUrl(treeRef, origin);
   const description =
     input.person.bio?.trim().slice(0, 160) ||
     [input.person.birthDate, input.person.deathDate].filter(Boolean).join(' – ') ||
@@ -122,13 +135,31 @@ export const renderPublicPersonHtml = (input: PublicPersonHtmlInput): string => 
 
 export const renderPublicTreeHtml = (input: PublicTreeHtmlInput): string => {
   const origin = getPublicSiteOrigin(input.origin);
-  const canonical = buildTreeUrl(input.treeId, origin);
+  const treeRef = { id: input.treeId, slug: input.treeSlug };
+  const page = Math.max(1, input.page ?? 1);
+  const pageSize = 500;
+  const canonical = buildTreeUrl(treeRef, origin);
+  const pageUrl = (targetPage: number) => {
+    const url = new URL(canonical);
+    if (targetPage > 1) url.searchParams.set('page', String(targetPage));
+    return url.toString();
+  };
+  const hasNextPage = input.persons.length >= pageSize;
   const description =
     input.description?.trim() ||
     `Public family tree index for ${input.treeName} on Linegra.`;
   const rows = input.persons
     .map((person) => {
-      const href = buildPersonUrl(input.treeId, person.id, origin);
+      const href = buildPersonUrl(
+        treeRef,
+        {
+          id: person.id,
+          firstName: person.name.split(' ')[0],
+          lastName: person.name.split(' ').slice(1).join(' '),
+          birthDate: person.birthDate,
+        },
+        origin
+      );
       const dates = [person.birthDate, person.deathDate].filter(Boolean).join(' – ');
       return `<li><a href="${escapeHtml(href)}" title="${escapeHtml(person.name)}">${escapeHtml(person.name)}</a>${dates ? ` <span class="rel">(${escapeHtml(dates)})</span>` : ''}</li>`;
     })
@@ -142,7 +173,10 @@ export const renderPublicTreeHtml = (input: PublicTreeHtmlInput): string => {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(input.treeName)} · Linegra</title>
   <meta name="description" content="${escapeHtml(description)}">
-  <link rel="canonical" href="${escapeHtml(canonical)}">
+  <link rel="canonical" href="${escapeHtml(page > 1 ? pageUrl(page) : canonical)}">
+  ${page > 1 ? `<link rel="prev" href="${escapeHtml(pageUrl(page - 1))}">` : ''}
+  ${hasNextPage ? `<link rel="next" href="${escapeHtml(pageUrl(page + 1))}">` : ''}
+  <link rel="alternate" type="text/markdown" href="${escapeHtml(`${pageUrl(page)}?format=md`)}">
   <meta property="og:title" content="${escapeHtml(input.treeName)}">
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:type" content="website">
@@ -160,10 +194,93 @@ export const renderPublicTreeHtml = (input: PublicTreeHtmlInput): string => {
     <h1>${escapeHtml(input.treeName)}</h1>
     <p>${escapeHtml(description)}</p>
     <section>
-      <h2>People in this tree</h2>
+      <h2>People in this tree${page > 1 ? ` (page ${page})` : ''}</h2>
       <ul>${rows}</ul>
     </section>
-    <p><a href="${escapeHtml(canonical)}">Open interactive archive</a></p>
+    <p>
+      <a href="${escapeHtml(canonical)}">Open interactive archive</a>
+      · <a href="${escapeHtml(`${pageUrl(page)}?format=md`)}">Markdown</a>
+      · <a href="${escapeHtml(`${pageUrl(page)}?format=json`)}">JSON</a>
+    </p>
+    ${hasNextPage ? `<p><a rel="next" href="${escapeHtml(pageUrl(page + 1))}">Next page</a></p>` : ''}
+    ${page > 1 ? `<p><a rel="prev" href="${escapeHtml(pageUrl(page - 1))}">Previous page</a></p>` : ''}
+  </main>
+</body>
+</html>`;
+};
+
+export const renderPublicTreeMarkdown = (input: PublicTreeHtmlInput): string => {
+  const origin = getPublicSiteOrigin(input.origin);
+  const treeRef = { id: input.treeId, slug: input.treeSlug };
+  const page = Math.max(1, input.page ?? 1);
+  const canonical = buildTreeUrl(treeRef, origin);
+  const lines = [
+    `# ${input.treeName}`,
+    '',
+    input.description?.trim() || `Public family tree index for ${input.treeName} on Linegra.`,
+    '',
+    `Canonical: ${canonical}${page > 1 ? `?page=${page}` : ''}`,
+    '',
+    '## People',
+    '',
+  ];
+  input.persons.forEach((person) => {
+    const href = buildPersonUrl(
+      treeRef,
+      {
+        id: person.id,
+        firstName: person.name.split(' ')[0],
+        lastName: person.name.split(' ').slice(1).join(' '),
+        birthDate: person.birthDate,
+      },
+      origin
+    );
+    const dates = [person.birthDate, person.deathDate].filter(Boolean).join(' – ');
+    lines.push(`- [${person.name}](${href})${dates ? ` (${dates})` : ''}`);
+  });
+  if (input.persons.length >= 500) {
+    lines.push('', `[Next page](${canonical}?page=${page + 1}&format=md)`);
+  }
+  if (page > 1) {
+    lines.push('', `[Previous page](${canonical}?page=${page - 1}&format=md)`);
+  }
+  return lines.join('\n');
+};
+
+export const renderPublicTreesDirectoryHtml = (input: {
+  trees: Array<{
+    treeId: string;
+    name: string;
+    slug: string | null;
+    description: string | null;
+    personCount: number;
+  }>;
+  origin?: string;
+}): string => {
+  const origin = getPublicSiteOrigin(input.origin);
+  const canonical = `${origin}/trees`;
+  const rows = input.trees
+    .map((tree) => {
+      const href = buildTreeUrl({ id: tree.treeId, slug: tree.slug }, origin);
+      const blurb = tree.description?.trim() || `${tree.personCount} publicly indexed persons`;
+      return `<li><a href="${escapeHtml(href)}">${escapeHtml(tree.name)}</a> <span class="rel">(${escapeHtml(blurb)})</span></li>`;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Public family trees · Linegra</title>
+  <meta name="description" content="Directory of public genealogy archives on Linegra.">
+  <link rel="canonical" href="${escapeHtml(canonical)}">
+</head>
+<body>
+  <main>
+    <h1>Public family trees</h1>
+    <ul>${rows}</ul>
+    <p><a href="${escapeHtml(origin)}">Linegra home</a> · <a href="${escapeHtml(`${origin}/sitemap.xml`)}">Sitemap</a></p>
   </main>
 </body>
 </html>`;

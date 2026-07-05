@@ -439,16 +439,23 @@ const postToAiProxy = async (
   timeoutMs: number
 ): Promise<ProxyResponse> => {
   const { proxyUrl, publishableKey } = getAiProxyConfig();
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) {
+    throw new Error(
+      options?.testKey
+        ? 'Sign in as a superadmin to test the OpenRouter connection.'
+        : 'Sign in to use AI features.'
+    );
+  }
   const response = await fetchWithTimeout(
     proxyUrl,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // The publishable/anon key authorizes the Edge Function invocation (required by the Supabase
-        // gateway). It is NOT the OpenRouter key — that is injected server-side.
         apikey: publishableKey,
-        Authorization: `Bearer ${publishableKey}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify(buildAiProxyRequestBody(model, baseUrl, messages, extraBody, options, timeoutMs)),
     },

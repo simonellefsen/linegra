@@ -17,6 +17,8 @@ import {
   LANDING_BIRTHDAY_SCAN_LIMIT,
 } from '../lib/treePerformance';
 import { inferDefaultProbandId } from '../lib/gedcomFidelity';
+import { inferParentPairsForUnion, inferParentRelationshipType } from '../lib/parentChildLinks';
+import { normalizeNameMatchScore, scoreNameMatch } from '../lib/dnaNameMatch';
 import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DNASharedSegmentRowPreview, DnaLineageResolution, UnlinkedDnaMatchRecord, AutosomalIndexStats, TreeCollaborator, TreeAccessRole } from '../types';
 
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
@@ -165,36 +167,6 @@ const normalizeName = (value?: string | null) =>
     .trim()
     .toLowerCase();
 
-const tokenizeName = (value?: string | null) =>
-  normalizeName(value)
-    .split(' ')
-    .map((token) => token.trim())
-    .filter(Boolean);
-
-const scoreNameMatch = (inputName: string, candidateName: string) => {
-  const normalizedInput = normalizeName(inputName);
-  const normalizedCandidate = normalizeName(candidateName);
-  if (!normalizedInput || !normalizedCandidate) return 0;
-  if (normalizedInput === normalizedCandidate) return 1000;
-  if (normalizedCandidate.includes(normalizedInput) || normalizedInput.includes(normalizedCandidate)) {
-    return 700;
-  }
-  const inputTokens = tokenizeName(normalizedInput);
-  const candidateTokens = tokenizeName(normalizedCandidate);
-  if (!inputTokens.length || !candidateTokens.length) return 0;
-  const candidateSet = new Set(candidateTokens);
-  let overlap = 0;
-  inputTokens.forEach((token) => {
-    if (candidateSet.has(token)) overlap += 1;
-  });
-  if (!overlap) return 0;
-  let score = overlap * 40;
-  if (candidateTokens[0] === inputTokens[0]) score += 15;
-  if (candidateTokens[candidateTokens.length - 1] === inputTokens[inputTokens.length - 1]) score += 30;
-  if (candidateTokens.length === inputTokens.length) score += 10;
-  return score;
-};
-
 const resolvePersonIdByName = (
   rawName: string | null | undefined,
   candidates: NameLookupRow[],
@@ -207,17 +179,21 @@ const resolvePersonIdByName = (
     .filter((candidate) => !(excludedPersonId && candidate.id === excludedPersonId))
     .map((candidate) => {
       const displayName = `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim();
-      const maidenName = `${candidate.first_name || ''} ${candidate.maiden_name || ''}`.trim();
+      const maidenName = candidate.maiden_name?.trim()
+        ? `${candidate.first_name || ''} ${candidate.maiden_name}`.trim()
+        : '';
+      const scores = [scoreNameMatch(input, displayName)];
+      if (maidenName) scores.push(scoreNameMatch(input, maidenName));
       return {
         id: candidate.id,
-        score: Math.max(scoreNameMatch(input, displayName), scoreNameMatch(input, maidenName)),
+        score: Math.max(...scores),
       };
     })
     .sort((a, b) => b.score - a.score);
 
   const best = ranked[0];
   const secondBest = ranked[1];
-  if (!best || best.score < 60) return null;
+  if (!best || normalizeNameMatchScore(best.score) < 60) return null;
   if (secondBest && best.score - secondBest.score < 5) return null;
   return best.id;
 };
@@ -234,17 +210,21 @@ const findBestNameMatch = (
     .filter((candidate) => !(excludedPersonId && candidate.id === excludedPersonId))
     .map((candidate) => {
       const displayName = `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim();
-      const maidenName = `${candidate.first_name || ''} ${candidate.maiden_name || ''}`.trim();
+      const maidenName = candidate.maiden_name?.trim()
+        ? `${candidate.first_name || ''} ${candidate.maiden_name}`.trim()
+        : '';
+      const scores = [scoreNameMatch(input, displayName)];
+      if (maidenName) scores.push(scoreNameMatch(input, maidenName));
       return {
         id: candidate.id,
         displayName,
-        score: Math.max(scoreNameMatch(input, displayName), scoreNameMatch(input, maidenName)),
+        score: Math.max(...scores),
       };
     })
     .sort((a, b) => b.score - a.score);
 
   const best = ranked[0];
-  if (!best || best.score < 40) return null;
+  if (!best || normalizeNameMatchScore(best.score) < 40) return null;
   return best;
 };
 
@@ -840,6 +820,7 @@ const mapDbTree = (row: any): FamilyTreeType => {
   return {
     id: row.id,
     name: row.name,
+    slug: row.slug ?? null,
     description: row.description,
     ownerId: row.owner_id ?? null,
     isPublic: !!row.is_public,
@@ -1010,6 +991,7 @@ export const deleteFamilyTreeRecord = async (treeId: string, actor?: ImportActor
 export const updateTreeSettings = async (
   treeId: string,
   payload: {
+    name?: string;
     isPublic?: boolean;
     probandId?: string | null;
     probandLabel?: string | null;
@@ -1031,6 +1013,7 @@ export const updateTreeSettings = async (
     payload_description: payload.description !== undefined ? payload.description : null,
     payload_owner_name: payload.ownerName !== undefined ? payload.ownerName : null,
     payload_owner_email: payload.ownerEmail !== undefined ? payload.ownerEmail : null,
+    payload_name: payload.name !== undefined ? payload.name : null,
     payload_actor_id: normalizedActor.id,
     payload_actor_name: normalizedActor.name,
   });
@@ -1226,7 +1209,7 @@ const fetchPersonConnectionsLegacy = async (
 
   if (error) throw new Error(error.message);
 
-  const parentTypes = ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'step_parent', 'guardian'];
+  const parentTypes = ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'step_parent', 'guardian', 'child'];
   const spouseIds = new Set<string>();
   const sharedChildIds = new Set<string>();
   const parentIds = new Set<string>();
@@ -1244,16 +1227,31 @@ const fetchPersonConnectionsLegacy = async (
     }
   });
 
-  if (spouseIds.size && sharedChildIds.size) {
+  if (sharedChildIds.size) {
     const { data: coparentRows, error: coparentError } = await supabase
       .from('relationships')
       .select('*')
       .eq('tree_id', treeId)
-      .in('person_id', Array.from(spouseIds))
       .in('related_id', Array.from(sharedChildIds))
-      .in('type', parentTypes);
+      .in('type', parentTypes)
+      .neq('person_id', personId);
     if (coparentError) throw new Error(coparentError.message);
     coparentRows?.forEach((row) => {
+      if (!relationshipRows?.some((existing) => existing.id === row.id)) {
+        relationshipRows?.push(row);
+      }
+    });
+  }
+
+  if (spouseIds.size) {
+    const { data: spouseChildRows, error: spouseChildError } = await supabase
+      .from('relationships')
+      .select('*')
+      .eq('tree_id', treeId)
+      .in('person_id', Array.from(spouseIds))
+      .in('type', parentTypes);
+    if (spouseChildError) throw new Error(spouseChildError.message);
+    spouseChildRows?.forEach((row) => {
       if (!relationshipRows?.some((existing) => existing.id === row.id)) {
         relationshipRows?.push(row);
       }
@@ -2104,6 +2102,22 @@ export const listUnlinkedSharedMatchesForAutosomalPerson = async (
   const unlinked: UnlinkedDnaMatchRecord[] = [];
   const seenTestIds = new Set<string>();
 
+  const { data: linkedMatchRows, error: linkedMatchError } = await supabase
+    .from('dna_matches')
+    .select('person_id, matched_person_id, metadata')
+    .or(`person_id.eq.${focusPersonId},matched_person_id.eq.${focusPersonId}`);
+  if (linkedMatchError) throw new Error(linkedMatchError.message);
+
+  const linkedCounterpartIds = new Set<string>();
+  const linkedDnaTestIds = new Set<string>();
+  (linkedMatchRows || []).forEach((row: { person_id?: string; matched_person_id?: string; metadata?: unknown }) => {
+    const counterpartId =
+      row.person_id === focusPersonId ? row.matched_person_id : row.person_id;
+    if (counterpartId) linkedCounterpartIds.add(counterpartId);
+    const metadata = asRecord(row.metadata);
+    if (typeof metadata.test_id === 'string') linkedDnaTestIds.add(metadata.test_id);
+  });
+
   sharedTests.forEach((testRow) => {
     const testId = readSharedTestRowId(testRow);
     const ownerPersonId = readSharedTestOwnerId(testRow);
@@ -2173,13 +2187,15 @@ export const listUnlinkedSharedMatchesForAutosomalPerson = async (
       );
     }
 
-    const counterpartInTree =
-      !!counterpartPersonId &&
-      nameRows.some((row) => row.id === counterpartPersonId && row.id !== focusPersonId);
-    if (counterpartInTree) return;
+    if (linkedDnaTestIds.has(testId)) return;
+    if (counterpartPersonId && linkedCounterpartIds.has(counterpartPersonId)) return;
 
     const matchName = resolveUnknownMatchName(focusPersonId, summary, nameRows);
     const nameSuggestion = findBestNameMatch(matchName, nameRows, focusPersonId);
+    if (nameSuggestion?.id && linkedCounterpartIds.has(nameSuggestion.id)) return;
+    const nameResolvedId = resolvePersonIdByName(matchName, nameRows, focusPersonId);
+    if (nameResolvedId && linkedCounterpartIds.has(nameResolvedId)) return;
+
     seenTestIds.add(testId);
     unlinked.push({
       id: `unlinked:${testId}`,
@@ -3239,23 +3255,16 @@ export const createPlaceholderParent = async ({
     throw new Error(parentError.message);
   }
 
-  const newRelationship = {
-    id: randomId(),
-    tree_id: treeId,
-    person_id: parentRow.id,
-    related_id: childId,
-    type: parentType === 'father' ? 'bio_father' : 'bio_mother',
-    status: 'current',
-    confidence: 'Unknown',
+  await insertParentChildLink({
+    treeId,
+    parentId: parentRow.id,
+    childId,
+    parentGender: defaultGender,
     metadata: {
       createdVia: 'manual_parent_button',
+      createdBy: normalizedActor.name,
     },
-  };
-
-  const { error: relError } = await supabase.from('relationships').insert(newRelationship as any);
-  if (relError) {
-    throw new Error(relError.message);
-  }
+  });
 
   return mapDbPerson(parentRow, {}, {}, {}, {});
 };
@@ -3346,10 +3355,12 @@ export const createPlaceholderSpouse = async ({
 export const createPlaceholderChild = async ({
   treeId,
   parentId,
+  coparentId,
   actor,
 }: {
   treeId: string;
   parentId: string;
+  coparentId?: string | null;
   actor?: ImportActor | null;
 }): Promise<CreatedFamilyLink> => {
   if (!isSupabaseConfigured()) {
@@ -3359,22 +3370,46 @@ export const createPlaceholderChild = async ({
   const childRow = await insertPlaceholderPerson(treeId, normalizedActor, {
     createdVia: 'manual_child_button',
   });
-  const relationshipId = randomId();
-  const { error: relError } = await supabase.from('relationships').insert({
-    id: relationshipId,
-    tree_id: treeId,
-    person_id: parentId,
-    related_id: childRow.id,
-    type: 'child',
-    status: 'current',
-    confidence: 'Unknown',
+  const parentGender = await fetchPersonGender(parentId);
+  const relationshipId = await insertParentChildLink({
+    treeId,
+    parentId,
+    childId: childRow.id,
+    parentGender,
     metadata: { createdVia: 'manual_child_button' },
-  } as any);
-  if (relError) throw new Error(relError.message);
+  });
+  await linkCoparentChildIfNeeded({
+    treeId,
+    parentId,
+    coparentId: coparentId && coparentId !== parentId ? coparentId : null,
+    childId: childRow.id,
+    actorName: normalizedActor.name,
+    createdVia: 'manual_child_button_coparent',
+  });
   return {
     person: mapDbPerson(childRow, {}, {}, {}, {}),
     relationshipId,
   };
+};
+
+/** Add a person to the tree with no family links yet (find via search; link later from Family tab). */
+export const createStandalonePerson = async ({
+  treeId,
+  actor,
+  gender = null,
+}: {
+  treeId: string;
+  actor?: ImportActor | null;
+  gender?: 'M' | 'F' | null;
+}): Promise<Person> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const normalizedActor = normalizeActor(actor);
+  const personRow = await insertPlaceholderPerson(treeId, normalizedActor, {
+    createdVia: 'manual_standalone',
+  }, gender);
+  return mapDbPerson(personRow, {}, {}, {}, {});
 };
 
 const findExistingUnionRelationshipId = async (treeId: string, personA: string, personB: string) => {
@@ -3407,6 +3442,180 @@ const assertNoExistingChildLink = async (treeId: string, parentId: string, child
   if ((data || []).length > 0) {
     throw new Error('This child is already linked to this parent.');
   }
+};
+
+const fetchPersonGender = async (personId: string): Promise<Person['gender'] | null> => {
+  const { data, error } = await supabase.from('persons').select('gender').eq('id', personId).maybeSingle();
+  if (error) throw new Error(error.message);
+  const gender = data?.gender;
+  return gender === 'M' || gender === 'F' || gender === 'O' ? gender : null;
+};
+
+const PARENT_LINK_TYPES_FOR_CHILD = [
+  'bio_father',
+  'bio_mother',
+  'adoptive_father',
+  'adoptive_mother',
+  'step_parent',
+  'guardian',
+  'child',
+] as const;
+
+const listParentLinksForChild = async (
+  treeId: string,
+  childId: string
+): Promise<Array<{ parentId: string; type: RelationshipType }>> => {
+  const { data, error } = await supabase
+    .from('relationships')
+    .select('person_id, type')
+    .eq('tree_id', treeId)
+    .eq('related_id', childId)
+    .in('type', [...PARENT_LINK_TYPES_FOR_CHILD]);
+  if (error) throw new Error(error.message);
+  return (data ?? [])
+    .map((row) => ({
+      parentId: String(row.person_id),
+      type: row.type as RelationshipType,
+    }))
+    .filter((entry) => entry.parentId);
+};
+
+const fetchPersonGenders = async (personIds: string[]): Promise<Record<string, Person['gender'] | null>> => {
+  if (!personIds.length) return {};
+  const { data, error } = await supabase.from('persons').select('id, gender').in('id', personIds);
+  if (error) throw new Error(error.message);
+  const genders: Record<string, Person['gender'] | null> = {};
+  (data ?? []).forEach((row) => {
+    const gender = row.gender;
+    genders[String(row.id)] = gender === 'M' || gender === 'F' || gender === 'O' ? gender : null;
+  });
+  return genders;
+};
+
+const ensureUnionsBetweenChildParents = async ({
+  treeId,
+  childId,
+  actorName,
+}: {
+  treeId: string;
+  childId: string;
+  actorName: string;
+}) => {
+  const links = await listParentLinksForChild(treeId, childId);
+  if (links.length < 2) return;
+  const parentIds = [...new Set(links.map((link) => link.parentId))];
+  const genders = await fetchPersonGenders(parentIds);
+  const pairs = inferParentPairsForUnion(
+    links.map((link) => ({
+      parentId: link.parentId,
+      type: link.type,
+      gender: genders[link.parentId] ?? null,
+    }))
+  );
+  for (const [fatherId, motherId] of pairs) {
+    await ensureUnionBetweenParents({
+      treeId,
+      parentId: fatherId,
+      coparentId: motherId,
+      actorName,
+    });
+  }
+};
+
+const insertParentChildLink = async ({
+  treeId,
+  parentId,
+  childId,
+  parentGender,
+  metadata,
+}: {
+  treeId: string;
+  parentId: string;
+  childId: string;
+  parentGender: Person['gender'] | null;
+  metadata: Record<string, unknown>;
+}): Promise<string> => {
+  const relationshipId = randomId();
+  const { error: relError } = await supabase.from('relationships').insert({
+    id: relationshipId,
+    tree_id: treeId,
+    person_id: parentId,
+    related_id: childId,
+    type: inferParentRelationshipType(parentGender),
+    status: 'current',
+    confidence: 'Unknown',
+    metadata,
+  } as any);
+  if (relError) throw new Error(relError.message);
+  const actorName = typeof metadata.createdBy === 'string' ? metadata.createdBy : 'System';
+  await ensureUnionsBetweenChildParents({ treeId, childId, actorName });
+  return relationshipId;
+};
+
+const linkCoparentChildIfNeeded = async ({
+  treeId,
+  parentId,
+  coparentId,
+  childId,
+  actorName,
+  createdVia,
+}: {
+  treeId: string;
+  parentId: string;
+  coparentId?: string | null;
+  childId: string;
+  actorName: string;
+  createdVia: string;
+}) => {
+  if (!coparentId) return;
+  try {
+    await assertNoExistingChildLink(treeId, coparentId, childId);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('already linked')) return;
+    throw err;
+  }
+  const coparentGender = await fetchPersonGender(coparentId);
+  await insertParentChildLink({
+    treeId,
+    parentId: coparentId,
+    childId,
+    parentGender: coparentGender,
+    metadata: { createdVia, createdBy: actorName },
+  });
+  await ensureUnionBetweenParents({
+    treeId,
+    parentId,
+    coparentId,
+    actorName,
+  });
+};
+
+const ensureUnionBetweenParents = async ({
+  treeId,
+  parentId,
+  coparentId,
+  actorName,
+}: {
+  treeId: string;
+  parentId: string;
+  coparentId: string;
+  actorName: string;
+}) => {
+  if (parentId === coparentId) return;
+  const existingRelationshipId = await findExistingUnionRelationshipId(treeId, parentId, coparentId);
+  if (existingRelationshipId) return;
+  const relationshipId = randomId();
+  const { error } = await supabase.from('relationships').insert({
+    id: relationshipId,
+    tree_id: treeId,
+    person_id: parentId,
+    related_id: coparentId,
+    type: 'marriage',
+    status: 'current',
+    confidence: 'Unknown',
+    metadata: { createdVia: 'inferred_union_from_child', createdBy: actorName },
+  } as any);
+  if (error) throw new Error(error.message);
 };
 
 export const linkExistingSpouse = async ({
@@ -3452,11 +3661,13 @@ export const linkExistingChild = async ({
   treeId,
   parentId,
   childId,
+  coparentId,
   actor,
 }: {
   treeId: string;
   parentId: string;
   childId: string;
+  coparentId?: string | null;
   actor?: ImportActor | null;
 }): Promise<{ relationshipId: string }> => {
   if (!isSupabaseConfigured()) {
@@ -3467,19 +3678,99 @@ export const linkExistingChild = async ({
   }
   await assertNoExistingChildLink(treeId, parentId, childId);
   const normalizedActor = normalizeActor(actor);
-  const relationshipId = randomId();
-  const { error: relError } = await supabase.from('relationships').insert({
-    id: relationshipId,
-    tree_id: treeId,
-    person_id: parentId,
-    related_id: childId,
-    type: 'child',
-    status: 'current',
-    confidence: 'Unknown',
+  const parentGender = await fetchPersonGender(parentId);
+  const relationshipId = await insertParentChildLink({
+    treeId,
+    parentId,
+    childId,
+    parentGender,
     metadata: { createdVia: 'manual_child_link', createdBy: normalizedActor.name },
-  } as any);
-  if (relError) throw new Error(relError.message);
+  });
+  await linkCoparentChildIfNeeded({
+    treeId,
+    parentId,
+    coparentId: coparentId && coparentId !== parentId ? coparentId : null,
+    childId,
+    actorName: normalizedActor.name,
+    createdVia: 'manual_child_link_coparent',
+  });
   return { relationshipId };
+};
+
+const listChildIdsForParent = async (treeId: string, parentId: string): Promise<string[]> => {
+  const parentTypes = ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'step_parent', 'guardian', 'child'];
+  const { data, error } = await supabase
+    .from('relationships')
+    .select('related_id')
+    .eq('tree_id', treeId)
+    .eq('person_id', parentId)
+    .in('type', parentTypes);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => String(row.related_id)).filter(Boolean);
+};
+
+/** Ensure father–mother pairs who share a child also have a spousal union (idempotent). */
+export const syncParentUnionsForPerson = async ({
+  treeId,
+  personId,
+  actor,
+}: {
+  treeId: string;
+  personId: string;
+  actor?: ImportActor | null;
+}): Promise<void> => {
+  if (!isSupabaseConfigured()) return;
+  const normalizedActor = normalizeActor(actor);
+  const childIds = await listChildIdsForParent(treeId, personId);
+  for (const childId of childIds) {
+    await ensureUnionsBetweenChildParents({
+      treeId,
+      childId,
+      actorName: normalizedActor.name,
+    });
+  }
+};
+
+/** Create marriage/partner link and ensure both parents are linked to all shared children. */
+export const linkInferredFamilyUnion = async ({
+  treeId,
+  personId,
+  partnerId,
+  unionType = 'marriage',
+  actor,
+}: {
+  treeId: string;
+  personId: string;
+  partnerId: string;
+  unionType?: 'marriage' | 'partner';
+  actor?: ImportActor | null;
+}): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  if (personId === partnerId) {
+    throw new Error('Cannot link a person to themselves.');
+  }
+
+  await linkExistingSpouse({ treeId, personId, spouseId: partnerId, unionType, actor });
+
+  const childIds = [
+    ...new Set([
+      ...(await listChildIdsForParent(treeId, personId)),
+      ...(await listChildIdsForParent(treeId, partnerId)),
+    ]),
+  ];
+
+  for (const childId of childIds) {
+    for (const parentId of [personId, partnerId]) {
+      try {
+        await linkExistingChild({ treeId, parentId, childId, actor });
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('already linked')) continue;
+        throw err;
+      }
+    }
+  }
 };
 
 interface ImportActor {
@@ -3808,4 +4099,24 @@ export const claimTreeOwnership = async (treeId: string): Promise<FamilyTreeType
   const { data, error } = await supabase.rpc('admin_claim_tree_ownership', { target_tree_id: treeId });
   if (error) throw new Error(error.message);
   return mapDbTree(data);
+};
+
+export const resolvePublicTreeIdClient = async (segment: string): Promise<string | null> => {
+  if (!isSupabaseConfigured()) return null;
+  const { data, error } = await supabase.rpc('resolve_public_tree_id', { segment });
+  if (error) throw new Error(error.message);
+  return typeof data === 'string' ? data : null;
+};
+
+export const resolvePublicPersonIdClient = async (
+  treeId: string,
+  idPrefix: string
+): Promise<string | null> => {
+  if (!isSupabaseConfigured()) return null;
+  const { data, error } = await supabase.rpc('resolve_public_person_id', {
+    target_tree_id: treeId,
+    id_prefix: idPrefix,
+  });
+  if (error) throw new Error(error.message);
+  return typeof data === 'string' ? data : null;
 };

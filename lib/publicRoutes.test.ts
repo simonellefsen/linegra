@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPersonUrl,
   buildTreeUrl,
+  buildTreesDirectoryUrl,
   canonicalizeLegacyPublicUrl,
   parsePublicRouteFromLocation,
 } from './publicRoutes';
@@ -21,6 +22,27 @@ describe('publicRoutes', () => {
       kind: 'tree',
       treeId: TREE,
     });
+  });
+
+  it('parses v2 slug routes and tree directory', () => {
+    expect(parsePublicRouteFromLocation({ pathname: '/trees', search: '' })).toEqual({
+      kind: 'trees-directory',
+    });
+    expect(
+      parsePublicRouteFromLocation({
+        pathname: '/tree/gether-gamby/person/anna-hansdatter-1832-4a1b9c2e',
+        search: '',
+      })
+    ).toEqual({
+      kind: 'person',
+      treeSlug: 'gether-gamby',
+      personSlug: 'anna-hansdatter-1832-4a1b9c2e',
+      personIdPrefix: '4a1b9c2e',
+    });
+    expect(buildTreeUrl({ id: TREE, slug: 'gether-gamby' }, 'https://linegra.app')).toBe(
+      'https://linegra.app/tree/gether-gamby'
+    );
+    expect(buildTreesDirectoryUrl('https://linegra.app')).toBe('https://linegra.app/trees');
   });
 
   it('parses legacy query URLs and canonicalizes them', () => {

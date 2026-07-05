@@ -252,6 +252,34 @@ that gates raw data.
   Policy: [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md).
 - **Sequencing:** K7 → K6 → K1 → K5 — **complete.**
 
+**K8. DNA panel correctness + UX polish (screenshot review 2026-07-05):**
+- **K8a — BUG: name-match scores are ranking values rendered as percentages.** `scoreNameMatch`
+  ([../services/archive.ts](../services/archive.ts)) returns 1000/700/40–135, but
+  [../lib/dnaMatchPlacement.ts](../lib/dnaMatchPlacement.ts) prints `Name match (${score}%)` →
+  "Name match (700%)" in the K3 panel; its `>= 60` gate also assumed 0–100, so nearly everything
+  passes. Normalize to 0–100 (or map to High/Medium/Low labels).
+- **K8b — BUG: degenerate maiden-name variant + raw substring rule → false "link to" suggestions.**
+  Candidates with no maiden name are also scored as bare `firstName`, and the 700-substring rule
+  uses `String.includes` — so "michael" ⊂ "Michaelsen", "hans" ⊂ "Johansson", "sven" ⊂ "Svensson"
+  each produced confident wrong "link test to existing person" suggestions. Skip the maiden variant
+  when `maiden_name` is empty; require token-boundary (or full multi-token) containment.
+- **K8c — INVESTIGATE: already-linked counterparts leak into Unknown Matches.** Jon Arndal Reiersen
+  and Lis Stær appear both as resolved shared matches *and* as K3 unknowns for the same tester —
+  and the Jon unknown shows no "Link to" button despite an exact-name person in tree. Trace
+  `counterpartInTree` / `resolveCounterpartFromSummaryNames` / `findBestNameMatch` on live data;
+  dedupe by test/counterpart before listing.
+- **K8d — K3 card copy/UX.** "Top suggestion" text is repeated verbatim as the first list row;
+  the "create placeholder" fallback rationale duplicates the button. Show the ranked list once,
+  top visually distinct, fallback as button-only. Add a **Dismiss / "not in my tree"** action so
+  the unknown queue can be cleared, and consider batch link/create.
+- **K8e — Lineage card polish.** The same resolved path renders twice (highlighted pill + plain
+  pill) — dedupe; format paths as generation breadcrumbs with the **MRCA bolded** (arrow-chain
+  prose is hard to scan); add "View in tree" to focus the pedigree on the path.
+- **K8f — Cluster / painter / badge affordances.** Name Leeds clusters by their MRCA branch when
+  K2 knows it (not "Cluster 1"); list the *names* of unclustered matches; segment-painter hover
+  tooltip with match + cM range; tree DNA badges need a legend/tooltip ("N matches · strongest
+  cM") and click-through to the DNA panel with that person selected.
+
 ### L. Interactive tree enhancements
 Extends SPEC §7 (performance); new UI views are new SPEC ground. The pedigree view
 ([../components/InteractiveTree/PedigreeTree.tsx](../components/InteractiveTree/PedigreeTree.tsx)) is

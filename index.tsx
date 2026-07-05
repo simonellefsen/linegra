@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
 import PublicBookViewerPage from './components/book/PublicBookViewerPage';
 import { parseBookRouteFromLocation } from './lib/bookShare';
 
@@ -14,6 +15,8 @@ const publicBookId = parseBookRouteFromLocation(window.location);
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    {publicBookId ? <PublicBookViewerPage bookId={publicBookId} /> : <App />}
+    <ErrorBoundary>
+      {publicBookId ? <PublicBookViewerPage bookId={publicBookId} /> : <App />}
+    </ErrorBoundary>
   </React.StrictMode>
 );

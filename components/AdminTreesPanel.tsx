@@ -11,6 +11,7 @@ interface AdminTreesPanelProps {
   onUpdateSettings: (
     treeId: string,
     payload: {
+      name?: string;
       isPublic: boolean;
       probandId: string | null;
       probandLabel?: string | null;
@@ -54,6 +55,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
   const [editProbandId, setEditProbandId] = useState<string | null>(null);
   const [editProbandLabel, setEditProbandLabel] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editName, setEditName] = useState('');
   const [editOwnerName, setEditOwnerName] = useState('');
   const [editOwnerEmail, setEditOwnerEmail] = useState('');
   const [probandSearchTerm, setProbandSearchTerm] = useState('');
@@ -105,6 +107,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
     const initialLabel = formatProbandDisplay(tree) || '';
     setEditProbandId(tree.defaultProbandId ?? null);
     setEditProbandLabel(initialLabel);
+    setEditName(tree.name);
     setEditDescription(tree.description ?? '');
     const metadata = tree.metadata || {};
     const ownerNameValue =
@@ -127,6 +130,7 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
     setSettingsError(null);
     setProbandResults([]);
     setEditDescription('');
+    setEditName('');
     setEditOwnerName('');
     setEditOwnerEmail('');
   };
@@ -160,8 +164,22 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
 
   const handleSaveSettings = async (treeId: string) => {
     setSettingsError(null);
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      setSettingsError('Tree name is required.');
+      return;
+    }
+    if (
+      trees.some(
+        (tree) => tree.id !== treeId && tree.name.trim().toLowerCase() === trimmedName.toLowerCase()
+      )
+    ) {
+      setSettingsError('A family tree with this name already exists.');
+      return;
+    }
     try {
       await onUpdateSettings(treeId, {
+        name: trimmedName,
         isPublic: editVisibility,
         probandId: editProbandId,
         probandLabel: editProbandId ? editProbandLabel || null : null,
@@ -426,6 +444,17 @@ const AdminTreesPanel: React.FC<AdminTreesPanelProps> = ({
                       >
                         Close
                       </button>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Tree Name
+                      </label>
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="w-full px-4 py-3 bg-white border border-slate-300 rounded-2xl focus:ring-2 focus:ring-slate-900/5 outline-none"
+                        placeholder="Family tree name"
+                      />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Visibility</label>

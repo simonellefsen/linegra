@@ -1,4 +1,5 @@
-import { Person, Relationship, RelationshipType } from '../types';
+import { Person, Relationship } from '../types';
+import { indexParentChildLinks } from './parentChildLinks';
 
 export interface PedigreeScopeResult {
   people: Person[];
@@ -8,17 +9,6 @@ export interface PedigreeScopeResult {
   siblingHints: Record<string, boolean>;
   childHints: Record<string, boolean>;
 }
-
-const PARENTAL_TYPES: RelationshipType[] = [
-  'bio_father',
-  'bio_mother',
-  'adoptive_father',
-  'adoptive_mother',
-  'step_parent',
-  'guardian'
-];
-
-const parentalTypeSet = new Set<RelationshipType>(PARENTAL_TYPES);
 
 export const computePedigreeScope = (
   people: Person[],
@@ -37,14 +27,7 @@ export const computePedigreeScope = (
     return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
   }
 
-  const parentLinksByChild = new Map<string, Relationship[]>();
-  const childLinksByParent = new Map<string, Relationship[]>();
-
-  relationships.forEach((rel) => {
-    if (!parentalTypeSet.has(rel.type)) return;
-    parentLinksByChild.set(rel.relatedId, [...(parentLinksByChild.get(rel.relatedId) || []), rel]);
-    childLinksByParent.set(rel.personId, [...(childLinksByParent.get(rel.personId) || []), rel]);
-  });
+  const { parentLinksByChild, childLinksByParent } = indexParentChildLinks(relationships);
 
   const allowedPersonIds = new Set<string>([focus.id]);
   const allowedRelationshipIds = new Set<string>();

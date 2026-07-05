@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership } from './services/archive';
+import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership, createStandalonePerson, resolvePublicPersonIdClient, resolvePublicTreeIdClient } from './services/archive';
 import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, listMyPendingCollaboratorInvites, signOut, subscribeToAuthChanges } from './services/auth';
 import { buildPersonUrl, buildTreeUrl, canonicalizeLegacyPublicUrl, parsePublicRouteFromLocation } from './lib/publicRoutes';
 import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole, TreeLayoutType } from './types';
@@ -45,6 +45,7 @@ import {
   Mail
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const AdminDnaPanel = lazy(() => import('./components/AdminDnaPanel'));
 const AdminDatabasePanel = lazy(() => import('./components/admin/AdminDatabasePanel'));
@@ -96,6 +97,7 @@ const App: React.FC = () => {
   const [adminTreesLoading, setAdminTreesLoading] = useState(false);
   const [updatingTreeId, setUpdatingTreeId] = useState<string | null>(null);
   const [creatingTree, setCreatingTree] = useState(false);
+  const [addingStandalonePerson, setAddingStandalonePerson] = useState(false);
   const [deletingTreeId, setDeletingTreeId] = useState<string | null>(null);
   const [showNukeModal, setShowNukeModal] = useState(false);
   const [nukeConfirmText, setNukeConfirmText] = useState('');
@@ -821,6 +823,40 @@ useEffect(() => {
     [handlePersonSelect]
   );
 
+  const handleAddStandalonePerson = useCallback(async () => {
+    if (!activeTree || !activeTreeId || !canWriteActiveTree || addingStandalonePerson) return;
+    setAddingStandalonePerson(true);
+    setArchiveError(null);
+    try {
+      const person = await createStandalonePerson({
+        treeId: activeTreeId,
+        actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+      });
+      graphLoadKeyRef.current = null;
+      await loadPedigreeGraph(activeTree, person.id, ancestorDepth, descendantDepth, {
+        force: true,
+        silent: true,
+      });
+      handlePersonSelect(person);
+      setTreeViewReady(true);
+    } catch (err) {
+      console.error('Failed to add standalone person', err);
+      setArchiveError(err instanceof Error ? err.message : 'Could not add person to the tree.');
+    } finally {
+      setAddingStandalonePerson(false);
+    }
+  }, [
+    activeTree,
+    activeTreeId,
+    addingStandalonePerson,
+    ancestorDepth,
+    canWriteActiveTree,
+    currentUser,
+    descendantDepth,
+    handlePersonSelect,
+    loadPedigreeGraph,
+  ]);
+
   const handlePersonPatched = useCallback((updated: Person) => {
     setSelectedPerson((prev) => (prev?.id === updated.id ? updated : prev));
     setAllPeople((prev) =>
@@ -884,15 +920,39 @@ useEffect(() => {
       window.history.replaceState({}, '', canonical);
     }
     const route = parsePublicRouteFromLocation(window.location);
-    if (route.kind === 'person') {
+    if (route.kind === 'person' && route.personId) {
       setPendingPersonId(route.personId);
       return;
+    }
+    if (route.kind === 'person' && route.personIdPrefix) {
+      let cancelled = false;
+      (async () => {
+        try {
+          const treeId =
+            route.treeId ??
+            (route.treeSlug ? await resolvePublicTreeIdClient(route.treeSlug) : null) ??
+            null;
+          if (!treeId || cancelled) return;
+          const personId = await resolvePublicPersonIdClient(treeId, route.personIdPrefix!);
+          if (!personId || cancelled) return;
+          setPendingPersonId(personId);
+        } catch (err) {
+          console.error('Failed to resolve public person route', err);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (route.kind === 'tree' && route.treeSlug && !route.treeId) {
+      const tree = trees.find((entry) => entry.slug === route.treeSlug);
+      if (tree) setActiveTree(tree);
     }
     const personId = new URL(window.location.href).searchParams.get('person');
     if (personId) {
       setPendingPersonId(personId);
     }
-  }, []);
+  }, [trees]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -900,13 +960,27 @@ useEffect(() => {
     if (activeTab === 'records' || activeTab === 'profile') return;
     const selectedPersonId = selectedPerson?.id ?? null;
     if (selectedPersonId && activeTreeId) {
-      window.history.replaceState({}, '', buildPersonUrl(activeTreeId, selectedPersonId));
+      const activeTreeRef = trees.find((tree) => tree.id === activeTreeId);
+      window.history.replaceState(
+        {},
+        '',
+        buildPersonUrl(
+          { id: activeTreeId, slug: activeTreeRef?.slug },
+          {
+            id: selectedPersonId,
+            firstName: selectedPerson?.firstName,
+            lastName: selectedPerson?.lastName,
+            birthDate: selectedPerson?.birthDate,
+          }
+        )
+      );
       return;
     }
     if (activeTreeId) {
-      window.history.replaceState({}, '', buildTreeUrl(activeTreeId));
+      const activeTreeRef = trees.find((tree) => tree.id === activeTreeId);
+      window.history.replaceState({}, '', buildTreeUrl({ id: activeTreeId, slug: activeTreeRef?.slug }));
     }
-  }, [activeTreeId, selectedPerson?.id, activeTab]);
+  }, [activeTreeId, selectedPerson?.id, selectedPerson, activeTab, trees]);
 
   useEffect(() => {
     if (!pendingPersonId) return;
@@ -1500,6 +1574,9 @@ useEffect(() => {
                             const person = treePeople.find((p) => p.id === personId);
                             if (person) setSelectedPerson(person);
                           }}
+                          canAddPerson={canWriteActiveTree}
+                          addingPerson={addingStandalonePerson}
+                          onAddPerson={() => void handleAddStandalonePerson()}
                         />
                         {treeLayoutType === 'fan' && (
                           <FanTree
@@ -1650,6 +1727,7 @@ useEffect(() => {
                   showCrawlTraffic={!!currentUser?.isSuperAdmin}
                 />
                 {adminSection === 'database' && currentUser?.isSuperAdmin && (
+                  <ErrorBoundary title="Database administrator panel failed to load">
                   <AdminDatabasePanel
                     actorName={currentUser?.name}
                     supabaseActive={supabaseActive}
@@ -1659,6 +1737,7 @@ useEffect(() => {
                     onLaunchNuke={() => setShowNukeModal(true)}
                     onLoadMoreAudits={() => setAuditOffset((prev) => prev + 5)}
                   />
+                  </ErrorBoundary>
                 )}
                 {adminSection === 'trees' && (
                   <AdminTreesPanel
@@ -1677,14 +1756,17 @@ useEffect(() => {
                   />
                 )}
                 {adminSection === 'gedcom' && (
+                  <ErrorBoundary title="GEDCOM import panel failed to load">
                   <AdminGedcomPanel
                     people={treePeople}
                     relationships={treeRelationships}
                     onImport={handleImport}
                     activeTreeName={activeTree?.name}
                   />
+                  </ErrorBoundary>
                 )}
                 {adminSection === 'dna' && (
+                  <ErrorBoundary title="DNA administrator panel failed to load">
                   <AdminDnaPanel
                     treeId={activeTree?.id || null}
                     people={treePeople}
@@ -1692,8 +1774,10 @@ useEffect(() => {
                     actor={{ id: currentUser?.id, name: currentUser?.name }}
                     onOpenPerson={handleAdminOpenPerson}
                   />
+                  </ErrorBoundary>
                 )}
                 {adminSection === 'books' && (
+                  <ErrorBoundary title="Book composer failed to load">
                   <BookComposerPanel
                     treeId={activeTree?.id || null}
                     people={treePeople}
@@ -1701,17 +1785,22 @@ useEffect(() => {
                     activeTreeName={activeTree?.name}
                     actor={{ id: currentUser?.id, name: currentUser?.name }}
                   />
+                  </ErrorBoundary>
                 )}
                 {adminSection === 'research' && (
+                  <ErrorBoundary title="Research assistant failed to load">
                   <AdminResearchPanel
                     treeId={activeTree?.id || null}
                     people={treePeople}
                     relationships={treeRelationships}
                     onOpenPerson={handleAdminOpenPerson}
                   />
+                  </ErrorBoundary>
                 )}
                 {adminSection === 'traffic' && currentUser?.isSuperAdmin && (
+                  <ErrorBoundary title="Crawl traffic panel failed to load">
                   <AdminCrawlTrafficPanel supabaseActive={supabaseActive} />
+                  </ErrorBoundary>
                 )}
               </div>
               </Suspense>

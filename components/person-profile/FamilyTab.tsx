@@ -15,6 +15,7 @@ import { FamilyLayoutState, Person, Relationship, RelationshipConfidence, Relati
 import { CONFIDENCE_LEVELS, PARENT_LINK_TYPES } from './constants';
 import { getAvatarForPerson } from '../../lib/avatar';
 import { searchPersonsInTree } from '../../services/archive';
+import type { CoparentSuggestion } from '../../lib/familyUnionInference';
 
 interface FamilyTabProps {
   parents: Array<{ person: Person; rel: Relationship }>;
@@ -52,6 +53,9 @@ interface FamilyTabProps {
   onLinkExistingChild?: (childId: string, unionRelId: string | null) => Promise<void> | void;
   treeId?: string;
   excludePersonIds?: string[];
+  suggestedSpouses?: CoparentSuggestion[];
+  onConfirmSuggestedSpouse?: (partnerId: string) => Promise<void> | void;
+  confirmingSuggestedSpouseId?: string | null;
 }
 
 type FamilyLinkMode =
@@ -286,6 +290,9 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   onLinkExistingChild,
   treeId,
   excludePersonIds = [],
+  suggestedSpouses = [],
+  onConfirmSuggestedSpouse,
+  confirmingSuggestedSpouseId = null,
 }) => {
   const createEmptyLayout = () => ({
     assignments: {},
@@ -432,6 +439,9 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
           onLinkExistingChild={onLinkExistingChild}
           treeId={treeId}
           excludePersonIds={excludePersonIds}
+          suggestedSpouses={suggestedSpouses}
+          onConfirmSuggestedSpouse={onConfirmSuggestedSpouse}
+          confirmingSuggestedSpouseId={confirmingSuggestedSpouseId}
         />
         <div className="space-y-4">
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Sibling Connections</p>
@@ -491,6 +501,9 @@ interface FamilyGroupProps {
   onLinkExistingChild?: (childId: string, unionRelId: string | null) => Promise<void> | void;
   treeId?: string;
   excludePersonIds?: string[];
+  suggestedSpouses?: CoparentSuggestion[];
+  onConfirmSuggestedSpouse?: (partnerId: string) => Promise<void> | void;
+  confirmingSuggestedSpouseId?: string | null;
 }
 
 const FamilyGroups: React.FC<FamilyGroupProps> = ({
@@ -514,6 +527,9 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
   onLinkExistingChild,
   treeId,
   excludePersonIds = [],
+  suggestedSpouses = [],
+  onConfirmSuggestedSpouse,
+  confirmingSuggestedSpouseId = null,
 }) => {
   const [linkMode, setLinkMode] = useState<FamilyLinkMode | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
@@ -527,7 +543,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
           (rel) =>
             rel.personId === spouse.person.id &&
             rel.relatedId === child.person.id &&
-            PARENT_LINK_TYPES.includes(rel.type)
+            (PARENT_LINK_TYPES.includes(rel.type) || rel.type === 'child')
         )
       );
       if (linkedSpouse) {
@@ -540,6 +556,15 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
       }
       baseAssignments[child.rel.id] = null;
     });
+
+    if (spouses.length === 0 && suggestedSpouses.length === 1) {
+      const coparentGroupKey = `suggested:${suggestedSpouses[0].person.id}`;
+      children.forEach((child) => {
+        if (!baseAssignments[child.rel.id]) {
+          baseAssignments[child.rel.id] = coparentGroupKey;
+        }
+      });
+    }
 
     const layoutAssignments = (initialLayout?.assignments ?? {}) as Record<string, string | null>;
     Object.entries(layoutAssignments).forEach(([childId, spouseId]) => {
@@ -562,7 +587,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
       removedSpouses: new Set(((initialLayout?.removedSpouseIds ?? []) as string[]).filter((id) => spouseIds.has(id))),
       removedChildren: new Set(((initialLayout?.removedChildIds ?? []) as string[]).filter((id) => childIds.has(id))),
     };
-  }, [children, spouses, relationships, initialLayout]);
+  }, [children, spouses, relationships, initialLayout, suggestedSpouses]);
 
   const [assignments, setAssignments] = useState<Record<string, string | null>>(layoutSeed.assignments);
   const [manualOrders, setManualOrders] = useState<Record<string, string[]>>(layoutSeed.manualOrders);
@@ -1160,11 +1185,64 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
         />
       )}
       {linkError && <p className="text-xs text-rose-500">{linkError}</p>}
-      {activeSpouses.length === 0 && (
+      {suggestedSpouses.map((suggestion) => {
+        const groupKey = `suggested:${suggestion.person.id}`;
+        const childrenForSuggestion = getDisplayChildren(groupKey);
+        const confirming = confirmingSuggestedSpouseId === suggestion.person.id;
+        const sharedNames = suggestion.sharedChildren
+          .map((entry) => `${entry.person.firstName} ${entry.person.lastName}`.trim())
+          .join(', ');
+        return (
+          <div key={groupKey} className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/40 p-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Suggested Union</p>
+            <RelationCard
+              item={{ person: suggestion.person, rel: suggestion.sharedChildren[0]?.rel ?? ({
+                id: groupKey,
+                treeId: suggestion.person.treeId,
+                personId: personId,
+                relatedId: suggestion.person.id,
+                type: 'partner',
+                status: 'current',
+                confidence: 'Unknown',
+              } as Relationship) }}
+              label="Likely Spouse / Partner"
+              metadata={
+                suggestion.sharedChildren.length > 0
+                  ? `Shares ${suggestion.sharedChildren.length} child${suggestion.sharedChildren.length === 1 ? '' : 'ren'}: ${sharedNames}`
+                  : undefined
+              }
+              confidence="Assumed"
+              onConfidenceChange={onUpdateConfidence}
+              onNavigate={onNavigate}
+              canEdit={false}
+            />
+            {canEdit && onConfirmSuggestedSpouse && (
+              <button
+                type="button"
+                className="px-4 py-2 rounded-2xl border border-amber-300 bg-white text-xs font-black uppercase tracking-[0.2em] text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                disabled={!!confirmingSuggestedSpouseId}
+                onClick={() => void onConfirmSuggestedSpouse(suggestion.person.id)}
+              >
+                {confirming ? 'Linking union…' : 'Link as spouse & parent'}
+              </button>
+            )}
+            {childrenForSuggestion.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Children in this union</p>
+                {childrenForSuggestion.map((child) => renderChildRow(child))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {activeSpouses.length === 0 && suggestedSpouses.length === 0 && (
         <div className="space-y-4">
           {!canEdit && <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Spousal Unions</p>}
           <p className="text-xs text-slate-400 italic p-4">No partner records found.</p>
         </div>
+      )}
+      {activeSpouses.length === 0 && suggestedSpouses.length > 0 && !canEdit && (
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Spousal Unions</p>
       )}
       {activeSpouses.map((spouse) => {
         const metaBits: string[] = [];

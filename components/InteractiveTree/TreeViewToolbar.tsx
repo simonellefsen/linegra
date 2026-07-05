@@ -8,6 +8,8 @@ import {
   Clock,
   MapPin,
   Keyboard,
+  UserPlus,
+  Loader2,
 } from 'lucide-react';
 import type { Person, Relationship, TreeLayoutType } from '../../types';
 import { buildAncestorBreadcrumbs } from '../../lib/treeNavigation';
@@ -20,6 +22,9 @@ interface TreeViewToolbarProps {
   people: Person[];
   relationships: Relationship[];
   onFocusPerson: (personId: string) => void;
+  canAddPerson?: boolean;
+  addingPerson?: boolean;
+  onAddPerson?: () => void;
 }
 
 const MODES: Array<{ id: TreeLayoutType; label: string; icon: React.ReactNode }> = [
@@ -37,6 +42,9 @@ const TreeViewToolbar: React.FC<TreeViewToolbarProps> = ({
   people,
   relationships,
   onFocusPerson,
+  canAddPerson = false,
+  addingPerson = false,
+  onAddPerson,
 }) => {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
@@ -107,6 +115,23 @@ const TreeViewToolbar: React.FC<TreeViewToolbarProps> = ({
               </button>
             ))}
           </div>
+
+          {canAddPerson && onAddPerson && (
+            <button
+              type="button"
+              onClick={onAddPerson}
+              disabled={addingPerson}
+              className="px-3 py-2 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-[0.15em] text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50"
+              title="Add a person with no family links yet"
+            >
+              {addingPerson ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <UserPlus className="w-3.5 h-3.5" />
+              )}
+              Add person
+            </button>
+          )}
 
           <div className="relative">
             <button

@@ -15,13 +15,13 @@
 // flow is unchanged. For "Test Connection" the client sends `testKey`, which is used for a one-off
 // ping and is never stored.
 //
-// Auth/abuse: Supabase's gateway requires the project `apikey` header on every invocation, so only
-// this app can call it. There is NO per-user JWT check (the local admin has no real auth session —
-// see roadmap A) and a per-tree/day spend cap (Phase 3) enforced before relaying requests.
-// Test Connection (`testKey`) bypasses the cap so admins can verify keys even when a tree is over budget.
+// Auth/abuse: Supabase gateway requires a valid user JWT (`verify_jwt = true`) plus the project
+// `apikey` header. `testKey` pings are superadmin-only. Per-tree/day spend cap (Phase 3) applies
+// to normal relay requests.
 
 const SUPABASE_URL = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -134,6 +134,40 @@ const budgetExceededMessage = (budget: BudgetCheckResult): string => {
   return "Daily AI budget exhausted.";
 };
 
+const bearerJwt = (req: Request): string => {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  return authHeader.replace(/^Bearer\s+/i, "").trim();
+};
+
+const resolveAuthUserId = async (jwt: string): Promise<string | null> => {
+  if (!jwt || !SUPABASE_URL || !ANON_KEY) return null;
+  const resp = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${jwt}`,
+    },
+  });
+  if (!resp.ok) return null;
+  const user = (await resp.json()) as { id?: string };
+  return typeof user.id === "string" ? user.id : null;
+};
+
+const isSuperAdminUser = async (userId: string): Promise<boolean> => {
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return false;
+  const resp = await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=role&limit=1`,
+    {
+      headers: {
+        apikey: SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      },
+    },
+  );
+  if (!resp.ok) return false;
+  const rows = (await resp.json()) as Array<{ role?: string }>;
+  return rows?.[0]?.role === "superadmin";
+};
+
 const logUsage = async (row: {
   treeId?: string | null;
   actorId?: string | null;
@@ -236,6 +270,15 @@ Deno.serve(async (req) => {
   const treeId = typeof body.treeId === "string" ? body.treeId : null;
   const actorId = typeof body.actorId === "string" ? body.actorId : null;
   const testKey = typeof body.testKey === "string" ? body.testKey.trim() : "";
+  const jwt = bearerJwt(req);
+  const authUserId = await resolveAuthUserId(jwt);
+  if (!authUserId) {
+    return json({ error: "Authentication required." }, 401);
+  }
+  if (testKey && !(await isSuperAdminUser(authUserId))) {
+    return json({ error: "Superadmin required for connection test." }, 403);
+  }
+  const effectiveActorId = actorId || authUserId;
   const requestedTimeout = Number(body.timeoutMs);
   const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0
     ? Math.min(Math.max(requestedTimeout, MIN_TIMEOUT_MS), MAX_TIMEOUT_MS)
@@ -275,7 +318,7 @@ Deno.serve(async (req) => {
     if (settings?.base_url?.trim()) baseUrl = settings.base_url.trim();
     if (settings && settings.enabled === false) {
       await logUsage({
-        treeId, actorId, purpose, model: effectiveModel || null,
+        treeId, actorId: effectiveActorId, purpose, model: effectiveModel || null,
         usage: null, cost: 0, latencyMs: 0, status: "error",
         error: "AI provider disabled",
       });
@@ -285,7 +328,7 @@ Deno.serve(async (req) => {
 
   if (!apiKey) {
     await logUsage({
-      treeId, actorId, purpose, model: effectiveModel || null,
+      treeId, actorId: effectiveActorId, purpose, model: effectiveModel || null,
       usage: null, cost: 0, latencyMs: 0, status: "error",
       error: "API key not configured",
     });
@@ -307,7 +350,7 @@ Deno.serve(async (req) => {
       const message = budgetExceededMessage(budget);
       await logUsage({
         treeId,
-        actorId,
+        actorId: effectiveActorId,
         purpose,
         model: effectiveModel || null,
         usage: null,
@@ -342,7 +385,7 @@ Deno.serve(async (req) => {
   // once the response is sent); logUsage swallows its own errors so this never breaks the response.
   await logUsage({
     treeId,
-    actorId,
+    actorId: effectiveActorId,
     purpose,
     model: effectiveModel,
     usage: (result.json?.usage as {

@@ -26,7 +26,8 @@ import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
 import { inferLivingStatus } from '../lib/lifespan';
-import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent, createPlaceholderSpouse, createPlaceholderChild, linkExistingSpouse, linkExistingChild } from '../services/archive';
+import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent, createPlaceholderSpouse, createPlaceholderChild, linkExistingSpouse, linkExistingChild, linkInferredFamilyUnion, syncParentUnionsForPerson } from '../services/archive';
+import { findCoparentSuggestions } from '../lib/familyUnionInference';
 import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause, transcribeRecordImage } from '../services/ai';
 
 const serializePlaceValue = (value: string | StructuredPlace) =>
@@ -200,6 +201,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   const [pendingParentType, setPendingParentType] = useState<'father' | 'mother' | null>(null);
   const [pendingSpouseUnionType, setPendingSpouseUnionType] = useState<'marriage' | 'partner' | null>(null);
   const [pendingChildUnionId, setPendingChildUnionId] = useState<string | null | undefined>(undefined);
+  const [confirmingSuggestedSpouseId, setConfirmingSuggestedSpouseId] = useState<string | null>(null);
 
   useEffect(() => {
     setOverlayProfile(null);
@@ -252,6 +254,17 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       if (!opts.silent) setConnectionsLoading(true);
       setConnectionsError(null);
       try {
+        if (canEditTree) {
+          try {
+            await syncParentUnionsForPerson({
+              treeId: person.treeId,
+              personId: person.id,
+              actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+            });
+          } catch (syncErr) {
+            console.warn('Parent union sync skipped', syncErr);
+          }
+        }
         const { relationships, people } = await fetchPersonConnections(person.treeId, person.id);
         if (opts.isCancelled?.()) return;
         applyConnectionData(relationships, people);
@@ -269,7 +282,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         }
       }
     },
-    [person, applyConnectionData]
+    [person, applyConnectionData, canEditTree, currentUser]
   );
 
   useEffect(() => {
@@ -404,6 +417,13 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       );
   }, [person.id, person.treeId, relationshipData, relationPeople, canViewPrivateRelations]);
 
+  const suggestedSpouses = useMemo(() => {
+    if (spouses.length > 0) return [];
+    return findCoparentSuggestions(person.id, relationshipData, relationPeople, {
+      canViewPrivate: canViewPrivateRelations,
+    });
+  }, [person.id, spouses.length, relationshipData, relationPeople, canViewPrivateRelations]);
+
   const children = useMemo(() => {
     const asParent = relationshipData
       .filter((r) => r.personId === person.id && PARENT_LINK_TYPES.includes(r.type))
@@ -428,16 +448,46 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     );
   }, [person.id, relationshipData, relationPeople, canViewPrivateRelations]);
 
+  const unionChildren = useMemo(() => {
+    const merged = new Map<string, { rel: Relationship; person: Person }>();
+    children.forEach((entry) => merged.set(entry.person.id, entry));
+    spouses.forEach((spouse) => {
+      relationshipData
+        .filter(
+          (rel) =>
+            rel.personId === spouse.person.id &&
+            (PARENT_LINK_TYPES.includes(rel.type) || rel.type === 'child')
+        )
+        .forEach((rel) => {
+          const childPerson = relationPeople[rel.relatedId];
+          if (!childPerson || (!canViewPrivateRelations && childPerson.isPrivate)) return;
+          if (!merged.has(childPerson.id)) {
+            merged.set(childPerson.id, { rel, person: childPerson });
+          }
+        });
+    });
+    return Array.from(merged.values());
+  }, [children, spouses, relationshipData, relationPeople, canViewPrivateRelations]);
+
   const siblings = useMemo(() => {
     const parentIds = new Set(
       relationshipData
-        .filter((r) => r.relatedId === person.id && PARENT_LINK_TYPES.includes(r.type))
+        .filter(
+          (r) =>
+            r.relatedId === person.id &&
+            (PARENT_LINK_TYPES.includes(r.type) || r.type === 'child')
+        )
         .map((r) => r.personId)
     );
     if (parentIds.size === 0) return [] as Array<{ rel: Relationship; person: Person }>;
     const siblingByPersonId = new Map<string, { rel: Relationship; person: Person }>();
     relationshipData
-      .filter((r) => parentIds.has(r.personId) && PARENT_LINK_TYPES.includes(r.type) && r.relatedId !== person.id)
+      .filter(
+        (r) =>
+          parentIds.has(r.personId) &&
+          (PARENT_LINK_TYPES.includes(r.type) || r.type === 'child') &&
+          r.relatedId !== person.id
+      )
       .forEach((r) => {
         const siblingPerson = relationPeople[r.relatedId];
         if (!siblingPerson || (!canViewPrivateRelations && siblingPerson.isPrivate)) return;
@@ -1067,6 +1117,16 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     [canEditFamily, pendingSpouseUnionType, person, currentUser, refreshConnections]
   );
 
+  const resolveCoparentId = useCallback(
+    (unionRelId: string | null): string | null => {
+      if (!unionRelId) return null;
+      const unionRel = relationshipData.find((rel) => rel.id === unionRelId);
+      if (!unionRel) return null;
+      return unionRel.personId === person.id ? unionRel.relatedId : unionRel.personId;
+    },
+    [person.id, relationshipData]
+  );
+
   const handleRequestAddChild = useCallback(
     async (unionRelId: string | null) => {
       if (!canEditFamily || pendingChildUnionId !== undefined) return;
@@ -1075,6 +1135,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         const result = await createPlaceholderChild({
           treeId: person.treeId,
           parentId: person.id,
+          coparentId: resolveCoparentId(unionRelId),
           actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
         });
         setRelationPeople((prev) => ({ ...prev, [result.person.id]: result.person }));
@@ -1089,7 +1150,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         setPendingChildUnionId(undefined);
       }
     },
-    [assignChildToUnionLayout, canEditFamily, pendingChildUnionId, person, currentUser, refreshConnections]
+    [assignChildToUnionLayout, canEditFamily, pendingChildUnionId, person, currentUser, refreshConnections, resolveCoparentId]
   );
 
   const handleLinkExistingSpouse = useCallback(
@@ -1117,12 +1178,37 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         treeId: person.treeId,
         parentId: person.id,
         childId,
+        coparentId: resolveCoparentId(unionRelId),
         actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
       });
       assignChildToUnionLayout(result.relationshipId, unionRelId);
       await refreshConnections({ silent: true });
     },
-    [assignChildToUnionLayout, canEditFamily, person, currentUser, refreshConnections]
+    [assignChildToUnionLayout, canEditFamily, person, currentUser, refreshConnections, resolveCoparentId]
+  );
+
+  const handleConfirmSuggestedSpouse = useCallback(
+    async (partnerId: string) => {
+      if (!canEditFamily) return;
+      setConfirmingSuggestedSpouseId(partnerId);
+      try {
+        await linkInferredFamilyUnion({
+          treeId: person.treeId,
+          personId: person.id,
+          partnerId,
+          unionType: 'marriage',
+          actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+        });
+        await refreshConnections({ silent: true });
+        setConnectionsError(null);
+      } catch (err) {
+        console.error('Failed to link inferred family union', err);
+        setConnectionsError(err instanceof Error ? err.message : 'Could not link spouse and children.');
+      } finally {
+        setConfirmingSuggestedSpouseId(null);
+      }
+    },
+    [canEditFamily, person, currentUser, refreshConnections]
   );
 
   return (
@@ -1344,7 +1430,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
           <FamilyTab
             parents={parents}
             spouses={spouses}
-            children={children}
+            children={unionChildren}
             siblings={siblings}
             person={person}
             relationships={relationshipData}
@@ -1368,6 +1454,9 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             onLinkExistingChild={handleLinkExistingChild}
             treeId={person.treeId}
             excludePersonIds={[person.id]}
+            suggestedSpouses={suggestedSpouses}
+            onConfirmSuggestedSpouse={handleConfirmSuggestedSpouse}
+            confirmingSuggestedSpouseId={confirmingSuggestedSpouseId}
           />
         )}
 

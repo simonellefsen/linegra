@@ -2,6 +2,7 @@
 // MRCA candidates, segment-cluster peers, and fuzzy name matches.
 
 import { clusterSharedSegments, type ClusterSegment } from './dnaClustering';
+import { formatNameMatchRationale, normalizeNameMatchScore } from './dnaNameMatch';
 import type { MrcaCandidate } from './dnaMrcaSuggestions';
 
 export interface UnknownMatchInput {
@@ -81,13 +82,13 @@ export const suggestUnknownMatchPlacements = (
   const suggestions: PlacementSuggestion[] = [];
   const minClusterCm = context.minClusterCm ?? 7;
 
-  if (context.nameMatchCandidate && context.nameMatchCandidate.score >= 60) {
+  if (context.nameMatchCandidate && normalizeNameMatchScore(context.nameMatchCandidate.score) >= 60) {
     suggestions.push({
       kind: 'link_existing',
       anchorPersonId: context.nameMatchCandidate.personId,
       anchorPersonName: context.nameMatchCandidate.personName,
       relationshipLabel: unknown.predictionLabel,
-      rationale: `Name match (${context.nameMatchCandidate.score}%) — link test to existing person instead of creating a duplicate.`,
+      rationale: `${formatNameMatchRationale(context.nameMatchCandidate.score)} — link test to existing person instead of creating a duplicate.`,
       score: 900 + context.nameMatchCandidate.score,
     });
   }

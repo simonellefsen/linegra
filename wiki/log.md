@@ -11,6 +11,18 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the
 > backfill.
 
+---
+
+## 2026-07-05 — Bug/security/crawl slice (V1, K8c, N4, U11–U15, U17b)
+
+**Errors (V1):** top-level `ErrorBoundary` in [../index.tsx](../index.tsx); per lazy admin panel in [../App.tsx](../App.tsx).
+
+**DNA (K8c):** unknown-match list dedupes against `dna_matches` linked counterparts/test ids; removed premature `counterpartInTree` skip that hid in-tree link targets; Link button falls back to `suggestedNameMatchPersonId`.
+
+**Security (N Phase 4):** `verify_jwt=true` on ai-proxy; client sends session JWT from [../services/ai.ts](../services/ai.ts); `testKey` superadmin-gated in [../supabase/functions/ai-proxy/index.ts](../supabase/functions/ai-proxy/index.ts). Per-IP/UA token bucket on `/api/public/*` + sitemap via [../lib/publicRateLimit.ts](../lib/publicRateLimit.ts).
+
+**Crawl:** broader crawler UAs; tree `?format=md`; `rel=next/prev` pagination shells; dynamic `/llms.txt` API; typed JSON-LD `parent`/`children`/`spouse`/`sibling`; `index.html` noscript + alternate links.
+
 ## 2026-07-04 — Bot / LLM crawl traffic admin panel (roadmap U10)
 
 **Traffic tab:** `public_crawl_events` table + `record_public_crawl_event` / `admin_get_crawl_traffic_stats`

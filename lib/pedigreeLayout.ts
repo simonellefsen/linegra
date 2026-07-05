@@ -1,4 +1,9 @@
-import { Person, Relationship, RelationshipType } from '../types';
+import { Person, Relationship } from '../types';
+import {
+  indexParentChildLinks,
+  parentLinkReadsAsFather,
+  parentLinkReadsAsMother,
+} from './parentChildLinks';
 
 export type PedigreeDirection = 'focus' | 'ancestor' | 'descendant';
 
@@ -38,19 +43,8 @@ export interface BuildPedigreeOptions {
   allowPlaceholders?: boolean;
 }
 
-const FATHER_TYPES: RelationshipType[] = ['bio_father', 'adoptive_father'];
-const MOTHER_TYPES: RelationshipType[] = ['bio_mother', 'adoptive_mother'];
-const PARENT_TYPES = new Set<RelationshipType>([
-  'bio_father',
-  'bio_mother',
-  'adoptive_father',
-  'adoptive_mother',
-  'step_parent',
-  'guardian',
-]);
-
-const isFatherLink = (type: RelationshipType) => FATHER_TYPES.includes(type);
-const isMotherLink = (type: RelationshipType) => MOTHER_TYPES.includes(type);
+const isFatherLink = (link: Relationship, parent?: Person | null) => parentLinkReadsAsFather(link, parent);
+const isMotherLink = (link: Relationship, parent?: Person | null) => parentLinkReadsAsMother(link, parent);
 
 export const buildPedigreeLayout = (
   people: Person[],
@@ -63,16 +57,7 @@ export const buildPedigreeLayout = (
   }
 
   const peopleById = new Map<string, Person>(people.map((p) => [p.id, p]));
-
-  const parentLinksByChild = new Map<string, Relationship[]>();
-  const childLinksByParent = new Map<string, Relationship[]>();
-
-  relationships.forEach((rel) => {
-    if (PARENT_TYPES.has(rel.type)) {
-      parentLinksByChild.set(rel.relatedId, [...(parentLinksByChild.get(rel.relatedId) || []), rel]);
-      childLinksByParent.set(rel.personId, [...(childLinksByParent.get(rel.personId) || []), rel]);
-    }
-  });
+  const { parentLinksByChild, childLinksByParent } = indexParentChildLinks(relationships);
 
   const nodes: PedigreeNode[] = [];
   const edges: PedigreeEdge[] = [];
@@ -220,8 +205,8 @@ export const buildPedigreeLayout = (
         person: parent,
         span: Math.max(1, computeAncestorSpan(parent.id, depth + 1)),
         link,
-        isFather: isFatherLink(link.type),
-        isMother: isMotherLink(link.type),
+        isFather: isFatherLink(link, parent),
+        isMother: isMotherLink(link, parent),
       });
     });
 

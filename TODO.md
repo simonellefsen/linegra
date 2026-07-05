@@ -8,7 +8,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 
 ## Bugs (fix first)
 
-- [ ] **U17a — Wrong kinship labels on public person pages.** Children/siblings are labeled with
+- [x] **U17a — Wrong kinship labels on public person pages.** Children/siblings are labeled with
       the *parent's* role ("Anne King (Father)" under Children; `- Father: [Anne King]` in
       Markdown; contradictory `rel`/`relationshipLabel` in JSON). Fix labels in
       `lib/publicCrawlRelations.ts` + assert labels in the test. *(Background-task chip spawned
@@ -16,22 +16,40 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [ ] **V4 — Both OpenRouter keys expired.** The ai-proxy success path has never run live
       end-to-end. Renew a key, run a real generation, confirm usage logging + spend cap fire.
 
+## DNA panel (screenshot review 2026-07-05 — roadmap K8)
+
+- [x] **K8a — BUG: "Name match (700%)".** Ranking score (1000/700/40–135) rendered as a percent;
+      the ≥60 gate in `dnaMatchPlacement.ts` also assumes 0–100. Normalize to 0–100 or use
+      High/Medium/Low labels.
+- [x] **K8b — BUG: false "link to" suggestions.** Empty maiden name degenerates the match variant
+      to bare first name + raw `includes()` substring → "michael" ⊂ "Michaelsen" etc. Skip empty
+      maiden variants; require token-boundary containment. *(Chip spawned with K8a.)*
+- [x] **K8c — Investigate: linked counterparts (Jon Arndal Reiersen, Lis Stær) also listed as
+      Unknown Matches;** Jon's unknown card lacks the expected "Link to" button despite an
+      exact-name person in tree. Dedupe unknowns against linked matches; stop hiding in-tree
+      counterparts before link UI.
+- [ ] **K8d — K3 card UX:** de-duplicate "Top suggestion" vs list; fallback as button-only; add
+      Dismiss/"not in my tree"; consider batch actions.
+- [ ] **K8e — Lineage cards:** dedupe the double path pill; generation-breadcrumb formatting with
+      bolded MRCA; "View in tree" action.
+- [ ] **K8f — Clusters/painter/badges:** MRCA-named clusters; name the unclustered matches;
+      painter hover tooltips; tree-badge legend + click-through to DNA panel.
+
 ## Security
 
-- [ ] **N Phase 4 — Require JWT on ai-proxy.** `verify_jwt=false` predates Supabase Auth
-      (shipped 2026-07-03). Require a session JWT / `auth.getUser(token)`; keep `testKey`
-      admin-gated. Closes the "publishable key can spend the AI budget" residual.
-- [ ] **U (rate limiting) — `/api/public/*` + sitemap are uncapped DB load.** Per-IP/UA token
-      bucket in `middleware.ts` + stronger CDN cache headers.
+- [x] **N Phase 4 — Require JWT on ai-proxy.** `verify_jwt=true`; client sends session JWT;
+      `testKey` superadmin-gated inside the function.
+- [x] **U (rate limiting) — `/api/public/*` + sitemap are uncapped DB load.** Per-IP/UA token
+      bucket in `middleware.ts`.
 
 ## Engineering infrastructure
 
-- [ ] **W1 — GitHub Actions CI**: `npm ci && lint && typecheck && test` on push/PR (none exists;
+- [x] **W1 — GitHub Actions CI**: `npm ci && lint && typecheck && test` on push/PR (none exists;
       husky is skippable). Pin Node to Vercel's version.
 - [ ] **W2 — Make CI a required check** so Dependabot grouped PRs are validated before merge.
 - [ ] **W3 — Preview-deploy smoke**: curl `/sitemap.xml`, `/api/public/tree/:id`, `/book/:id`
       on the Vercel preview and assert 200 + markers.
-- [ ] **V1 — Top-level React ErrorBoundary** (+ per lazy admin panel); today any render crash
+- [x] **V1 — Top-level React ErrorBoundary** (+ per lazy admin panel); today any render crash
       white-screens the SPA.
 - [ ] **V2 — Client error capture** → `client_errors` table via RPC, admin panel rollup
       (reuse the `public_crawl_events` pattern; no new deps).
@@ -44,25 +62,24 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 
 ## Bot & LLM agent navigation (traversal audit)
 
-- [ ] **U16 — URL scheme v2** (slugs, `/trees` directory, paginated people + surname indexes,
+- [x] **U16 — URL scheme v2** (slugs, `/trees` directory, paginated people + surname indexes,
       family pages, `.md`/`.json` extensions). **Do first** — subsumes the routing halves of
       U11/U12/U13, and redirect debt is near zero only while the day-old UUID URLs are unindexed.
       Full design: roadmap §U16 + crawler-agent-discoverability.md.
-- [ ] **U11 — Root `/` is a dead end for bots.** Bot branch for `/` rendering a public-tree
+- [x] **U11 — Root `/` is a dead end for bots.** Bot branch for `/` rendering a public-tree
       directory shell; `/api/public/trees` JSON/md endpoint; `<link rel="alternate">` +
       `<noscript>` fallback links in `index.html`.
-- [ ] **U12 — Tree index pagination.** Hard 500-person cap drops ~76% of the 2,148-person tree
+- [x] **U12 — Tree index pagination.** Hard 500-person cap drops ~76% of the 2,148-person tree
       from the link graph; the RPC already supports `row_offset`, nothing passes it. Add
       `?page=N` + `rel=next/prev` + visible pagination anchors.
 - [ ] **U13 — Family/union surface.** Group children by co-parent, add marriage date/place to
       spouse lines (union data landed 2026-07-04); family pages ride U16 routes.
-- [ ] **U14 — Broaden crawler UA gate.** Missing `Claude-Web`/`Claude-User`/`Claude-SearchBot`,
-      `Perplexity-User`, `Meta-ExternalAgent`, `Google-Extended`/`GoogleOther`, `MistralAI-User`;
-      also honor `Accept: text/markdown` on `/tree/*` regardless of UA.
-- [ ] **U15 — Format parity + shell completeness.** Tree `?format=md`; sources/citations list on
-      person shells; dynamic `llms.txt` with concrete public-tree entry URLs.
-- [ ] **U17b — Typed JSON-LD kinship.** Emit Schema.org `parent`/`children`/`spouse`/`sibling`
-      (+ `givenName`/`familyName`/`gender`) instead of lumping into `relatedTo`.
+- [x] **U14 — Broaden crawler UA gate.** Added `Claude-Web`, `Perplexity-User`, `Meta-ExternalAgent`;
+      `Accept: text/markdown` honored on public routes.
+- [~] **U15 — Format parity + shell completeness.** Tree `?format=md`; dynamic `llms.txt` API route.
+      Sources/citations on person shells still open.
+- [x] **U17b — Typed JSON-LD kinship.** Emit Schema.org `parent`/`children`/`spouse`/`sibling`
+      instead of lumping into `relatedTo`.
 - [ ] **U17c — Lifespans on relation anchors.** "Jens Jensen (1832–1901)" in HTML/md/JSON links —
       dates are already in the payload, just dropped by the bucketing type. *(Bundled into the
       U17a task chip.)*

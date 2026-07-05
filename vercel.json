@@ -1,7 +1,13 @@
 {
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
+    { "source": "/llms.txt", "destination": "/api/llms.txt" },
+    { "source": "/trees", "destination": "/" },
     { "source": "/tree/:treeId/person/:personId", "destination": "/" },
+    { "source": "/tree/:treeId/people", "destination": "/" },
+    { "source": "/tree/:treeId/surnames/:surname", "destination": "/" },
+    { "source": "/tree/:treeId/surnames", "destination": "/" },
+    { "source": "/tree/:treeId/family/:unionId", "destination": "/" },
     { "source": "/tree/:treeId", "destination": "/" },
     { "source": "/book/:path*", "destination": "/" }
   ]

@@ -8,6 +8,7 @@ import { createServerSupabase } from './supabaseServer';
 export interface PublicPersonCrawlPayload {
   treeId: string;
   treeName: string;
+  treeSlug?: string | null;
   person: {
     id: string;
     firstName: string;
@@ -51,7 +52,7 @@ export const loadPublicPersonCrawlPayload = async (
 
   const { data: treeRow, error: treeError } = await supabase
     .from('family_trees')
-    .select('id, name, is_public')
+    .select('id, name, slug, is_public')
     .eq('id', personRow.tree_id)
     .maybeSingle();
   if (treeError || !treeRow?.is_public) return null;
@@ -119,6 +120,7 @@ export const loadPublicPersonCrawlPayload = async (
   return {
     treeId: personRow.tree_id,
     treeName: treeRow.name ?? 'Family tree',
+    treeSlug: treeRow.slug,
     person,
     relationships: bucketPublicCrawlRelationships(
       personId,
@@ -134,31 +136,36 @@ export const loadPublicPersonCrawlPayload = async (
 export interface PublicTreeCrawlPayload {
   treeId: string;
   treeName: string;
+  treeSlug?: string | null;
   description?: string | null;
   persons: { id: string; name: string; birthDate?: string | null; deathDate?: string | null }[];
+  totalCount?: number;
 }
 
 export const loadPublicTreeCrawlPayload = async (
-  treeId: string
+  treeId: string,
+  rowOffset = 0,
+  rowLimit = 500
 ): Promise<PublicTreeCrawlPayload | null> => {
   const supabase = createServerSupabase();
   const { data: treeRow, error: treeError } = await supabase
     .from('family_trees')
-    .select('id, name, description, is_public')
+    .select('id, name, slug, description, is_public')
     .eq('id', treeId)
     .maybeSingle();
   if (treeError || !treeRow?.is_public) return null;
 
   const { data: rows, error: rowsError } = await supabase.rpc('list_public_tree_crawl_persons', {
     target_tree_id: treeId,
-    row_limit: 500,
-    row_offset: 0,
+    row_limit: rowLimit,
+    row_offset: rowOffset,
   });
   if (rowsError) return null;
 
   return {
     treeId: treeRow.id,
     treeName: treeRow.name ?? 'Family tree',
+    treeSlug: treeRow.slug,
     description: treeRow.description,
     persons: (rows ?? []).map((row: Record<string, unknown>) => ({
       id: String(row.person_id ?? row.id),
