@@ -55,6 +55,13 @@ const partnerRowOffset = (partner: Person, focus: Person, index: number): number
   return index % 2 === 0 ? -1 - index : 1 + index;
 };
 
+const areSpouses = (relationships: Relationship[], aId: string, bId: string): boolean =>
+  relationships.some(
+    (rel) =>
+      SPOUSE_TYPES.has(rel.type) &&
+      ((rel.personId === aId && rel.relatedId === bId) || (rel.personId === bId && rel.relatedId === aId))
+  );
+
 export const buildPedigreeLayout = (
   people: Person[],
   relationships: Relationship[],
@@ -364,7 +371,9 @@ export const buildPedigreeLayout = (
     }
     stack.add(cacheKey);
     const childLinks = childLinksByParent.get(personId) || [];
-    const uniqueChildIds = Array.from(new Set(childLinks.map((link) => link.relatedId)));
+    const uniqueChildIds = Array.from(new Set(childLinks.map((link) => link.relatedId))).filter(
+      (childId) => !areSpouses(relationships, personId, childId)
+    );
     if (!uniqueChildIds.length) {
       descendantSpanCache.set(cacheKey, 1);
       stack.delete(cacheKey);
@@ -377,6 +386,7 @@ export const buildPedigreeLayout = (
         total += 1;
         return;
       }
+      if (areSpouses(relationships, personId, childId)) return;
       total += computeDescendantSpan(childId, depth + 1, stack);
     });
     if (total === 0) total = uniqueChildIds.length;
@@ -388,7 +398,9 @@ export const buildPedigreeLayout = (
   const buildDescendants = (parentId: string, column: number, depth: number) => {
     if (depth >= maxDescendantDepth) return;
     const childLinks = childLinksByParent.get(parentId) || [];
-    const uniqueChildIds = Array.from(new Set(childLinks.map((link) => link.relatedId)));
+    const uniqueChildIds = Array.from(new Set(childLinks.map((link) => link.relatedId))).filter(
+      (childId) => !areSpouses(relationships, parentId, childId)
+    );
     if (!uniqueChildIds.length) return;
     const parentNode = nodeMap.get(parentId);
     if (!parentNode) return;
@@ -404,7 +416,7 @@ export const buildPedigreeLayout = (
       const child = peopleById.get(childId);
       const childRowCenter = cursor + span / 2;
       cursor += span;
-      if (!child) return;
+      if (!child || areSpouses(relationships, parentId, childId)) return;
       const childNode = createPersonNode(child, column, 'descendant', parentId, childRowCenter);
       addParentEdge(parentNode, childNode);
       attachCoparentEdges(childId, childNode, parentId);

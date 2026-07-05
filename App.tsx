@@ -603,8 +603,8 @@ useEffect(() => {
     if (!focusPersonId) {
       return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
     }
-    return computePedigreeScope(filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth);
-  }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth]);
+    return computePedigreeScope(filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth, treePeople);
+  }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth, treePeople]);
 
   const handleFocusDefaultProband = useCallback(() => {
     const targetFocusId = focusPersonId ?? treeDefaultProbandId;

@@ -15,12 +15,15 @@ export const computePedigreeScope = (
   relationships: Relationship[],
   focusId: string | null,
   maxAncestorDepth: number,
-  maxDescendantDepth: number
+  maxDescendantDepth: number,
+  peoplePool: Person[] = []
 ): PedigreeScopeResult => {
   if (!focusId || !people.length) {
     return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
   }
 
+  const poolById = new Map<string, Person>();
+  [...peoplePool, ...people].forEach((person) => poolById.set(person.id, person));
   const peopleById = new Map<string, Person>(people.map((p) => [p.id, p]));
   const focus = peopleById.get(focusId);
   if (!focus) {
@@ -84,7 +87,7 @@ export const computePedigreeScope = (
   }
 
   const includePersonAndLinks = (personId: string) => {
-    if (!peopleById.get(personId)) return;
+    if (!poolById.get(personId)) return;
     allowedPersonIds.add(personId);
   };
 
@@ -117,7 +120,9 @@ export const computePedigreeScope = (
     });
   });
 
-  const scopedPeople = people.filter((person) => allowedPersonIds.has(person.id));
+  const scopedPeople = Array.from(allowedPersonIds)
+    .map((personId) => poolById.get(personId))
+    .filter((person): person is Person => !!person);
   const scopedRelationships = relationships.filter((rel) => allowedRelationshipIds.has(rel.id));
 
   return {

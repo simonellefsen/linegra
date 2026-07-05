@@ -39,4 +39,21 @@ describe('buildPedigreeLayout', () => {
     expect(layout.edges.filter((edge) => edge.type === 'parent' && edge.toId === 'kid')).toHaveLength(2);
     expect(layout.edges.some((edge) => edge.type === 'spouse')).toBe(true);
   });
+
+  it('renders spouses beside focus instead of as children', () => {
+    const wilhelmina = person('wife', 'Wilhelmina', 'F', 'Wouters');
+    const george = person('husband', 'George', 'M', 'Kazanis');
+    const relationships: Relationship[] = [
+      { id: 'r1', personId: 'wife', relatedId: 'husband', type: 'marriage', treeId: 't1' },
+      { id: 'r2', personId: 'wife', relatedId: 'husband', type: 'child', treeId: 't1' },
+    ];
+    const layout = buildPedigreeLayout([wilhelmina, george], relationships, {
+      focusId: 'wife',
+      maxAncestorDepth: 0,
+      maxDescendantDepth: 1,
+      allowPlaceholders: false,
+    });
+    expect(layout.edges.some((edge) => edge.type === 'spouse')).toBe(true);
+    expect(layout.edges.some((edge) => edge.type === 'parent' && edge.toId === 'husband')).toBe(false);
+  });
 });
