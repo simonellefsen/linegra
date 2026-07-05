@@ -29,7 +29,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **U18e — INVESTIGATE: duplicate events** (identical-timestamp visitor rows ×2) — check
       middleware re-invocation + client double-fire; dedupe at ingestion.
 - [x] **U18f — Resolve resource UUIDs** to person/tree names with links (admin-only).
-- [ ] **U18g — Self-traffic exclusion** (tag signed-in admin hits; default-on filter).
+- [x] **U18g — Self-traffic exclusion** (tag signed-in admin hits; default-on filter).
 - [ ] **U18h — Chart scaling:** fixed axis over the full window incl. zero days; bot + visitor
       series overlaid.
 - [ ] **U18i — Format breakdown per agent** (html/md/json/xml) — measures U7/U8 adoption.
@@ -39,8 +39,13 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [ ] **U18l — Referrer buckets for human visits** (google / AI assistants / direct — header
       only, no IP).
 
-## DNA analysis (roadmap K9 — new feature)
+## DNA analysis (roadmap K9/K10)
 
+- [ ] **K10 — BUG: family kits are 1-hop only.** `list_family_autosomal_kits` joins only direct
+      parent↔child edges, so a tested grandmother (Helle Andersen, 2 hops from Pernille), sibling,
+      or cousin never appears on the DNA panel. Enumerate all in-tree autosomal kits and label each
+      via `relationshipCalculator.computeRelationship` (grandparent / 1C1R + MRCA + expected cM
+      range); flag K6 raw-kit comparison when both have SNP data. **High priority.**
 - [x] **K9 — Candidate-branch hypothesis for unplaced matches.** Join cM→generation-band
       prediction + cluster exclusion + per-line DNA coverage gaps into a ranked "this match most
       likely connects via ancestor couple X" suggestion with research to-dos. Pedigree UI: amber

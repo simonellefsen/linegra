@@ -15,6 +15,14 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — U18g self-traffic exclusion
+
+**U18:** Signed-in viewers set a `linegra_viewer` cookie; middleware tags `viewer_user_id` on crawl
+events; traffic panel defaults to excluding the current user's raw-tail visits.
+`lib/crawlViewerCookie.ts`, migration `20260705255000_crawl_traffic_viewer_tag.sql`.
+
+---
+
 ## 2026-07-05 — U18f crawl resource labels in traffic panel
 
 **U18:** Recent bot/visitor rows resolve UUIDs to person/tree/book/family names with links to

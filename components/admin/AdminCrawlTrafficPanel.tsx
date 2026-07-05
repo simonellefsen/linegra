@@ -21,6 +21,7 @@ import {
 
 interface AdminCrawlTrafficPanelProps {
   supabaseActive: boolean;
+  currentUserId?: string | null;
 }
 
 const formatUtc = (value: string | null | undefined): string => {
@@ -68,9 +69,13 @@ const CrawlTrafficResourceCell: React.FC<{
   );
 };
 
-const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabaseActive }) => {
+const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
+  supabaseActive,
+  currentUserId,
+}) => {
   const [days, setDays] = useState(30);
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
+  const [excludeMyTraffic, setExcludeMyTraffic] = useState(true);
   const [stats, setStats] = useState<CrawlTrafficStats | null>(null);
   const [resourceLabels, setResourceLabels] = useState<Record<string, CrawlTrafficResourceLabel>>({});
   const [loading, setLoading] = useState(false);
@@ -81,7 +86,10 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabas
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchAdminCrawlTrafficStats(days, { agentFilter })
+    fetchAdminCrawlTrafficStats(days, {
+      agentFilter,
+      excludeViewerUserId: excludeMyTraffic && currentUserId ? currentUserId : null,
+    })
       .then((summary) => {
         if (!cancelled) {
           setStats(summary.stats);
@@ -101,7 +109,7 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabas
     return () => {
       cancelled = true;
     };
-  }, [supabaseActive, days, agentFilter]);
+  }, [supabaseActive, days, agentFilter, excludeMyTraffic, currentUserId]);
 
   const maxBotDayHits = useMemo(
     () => Math.max(1, ...(stats?.bot.byDay.map((row) => row.hits) ?? [1])),
@@ -133,23 +141,42 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabas
               <h4 className="text-lg font-serif font-bold text-slate-900">Site traffic</h4>
             </div>
           </div>
-          <label className="text-xs font-bold text-slate-500 flex items-center gap-2">
-            Window
-            <select
-              value={days}
-              onChange={(event) => setDays(Number(event.target.value))}
-              className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700"
-            >
-              <option value={7}>7 days</option>
-              <option value={30}>30 days</option>
-              <option value={90}>90 days</option>
-            </select>
-          </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="text-xs font-bold text-slate-500 flex items-center gap-2">
+              Window
+              <select
+                value={days}
+                onChange={(event) => setDays(Number(event.target.value))}
+                className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700"
+              >
+                <option value={7}>7 days</option>
+                <option value={30}>30 days</option>
+                <option value={90}>90 days</option>
+              </select>
+            </label>
+            <label className="text-xs font-bold text-slate-600 flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={excludeMyTraffic}
+                disabled={!currentUserId}
+                onChange={(event) => setExcludeMyTraffic(event.target.checked)}
+                className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+              />
+              Exclude my visits
+            </label>
+          </div>
         </div>
 
         <p className="text-sm text-slate-500 max-w-3xl">
           Hits on public `/tree/*` and `/book/*` pages plus crawl APIs (`/api/public/*`, `/sitemap.xml`).
           Visitor geo uses Vercel/Cloudflare edge headers — no IP addresses are stored.
+          {excludeMyTraffic && currentUserId ? (
+            <>
+              {' '}
+              Your signed-in browser visits are excluded from the raw event tail (last{' '}
+              {stats?.rawRetentionDays ?? 14} days); older daily rollups may still include them.
+            </>
+          ) : null}
           {stats && days > stats.rawRetentionDays ? (
             <>
               {' '}

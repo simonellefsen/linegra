@@ -14,6 +14,7 @@ export type { CrawlTrafficResourceLabel } from '../lib/crawlTrafficResourceLabel
 export interface FetchAdminCrawlTrafficOptions {
   days?: number;
   agentFilter?: string | null;
+  excludeViewerUserId?: string | null;
 }
 
 export interface AdminCrawlTrafficResult {
@@ -181,6 +182,7 @@ export const fetchAdminCrawlTrafficStats = async (
   const { data, error } = await supabase.rpc('admin_get_crawl_traffic_stats', {
     payload_days: days,
     payload_agent_filter: options.agentFilter ?? null,
+    payload_exclude_viewer_user_id: options.excludeViewerUserId ?? null,
   });
   if (error) throw new Error(error.message);
   const stats = mapCrawlTrafficStats(data);

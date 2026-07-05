@@ -641,6 +641,8 @@ and the metrics that make it *actionable* rather than a hit counter.
   `services/crawlTraffic.ts` + `lib/crawlTrafficResourceLabels.ts`; recent tables link to public URLs.
 - **U18g — Self-traffic exclusion.** The admin's own browsing inflates visitor counts; tag hits
   from signed-in sessions (or a device cookie) and default the panel to "exclude my traffic."
+  **DONE 2026-07-05** — `linegra_viewer` cookie + `viewer_user_id` on events; stats RPC
+  `payload_exclude_viewer_user_id`; panel toggle default on.
 - **U18h — Chart scaling.** A single hit renders as a full-width bar; use a fixed axis over the
   whole window with zero-days shown, and overlay bot vs visitor series for trend comparison.
 - **U18i — Format breakdown per agent** (html / md / json / xml): measures whether LLM agents

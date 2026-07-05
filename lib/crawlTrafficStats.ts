@@ -70,6 +70,7 @@ export interface CrawlTrafficStats {
   days: number;
   rawRetentionDays: number;
   agentFilter?: string | null;
+  excludeViewerUserId?: string | null;
   bot: BotTrafficStats;
   visitor: VisitorTrafficStats;
 }
@@ -214,6 +215,8 @@ export const mapCrawlTrafficStats = (payload: unknown): CrawlTrafficStats => {
     days: Number(data.days ?? 30),
     rawRetentionDays: Number(data.raw_retention_days ?? 14),
     agentFilter: typeof data.agent_filter === 'string' ? data.agent_filter : null,
+    excludeViewerUserId:
+      typeof data.exclude_viewer_user_id === 'string' ? data.exclude_viewer_user_id : null,
     bot: mapBotSection(botPayload),
     visitor: mapVisitorSection(data.visitor),
   };
