@@ -18,6 +18,7 @@ import {
 } from '../lib/treePerformance';
 import { inferDefaultProbandId } from '../lib/gedcomFidelity';
 import { inferParentPairsForUnion, inferParentRelationshipType } from '../lib/parentChildLinks';
+import { inferSpouseDefaultGender } from '../lib/personGender';
 import { normalizeNameMatchScore, scoreNameMatch } from '../lib/dnaNameMatch';
 import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DNASharedSegmentRowPreview, DnaLineageResolution, UnlinkedDnaMatchRecord, AutosomalIndexStats, TreeCollaborator, TreeAccessRole } from '../types';
 
@@ -3331,9 +3332,16 @@ export const createPlaceholderSpouse = async ({
     throw new Error('Supabase credentials are missing.');
   }
   const normalizedActor = normalizeActor(actor);
-  const spouseRow = await insertPlaceholderPerson(treeId, normalizedActor, {
-    createdVia: 'manual_spouse_button',
-  });
+  const focusGender = await fetchPersonGender(personId);
+  const spouseGender = inferSpouseDefaultGender(focusGender);
+  const spouseRow = await insertPlaceholderPerson(
+    treeId,
+    normalizedActor,
+    {
+      createdVia: 'manual_spouse_button',
+    },
+    spouseGender
+  );
   const relationshipId = randomId();
   const { error: relError } = await supabase.from('relationships').insert({
     id: relationshipId,

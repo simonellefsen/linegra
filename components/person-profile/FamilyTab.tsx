@@ -1107,52 +1107,32 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Spousal Unions</p>
           <div className="flex flex-wrap gap-2">
             {onRequestAddSpouse && (
-              <>
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-                  onClick={() => onRequestAddSpouse('marriage')}
-                  disabled={!!pendingSpouseUnionType}
-                >
-                  <Plus className="inline w-3 h-3 mr-2" />
-                  {pendingSpouseUnionType === 'marriage' ? 'Adding Spouse…' : 'Add Spouse'}
-                </button>
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-                  onClick={() => onRequestAddSpouse('partner')}
-                  disabled={!!pendingSpouseUnionType}
-                >
-                  <Plus className="inline w-3 h-3 mr-2" />
-                  {pendingSpouseUnionType === 'partner' ? 'Adding Partner…' : 'Add Partner'}
-                </button>
-              </>
+              <button
+                type="button"
+                className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                onClick={() => onRequestAddSpouse('marriage')}
+                disabled={!!pendingSpouseUnionType}
+              >
+                <Plus className="inline w-3 h-3 mr-2" />
+                {pendingSpouseUnionType ? 'Adding union…' : 'Add union'}
+              </button>
             )}
             {onLinkExistingSpouse && treeId && (
-              <>
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100"
-                  onClick={() => {
-                    setLinkError(null);
-                    setLinkMode({ kind: 'spouse', unionType: 'marriage' });
-                  }}
-                >
-                  Link Existing Spouse
-                </button>
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100"
-                  onClick={() => {
-                    setLinkError(null);
-                    setLinkMode({ kind: 'spouse', unionType: 'partner' });
-                  }}
-                >
-                  Link Existing Partner
-                </button>
-              </>
+              <button
+                type="button"
+                className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-black uppercase tracking-[0.25em] text-slate-600 hover:bg-slate-100"
+                onClick={() => {
+                  setLinkError(null);
+                  setLinkMode({ kind: 'spouse', unionType: 'marriage' });
+                }}
+              >
+                Link existing person
+              </button>
             )}
           </div>
+          <p className="text-[10px] text-slate-400 ml-1">
+            New unions default to married; change to partners on the union card if needed.
+          </p>
         </div>
       )}
       {linkMode && treeId && (
@@ -1161,7 +1141,7 @@ const FamilyGroups: React.FC<FamilyGroupProps> = ({
           excludePersonIds={excludePersonIds}
           label={
             linkMode.kind === 'spouse'
-              ? `Link ${linkMode.unionType === 'partner' ? 'partner' : 'spouse'}`
+              ? 'Link spouse or partner'
               : 'Link child to this union'
           }
           onCancel={() => {
