@@ -4,6 +4,7 @@ import {
   indexParentChildLinks,
   inferParentPairsForUnion,
   inferParentRelationshipType,
+  isSpuriousCoparentParentLink,
   parentLinkReadsAsFather,
   shouldSkipCoparentChildLink,
 } from './parentChildLinks';
@@ -72,5 +73,24 @@ describe('parentChildLinks', () => {
     expect(shouldSkipCoparentChildLink([{ parentId: 'wilhelm', type: 'bio_father' }], 'hanne', 'F')).toBe(
       false
     );
+    expect(
+      shouldSkipCoparentChildLink(
+        [
+          { parentId: 'wilhelm', type: 'bio_father' },
+          { parentId: 'margaretha', type: 'bio_mother' },
+        ],
+        'maria',
+        'O'
+      )
+    ).toBe(true);
+    expect(isSpuriousCoparentParentLink(
+      [
+        { parentId: 'wilhelm', type: 'bio_father' },
+        { parentId: 'margaretha', type: 'bio_mother' },
+        { parentId: 'maria', type: 'child' },
+      ],
+      'maria',
+      'O'
+    )).toBe(true);
   });
 });

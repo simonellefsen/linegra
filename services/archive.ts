@@ -17,7 +17,7 @@ import {
   LANDING_BIRTHDAY_SCAN_LIMIT,
 } from '../lib/treePerformance';
 import { inferDefaultProbandId } from '../lib/gedcomFidelity';
-import { inferParentPairsForUnion, inferParentRelationshipType, shouldSkipCoparentChildLink } from '../lib/parentChildLinks';
+import { inferParentPairsForUnion, inferParentRelationshipType, isSpuriousCoparentParentLink, shouldSkipCoparentChildLink } from '../lib/parentChildLinks';
 import { inferSpouseDefaultGender } from '../lib/personGender';
 import { isK3DismissedForFocus, withK3DismissedForFocus } from '../lib/dnaK3Dismiss';
 import { normalizeNameMatchScore, scoreNameMatch } from '../lib/dnaNameMatch';
@@ -3815,17 +3815,33 @@ const linkSharedChildrenBetweenParents = async ({
 const pruneSpuriousCoparentChildLinksForPerson = async (treeId: string, personId: string) => {
   const childIds = await listChildIdsForParent(treeId, personId);
   const parentGender = await fetchPersonGender(personId);
-  const targetType = inferParentRelationshipType(parentGender);
-  if (targetType !== 'bio_father' && targetType !== 'bio_mother') return;
-
   for (const childId of childIds) {
     const links = await listParentLinksForChild(treeId, childId);
-    if (!shouldSkipCoparentChildLink(links, personId, parentGender)) continue;
+    if (!isSpuriousCoparentParentLink(links, personId, parentGender)) continue;
     const { error } = await supabase
       .from('relationships')
       .delete()
       .eq('tree_id', treeId)
       .eq('person_id', personId)
+      .eq('related_id', childId)
+      .in('type', [...PARENT_LINK_TYPES_FOR_CHILD]);
+    if (error) throw new Error(error.message);
+  }
+};
+
+const pruneSpuriousParentLinksForChild = async (treeId: string, childId: string) => {
+  const links = await listParentLinksForChild(treeId, childId);
+  const parentIds = [...new Set(links.map((link) => link.parentId))];
+  if (parentIds.length < 2) return;
+  const genders = await fetchPersonGenders(parentIds);
+  for (const parentId of parentIds) {
+    const parentGender = genders[parentId] ?? null;
+    if (!isSpuriousCoparentParentLink(links, parentId, parentGender)) continue;
+    const { error } = await supabase
+      .from('relationships')
+      .delete()
+      .eq('tree_id', treeId)
+      .eq('person_id', parentId)
       .eq('related_id', childId)
       .in('type', [...PARENT_LINK_TYPES_FOR_CHILD]);
     if (error) throw new Error(error.message);
@@ -3844,6 +3860,7 @@ export const syncSpouseChildLinksForPerson = async ({
 }): Promise<void> => {
   if (!isSupabaseConfigured()) return;
   await pruneSpuriousCoparentChildLinksForPerson(treeId, personId);
+  await pruneSpuriousParentLinksForChild(treeId, personId);
   const spouseIds = await listSpouseIdsForPerson(treeId, personId);
   for (const spouseId of spouseIds) {
     await linkSharedChildrenBetweenParents({ treeId, parentA: personId, parentB: spouseId, actor });

@@ -87,7 +87,20 @@ export const shouldSkipCoparentChildLink = (
   if (targetType === 'bio_mother') {
     return childHasTypedParentRole(existingLinks, 'bio_mother', parentId);
   }
-  return false;
+  const hasOtherMother = childHasTypedParentRole(existingLinks, 'bio_mother', parentId);
+  const hasOtherFather = childHasTypedParentRole(existingLinks, 'bio_father', parentId);
+  return hasOtherMother && hasOtherFather;
+};
+
+/** Parent→child link that should be removed (spouse-sync bleed across unions). */
+export const isSpuriousCoparentParentLink = (
+  links: ParentLinkRef[],
+  parentId: string,
+  parentGender: Person['gender'] | null
+): boolean => {
+  const mine = links.filter((link) => link.parentId === parentId);
+  if (!mine.length) return false;
+  return shouldSkipCoparentChildLink(links, parentId, parentGender);
 };
 
 /** Father–mother pairs that should share a spousal union when linked to the same child. */

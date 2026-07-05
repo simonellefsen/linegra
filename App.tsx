@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership, createStandalonePerson, resolvePublicPersonIdClient, resolvePublicTreeIdClient, syncSpouseChildLinksForTree } from './services/archive';
+import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership, createStandalonePerson, resolvePublicPersonIdClient, resolvePublicTreeIdClient } from './services/archive';
 import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, listMyPendingCollaboratorInvites, signOut, subscribeToAuthChanges } from './services/auth';
 import { buildPersonUrl, buildTreeUrl, canonicalizeLegacyPublicUrl, parsePublicRouteFromLocation } from './lib/publicRoutes';
 import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole, TreeLayoutType } from './types';
@@ -116,7 +116,6 @@ const App: React.FC = () => {
   const [pedigreeFocusId, setPedigreeFocusId] = useState<string | null>(null);
   const [pedigreeHasMore, setPedigreeHasMore] = useState({ ancestors: false, descendants: false });
   const graphLoadKeyRef = useRef<string | null>(null);
-  const spouseChildSyncTreeIdsRef = useRef(new Set<string>());
   type SearchFiltersState = { livingOnly: boolean; deceasedOnly: boolean; missingData: boolean; gender: 'all' | 'M' | 'F' };
   const createDefaultSearchFilters = useCallback((): SearchFiltersState => ({
     livingOnly: false,
@@ -215,17 +214,6 @@ const App: React.FC = () => {
       }
       setArchiveError(null);
       try {
-        if (canWriteActiveTree && currentUser && !spouseChildSyncTreeIdsRef.current.has(tree.id)) {
-          try {
-            await syncSpouseChildLinksForTree(tree.id, {
-              id: currentUser.id,
-              name: currentUser.name,
-            });
-            spouseChildSyncTreeIdsRef.current.add(tree.id);
-          } catch (syncErr) {
-            console.warn('Spouse-child link repair skipped', syncErr);
-          }
-        }
         const scope = await loadPedigreeScope(tree.id, focusId, ancestors, descendants);
         if (scope.focusPersonId && !focusId) {
           setPedigreeFocusId(scope.focusPersonId);
@@ -247,7 +235,7 @@ const App: React.FC = () => {
         }
       }
     },
-    [supabaseActive, canWriteActiveTree, currentUser]
+    [supabaseActive]
   );
 
   const handleEnsurePersonDetails = useCallback(
