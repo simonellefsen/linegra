@@ -1223,6 +1223,14 @@ useEffect(() => {
     graphLoadKeyRef.current = null;
   }, []);
 
+  const [dnaPanelFocusPersonId, setDnaPanelFocusPersonId] = useState<string | null>(null);
+
+  const handleOpenDnaPanelForPerson = useCallback((personId: string) => {
+    setDnaPanelFocusPersonId(personId);
+    setActiveTab('records');
+    setAdminSection('dna');
+  }, []);
+
   const handleNukeConfirm = useCallback(async () => {
     if (!supabaseActive) {
       setNukeError('Link a Supabase project before issuing a reset.');
@@ -1668,6 +1676,7 @@ useEffect(() => {
                               setAncestorDepth(DEFAULT_PEDIGREE_ANCESTOR_DEPTH);
                               setDescendantDepth(DEFAULT_PEDIGREE_DESCENDANT_DEPTH);
                             }}
+                            onDnaBadgeClick={showAdministratorTab ? handleOpenDnaPanelForPerson : undefined}
                           />
                         )}
                         {treeLayoutType === 'timeline' && (
@@ -1743,6 +1752,7 @@ useEffect(() => {
                             setAncestorDepth(DEFAULT_PEDIGREE_ANCESTOR_DEPTH);
                             setDescendantDepth(DEFAULT_PEDIGREE_DESCENDANT_DEPTH);
                           }}
+                          onDnaBadgeClick={showAdministratorTab ? handleOpenDnaPanelForPerson : undefined}
                         />
                         )}
                       </>
@@ -1838,6 +1848,7 @@ useEffect(() => {
                     actor={{ id: currentUser?.id, name: currentUser?.name }}
                     onOpenPerson={handleAdminOpenPerson}
                     onViewLineageInTree={handleViewLineageInTree}
+                    focusPersonId={dnaPanelFocusPersonId}
                   />
                   </ErrorBoundary>
                 )}

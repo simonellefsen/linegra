@@ -17,6 +17,15 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       Admin **AI Usage** auto-refreshes after test + manual Refresh; see `docs/AI_SETUP.md`
       for the full verification checklist (one in-app generation still worth a manual spot-check).
 
+## DNA analysis (roadmap K9 — new feature)
+
+- [ ] **K9 — Candidate-branch hypothesis for unplaced matches.** Join cM→generation-band
+      prediction + cluster exclusion + per-line DNA coverage gaps into a ranked "this match most
+      likely connects via ancestor couple X" suggestion with research to-dos. Pedigree UI: amber
+      coverage-gap halo (inverse of the DNA badges) + hypothesis mode highlighting candidate
+      branches. Motivating case: Tia Edelman (118.8 cM, no triangulation → uncovered
+      Frederik Sophus Valdemar Andersen / Olga Augusta Andersen line).
+
 ## DNA panel (screenshot review 2026-07-05 — roadmap K8)
 
 - [x] **K8a — BUG: "Name match (700%)".** Ranking score (1000/700/40–135) rendered as a percent;
@@ -33,7 +42,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       Dismiss/"not in my tree"; consider batch actions.
 - [x] **K8e — Lineage cards:** dedupe the double path pill; generation-breadcrumb formatting with
       bolded MRCA; "View in tree" action (`lib/dnaLineagePathLabel.ts`, `DnaLineagePathBreadcrumb`).
-- [ ] **K8f — Clusters/painter/badges:** MRCA-named clusters; name the unclustered matches;
+- [x] **K8f — Clusters/painter/badges:** MRCA-named clusters; name the unclustered matches;
       painter hover tooltips; tree-badge legend + click-through to DNA panel.
 
 ## Security

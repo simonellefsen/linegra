@@ -8,6 +8,8 @@ export interface PaintSegmentInput {
   matchLabel: string;
   /** Cluster index from K1 grouping, or null when the match is unclustered. */
   clusterIndex: number | null;
+  /** Total shared cM for the match (shown in hover tooltip). */
+  sharedCentimorgans?: number | null;
   segments: ClusterSegment[];
 }
 

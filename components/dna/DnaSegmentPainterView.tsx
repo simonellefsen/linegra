@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   buildChromosomePaintModel,
   paintStyleForCluster,
   type PaintSegmentInput,
+  type PaintedSegment,
 } from '../../lib/dnaSegmentPainter';
 
 interface DnaSegmentPainterViewProps {
@@ -10,6 +11,7 @@ interface DnaSegmentPainterViewProps {
   minCentimorgans?: number;
   onSelectMatch?: (matchId: string) => void;
   selectedMatchId?: string | null;
+  clusterLabelsByIndex?: Map<number, string>;
 }
 
 const formatBp = (value: number) => {
@@ -18,16 +20,25 @@ const formatBp = (value: number) => {
   return `${value} bp`;
 };
 
+const sharedCmByMatchId = (inputs: PaintSegmentInput[]) => {
+  const map = new Map<string, number | null>();
+  inputs.forEach((input) => map.set(input.matchId, input.sharedCentimorgans ?? null));
+  return map;
+};
+
 const DnaSegmentPainterView: React.FC<DnaSegmentPainterViewProps> = ({
   inputs,
   minCentimorgans = 0,
   onSelectMatch,
   selectedMatchId = null,
+  clusterLabelsByIndex,
 }) => {
+  const [hovered, setHovered] = useState<PaintedSegment | null>(null);
   const rows = useMemo(
     () => buildChromosomePaintModel(inputs, { minCentimorgans }),
     [inputs, minCentimorgans]
   );
+  const matchSharedCm = useMemo(() => sharedCmByMatchId(inputs), [inputs]);
 
   if (!rows.length) {
     return (
@@ -39,9 +50,27 @@ const DnaSegmentPainterView: React.FC<DnaSegmentPainterViewProps> = ({
 
   const laneHeight = 14;
   const laneGap = 4;
+  const hoveredSharedCm = hovered ? matchSharedCm.get(hovered.matchId) : null;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 relative">
+      {hovered && (
+        <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-sm backdrop-blur">
+          <p className="font-semibold text-slate-900">{hovered.matchLabel}</p>
+          <p>
+            Chr {hovered.chromosome} · {formatBp(hovered.start)}–{formatBp(hovered.end)} ·{' '}
+            <span className="font-semibold">{hovered.centimorgans.toFixed(1)} cM</span>
+          </p>
+          {hoveredSharedCm != null && (
+            <p className="text-slate-500">Match total · {hoveredSharedCm.toFixed(1)} cM shared</p>
+          )}
+          {hovered.clusterIndex !== null && (
+            <p className="text-slate-500">
+              {clusterLabelsByIndex?.get(hovered.clusterIndex) ?? `Cluster ${hovered.clusterIndex + 1}`}
+            </p>
+          )}
+        </div>
+      )}
       {rows.map((row) => {
         const trackHeight = row.laneCount * laneHeight + (row.laneCount - 1) * laneGap + 8;
         return (
@@ -54,7 +83,6 @@ const DnaSegmentPainterView: React.FC<DnaSegmentPainterViewProps> = ({
             <div
               className="relative flex-1 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
               style={{ minHeight: trackHeight }}
-              title={`Chr ${row.chromosome} · max ${formatBp(row.maxPosition)}`}
             >
               {row.segments.map((segment, index) => {
                 const style = paintStyleForCluster(segment.clusterIndex);
@@ -65,6 +93,8 @@ const DnaSegmentPainterView: React.FC<DnaSegmentPainterViewProps> = ({
                     key={`${segment.matchId}-${segment.chromosome}-${segment.start}-${index}`}
                     type="button"
                     onClick={() => onSelectMatch?.(segment.matchId)}
+                    onMouseEnter={() => setHovered(segment)}
+                    onMouseLeave={() => setHovered((current) => (current === segment ? null : current))}
                     className={`absolute rounded-sm border ${style.fill} ${style.border} ${style.hover} transition-colors ${
                       isSelected ? 'ring-2 ring-blue-500 ring-offset-1 z-10' : 'z-0'
                     }`}
@@ -74,9 +104,7 @@ const DnaSegmentPainterView: React.FC<DnaSegmentPainterViewProps> = ({
                       top,
                       height: laneHeight,
                     }}
-                    title={`${segment.matchLabel} · chr${segment.chromosome}:${formatBp(segment.start)}-${formatBp(segment.end)} · ${segment.centimorgans.toFixed(1)} cM${
-                      segment.clusterIndex !== null ? ` · cluster ${segment.clusterIndex + 1}` : ''
-                    }`}
+                    aria-label={`${segment.matchLabel}, ${segment.centimorgans.toFixed(1)} cM on chromosome ${segment.chromosome}`}
                   />
                 );
               })}
