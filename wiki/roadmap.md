@@ -252,6 +252,28 @@ that gates raw data.
   Policy: [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md).
 - **Sequencing:** K7 → K6 → K1 → K5 — **complete.**
 
+**K9. Candidate-branch hypothesis for unplaced matches ("where does Tia fit?") — proposed 2026-07-05.**
+The motivating case: Tia Edelman shares 118.8 cM / 6 segments with the tester (2nd–3rd cousin
+band) but triangulates with nothing — because she belongs to a branch with **no DNA coverage
+yet**. The pedigree badges already form a per-line coverage map; K9 combines the three signals the
+system already computes but never joins:
+1. **cM → MRCA generation band** (`dnaClassification` prediction: which ancestor generations are
+   plausible for this cM).
+2. **Cluster exclusion**: branches whose triangulated clusters the match does *not* overlap are
+   down-weighted (with an explicit unphased/sparse-segment caveat, per the K1 ICW caveat).
+3. **Coverage gaps**: ancestor couples in the plausible generation band with zero (or weak, e.g.
+   single sub-40 cM) DNA-backed descendants — exactly where an unplaceable close match most
+   likely attaches.
+Output, per unplaced match: a ranked list of **candidate ancestor couples** ("most likely via
+Frederik Sophus Valdemar Andersen & Olga Augusta Andersen — only uncovered couple in the 3C
+band"), each with a confidence rationale and a generated **research to-do** ("trace descendants
+of this couple; compare shared matches"), convertible to a `To-do` note (ties to O / Research
+panel). New suggestion kind `uncovered_branch` in
+[../lib/dnaMatchPlacement.ts](../lib/dnaMatchPlacement.ts); pure + unit-testable.
+UI: **(a)** an explicit *coverage-gap* indicator on the pedigree (amber halo on couples with no
+DNA-verified descendant line — the inverse of today's badges); **(b)** a "hypothesis mode" that
+highlights the candidate branches for a selected unknown match in the tree.
+
 **K8. DNA panel correctness + UX polish (screenshot review 2026-07-05):**
 - **K8a — BUG: name-match scores are ranking values rendered as percentages.** `scoreNameMatch`
   ([../services/archive.ts](../services/archive.ts)) returns 1000/700/40–135, but
@@ -275,7 +297,7 @@ that gates raw data.
 - **K8e — Lineage card polish.** The same resolved path renders twice (highlighted pill + plain
   pill) — dedupe; format paths as generation breadcrumbs with the **MRCA bolded** (arrow-chain
   prose is hard to scan); add "View in tree" to focus the pedigree on the path.
-- **K8f — Cluster / painter / badge affordances.** Name Leeds clusters by their MRCA branch when
+- **K8f — Cluster / painter / badge affordances — DONE 2026-07-05.** Name Leeds clusters by their MRCA branch when
   K2 knows it (not "Cluster 1"); list the *names* of unclustered matches; segment-painter hover
   tooltip with match + cM range; tree DNA badges need a legend/tooltip ("N matches · strongest
   cM") and click-through to the DNA panel with that person selected.

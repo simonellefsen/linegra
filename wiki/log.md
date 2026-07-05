@@ -15,7 +15,15 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
-## 2026-07-05 — K8e DNA lineage card polish
+## 2026-07-05 — K8f DNA cluster labels, painter tooltips, badge click-through
+
+**K8f:** Leeds clusters named from K2 MRCA (`lib/dnaClusterLabels.ts`); unclustered matches listed by
+name; segment painter sticky hover tooltip (segment + total cM); pedigree/fan DNA badges show
+match/cM tooltip and click through to Admin DNA panel (`DnaPersonBadge`).
+
+**Roadmap:** K9 candidate-branch hypothesis section added (diff agent).
+
+---
 
 **K8e:** Shared-match cards show a compact hop/MRCA summary pill; expanded panel renders a generation
 breadcrumb (MRCA bolded) instead of duplicating the full arrow chain; **View in tree** focuses the

@@ -4,6 +4,7 @@ import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
 import { buildFanLayout } from '../../lib/fanLayout';
 import { dnaSupportMatchIds } from '../../lib/dnaSupport';
 import { getAvatarForPerson } from '../../lib/avatar';
+import DnaPersonBadge from '../dna/DnaPersonBadge';
 import {
   ChevronDown,
   ChevronUp,
@@ -34,6 +35,7 @@ interface FanTreeProps {
   onDecreaseAncestors?: () => void;
   onIncreaseAncestors?: () => void;
   onResetDepths?: () => void;
+  onDnaBadgeClick?: (personId: string) => void;
 }
 
 const cardWidth = 160;
@@ -84,6 +86,7 @@ const FanTree: React.FC<FanTreeProps> = ({
   onDecreaseAncestors,
   onIncreaseAncestors,
   onResetDepths,
+  onDnaBadgeClick,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [minimapOpen, setMinimapOpen] = useState(false);
@@ -199,6 +202,7 @@ const FanTree: React.FC<FanTreeProps> = ({
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-white/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 shadow-sm backdrop-blur max-w-[72%]">
         <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-emerald-600" />DNA-backed</span>
+        <span className="flex items-center gap-1"><Dna className="w-3 h-3 text-emerald-700" />Badge · N matches · strongest cM</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-indigo-600" />Confirmed</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-[2px] w-4 rounded-full bg-indigo-300" />Lineage</span>
       </div>
@@ -293,17 +297,15 @@ const FanTree: React.FC<FanTreeProps> = ({
                   )}
                   <div className="flex h-full flex-col items-center text-center">
                     {node.person && dnaSupportCount > 0 && (
-                      <div className="absolute top-2 right-2 inline-flex flex-col items-center justify-center gap-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5">
-                        <span className="inline-flex items-center gap-1">
-                          <Dna className="w-3 h-3" />
-                          <span className="text-[9px] font-black leading-none">{dnaSupportCount}</span>
-                        </span>
-                        {dnaCm ? (
-                          <span className="text-[8px] font-bold leading-none opacity-80">
-                            {Math.round(dnaCm)}cM
-                          </span>
-                        ) : null}
-                      </div>
+                      <DnaPersonBadge
+                        matchCount={dnaSupportCount}
+                        strongestCm={dnaCm}
+                        onClick={
+                          onDnaBadgeClick && node.person
+                            ? () => onDnaBadgeClick(node.person!.id)
+                            : undefined
+                        }
+                      />
                     )}
                     <div
                       className={`w-12 h-12 rounded-xl overflow-hidden ${

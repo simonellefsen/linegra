@@ -20,6 +20,7 @@ import {
   type ParentalSideHint,
 } from '../lib/dnaParentalHints';
 import { suggestUnknownMatchPlacements } from '../lib/dnaMatchPlacement';
+import { buildClusterLabelByIndex, formatClusterHeading } from '../lib/dnaClusterLabels';
 import {
   createDnaMatchPlaceholderPerson,
   dismissUnlinkedDnaMatchForFocus,
@@ -50,6 +51,8 @@ interface AdminDnaPanelProps {
   actor?: { id?: string | null; name?: string | null };
   onOpenPerson?: (personId: string) => void | Promise<void>;
   onViewLineageInTree?: (personId: string) => void | Promise<void>;
+  /** When set (e.g. from pedigree DNA badge), selects this tester in the panel. */
+  focusPersonId?: string | null;
 }
 
 const formatVitals = (birthYear?: string | null, deathYear?: string | null) => {
@@ -78,10 +81,15 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   actor,
   onOpenPerson,
   onViewLineageInTree,
+  focusPersonId,
 }) => {
   const [candidates, setCandidates] = useState<DNAAutosomalCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<string>('');
+
+  useEffect(() => {
+    if (focusPersonId) setSelectedPersonId(focusPersonId);
+  }, [focusPersonId]);
   const [personSearch, setPersonSearch] = useState('');
   const [matches, setMatches] = useState<DNASharedMatchRecord[]>([]);
   const [unlinkedMatches, setUnlinkedMatches] = useState<UnlinkedDnaMatchRecord[]>([]);
@@ -203,6 +211,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
       matchId: match.id,
       matchLabel: match.counterpartPersonName,
       clusterIndex: clusterIndexByMatchId.get(match.id) ?? null,
+      sharedCentimorgans: match.sharedCM,
       segments: segmentsByMatchId.get(match.id) || [],
     }));
   }, [segmentBackedMatches, clusterIndexByMatchId, segmentsByMatchId]);
@@ -247,6 +256,11 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
       minSupportingMatches: 1,
     });
   }, [selectedPersonId, matches.length, mrcaMatchInputs, relationships, resolvePersonName, clusterGroups]);
+
+  const clusterLabelsByIndex = useMemo(
+    () => buildClusterLabelByIndex(clusterGroups.length, mrcaCandidates),
+    [clusterGroups.length, mrcaCandidates]
+  );
 
   const linkedMatchSegmentInputs = useMemo(
     () =>
@@ -1074,7 +1088,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                     <div className="flex items-center gap-2">
                       <Layers className="w-4 h-4 text-slate-600" />
                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
-                        Cluster {index + 1} · {group.length} matches
+                        {formatClusterHeading(index, group.length, clusterLabelsByIndex)}
                       </p>
                     </div>
                     {summary && (
@@ -1127,9 +1141,28 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
           )}
 
           {overlapSingletons.length > 0 && (
-            <p className="text-xs text-slate-500">
-              {overlapSingletons.length} match(es) with segment data did not overlap any other match at this threshold.
-            </p>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 space-y-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+                Unclustered · {overlapSingletons.length} match{overlapSingletons.length === 1 ? '' : 'es'}
+              </p>
+              <p className="text-xs text-slate-500">
+                Segment data present but no reciprocal overlap with other matches at this threshold.
+              </p>
+              <ul className="space-y-2">
+                {overlapSingletons.map((match) => (
+                  <li
+                    key={match.id}
+                    className="rounded-xl border border-white bg-white px-3 py-2 text-sm text-slate-800"
+                  >
+                    <span className="font-semibold">{match.counterpartPersonName}</span>
+                    <span className="text-slate-500"> · {formatCm(match.sharedCM)}</span>
+                    <span className="text-slate-400 text-xs block">
+                      {match.sharedSegmentsPreview?.length ?? 0} segment rows
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}
@@ -1176,7 +1209,9 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                   <div className="flex flex-wrap gap-2">
                     {candidate.clusterIndices.length > 0 && (
                       <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700">
-                        Clusters {candidate.clusterIndices.map((i) => i + 1).join(', ')}
+                        {candidate.clusterIndices
+                          .map((i) => clusterLabelsByIndex.get(i) ?? `Cluster ${i + 1}`)
+                          .join(' · ')}
                       </span>
                     )}
                     {candidate.pathConvergenceCount >= 2 && (
@@ -1215,17 +1250,21 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
             <div className="flex flex-wrap gap-2">
               {clusterGroups.map((group, index) => {
                 const tint = CLUSTER_TINTS[index % CLUSTER_TINTS.length];
+                const label = clusterLabelsByIndex.get(index) ?? `Cluster ${index + 1}`;
                 return (
                   <span
                     key={`legend-${index}`}
                     className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border ${tint}`}
                   >
-                    Cluster {index + 1} · {group.length}
+                    {label} · {group.length}
                   </span>
                 );
               })}
               {overlapSingletons.length > 0 && (
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border border-slate-200 bg-slate-100 text-slate-600">
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border border-slate-200 bg-slate-100 text-slate-600"
+                  title={overlapSingletons.map((match) => match.counterpartPersonName).join(', ')}
+                >
                   Unclustered · {overlapSingletons.length}
                 </span>
               )}
@@ -1236,6 +1275,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
             inputs={paintInputs}
             minCentimorgans={minClusterCm}
             selectedMatchId={selectedPaintMatchId}
+            clusterLabelsByIndex={clusterLabelsByIndex}
             onSelectMatch={(matchId) => {
               setSelectedPaintMatchId((current) => (current === matchId ? null : matchId));
               const counterpartId = matchById.get(matchId)?.counterpartPersonId;
@@ -1248,7 +1288,10 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
               Selected:{' '}
               <span className="font-semibold">{matchById.get(selectedPaintMatchId)?.counterpartPersonName}</span>
               {clusterIndexByMatchId.has(selectedPaintMatchId) && (
-                <> · cluster {clusterIndexByMatchId.get(selectedPaintMatchId)! + 1}</>
+                <>
+                  {' '}
+                  · {clusterLabelsByIndex.get(clusterIndexByMatchId.get(selectedPaintMatchId)!) ?? 'Cluster'}
+                </>
               )}
             </p>
           )}

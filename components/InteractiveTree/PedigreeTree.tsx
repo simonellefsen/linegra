@@ -3,6 +3,7 @@ import { Person, Relationship, RelationshipConfidence } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
 import { dnaSupportMatchIds } from '../../lib/dnaSupport';
 import { getAvatarForPerson } from '../../lib/avatar';
+import DnaPersonBadge from '../dna/DnaPersonBadge';
 import {
   ChevronDown,
   ChevronUp,
@@ -49,6 +50,8 @@ interface PedigreeTreeProps {
   onDecreaseDescendants?: () => void;
   onIncreaseDescendants?: () => void;
   onResetDepths?: () => void;
+  /** Opens the admin DNA panel focused on this person (K8f). */
+  onDnaBadgeClick?: (personId: string) => void;
 }
 
 const horizontalSpacing = 220;
@@ -119,6 +122,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   onDecreaseDescendants,
   onIncreaseDescendants,
   onResetDepths,
+  onDnaBadgeClick,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [minimapOpen, setMinimapOpen] = useState(false);
@@ -309,6 +313,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     <div data-tree-export-root className="relative w-full h-[70vh] bg-slate-50 border border-slate-200 rounded-[40px] overflow-hidden shadow-inner">
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-white/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 shadow-sm backdrop-blur max-w-[72%]">
         <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-emerald-600" />DNA-backed</span>
+        <span className="flex items-center gap-1"><Dna className="w-3 h-3 text-emerald-700" />Badge · N matches · strongest cM</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-[3px] w-4 rounded-full bg-indigo-600" />Confirmed</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-[2px] w-4 rounded-full bg-slate-400" />Assumed</span>
         <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-slate-300" />Speculative</span>
@@ -593,15 +598,15 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                 )}
                 <div className="flex h-full flex-col items-center text-center">
                   {node.person && dnaSupportCount > 0 && (
-                    <div className="absolute top-2 right-2 inline-flex flex-col items-center justify-center gap-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5">
-                      <span className="inline-flex items-center gap-1">
-                        <Dna className="w-3 h-3" />
-                        <span className="text-[9px] font-black leading-none">{dnaSupportCount}</span>
-                      </span>
-                      {dnaCm ? (
-                        <span className="text-[8px] font-bold leading-none opacity-80">{Math.round(dnaCm)}cM</span>
-                      ) : null}
-                    </div>
+                    <DnaPersonBadge
+                      matchCount={dnaSupportCount}
+                      strongestCm={dnaCm}
+                      onClick={
+                        onDnaBadgeClick && node.person
+                          ? () => onDnaBadgeClick(node.person!.id)
+                          : undefined
+                      }
+                    />
                   )}
                   {isFocus && focusPartnerCount > 1 && (
                     <div
