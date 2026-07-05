@@ -51,7 +51,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       import, FK-trust at load, unified list shows unlinked counterparts, re-link owner repair,
       batch import (one owner for multiple CSVs), married-name aliases in load-time name matching
       (`lib/dnaPersonNameVariants.ts`), inline link/create/dismiss on unlinked rows in admin match list.
-- [ ] **K12 — Kit-owner selector lists the whole tree (follow-up to K11).** DNATab kit-owner
+- [x] **K12 — Kit-owner selector lists the whole tree (follow-up to K11).** DNATab kit-owner
       dropdown offers every person (thousands of Hansdatters; auto-picked "Hans Jacob Hansen", a
       19th-c. ancestor). Scope to autosomal testers via `listAutosomalPeopleInTree`
       (`autosomal_test_count > 0` — currently Pernille + Helle); relabel "Kit owner" → "Autosomal

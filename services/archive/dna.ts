@@ -582,6 +582,18 @@ export const listAutosomalPeopleInTree = async (treeId: string): Promise<DNAAuto
     .sort((a, b) => a.name.localeCompare(b.name));
 };
 
+/** Name rows for people with at least one Autosomal test — used for kit-owner / tester pickers. */
+export const fetchAutosomalTesterNameRows = async (treeId: string): Promise<NameLookupRow[]> => {
+  const testers = await listAutosomalPeopleInTree(treeId);
+  const ids = testers.map((row) => row.personId).filter(Boolean);
+  if (!ids.length) return [];
+  const rows = await fetchPersonSummaryRowsByIds(
+    ids,
+    'id, first_name, last_name, maiden_name, metadata'
+  );
+  return rows.map((row: any) => mapDbRowToNameLookup(row));
+};
+
 export const listSharedMatchesForAutosomalPerson = async (
   treeId: string,
   focusPersonId: string

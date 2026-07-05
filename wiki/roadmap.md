@@ -303,7 +303,7 @@ compounding causes in [../services/archive/dna.ts](../services/archive/dna.ts):
 > Sequencing: ship owner-selection + FK-trust first (fixes new + repaired imports), then the
 > unified linked/unlinked match list (a) and alias plumbing (b2).
 
-**K12. Scope the kit-owner selector to Autosomal Testers (follow-up to K11, found 2026-07-05).**
+**K12. Scope the kit-owner selector to Autosomal Testers — DONE 2026-07-05 (escape hatch deferred).**
 K11 shipped the owner selector, but it lists **every person in the tree** — on Kenneth Russell
 Hansen's profile the dropdown offers thousands of Hansdatters and had auto-picked **Hans Jacob
 Hansen**, a 19th-century ancestor who could never own a DNA kit. A Shared-Autosomal match list

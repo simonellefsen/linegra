@@ -29,6 +29,7 @@ interface SharedSegmentImportModalProps {
   preview: DNASharedSegmentRowPreview[];
   batchSummaries?: SharedSegmentBatchSummary[];
   treePeople: SharedImportNameRow[];
+  autosomalTesters: SharedImportNameRow[];
   defaultOwnerPersonId?: string | null;
   loadingPeople?: boolean;
   lockOwnerPersonId?: string | null;
@@ -41,6 +42,7 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
   summary,
   preview,
   treePeople,
+  autosomalTesters,
   defaultOwnerPersonId,
   lockOwnerPersonId,
   loadingPeople = false,
@@ -50,8 +52,8 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
 }) => {
   const isBatch = !!batchSummaries?.length;
   const suggestedOwnerId = useMemo(
-    () => suggestKitOwnerPersonId(summary, treePeople, defaultOwnerPersonId),
-    [summary, treePeople, defaultOwnerPersonId]
+    () => suggestKitOwnerPersonId(summary, autosomalTesters, defaultOwnerPersonId),
+    [summary, autosomalTesters, defaultOwnerPersonId]
   );
   const [ownerPersonId, setOwnerPersonId] = useState<string>('');
   const [counterpartPersonId, setCounterpartPersonId] = useState<string>('');
@@ -108,7 +110,9 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
               Shared segment import
             </p>
             <h3 className="text-lg font-serif font-bold text-slate-900 mt-1">
-              {isBatch ? `Confirm kit owner (${batchSummaries!.length} files)` : 'Confirm kit owner'}
+              {isBatch
+                ? `Confirm autosomal tester (${batchSummaries!.length} files)`
+                : 'Confirm autosomal tester'}
             </h3>
             <p className="text-sm text-slate-500 mt-1 truncate" title={summary.fileName}>
               {summary.fileName}
@@ -134,7 +138,7 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
             <p className="text-slate-600">
               {isBatch ? (
                 <>
-                  {batchSummaries!.length} shared-segment files will attach to the same kit owner.
+                  {batchSummaries!.length} shared-segment files will attach to the same autosomal tester.
                 </>
               ) : (
                 <>
@@ -157,12 +161,18 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
 
           <label className="block space-y-2">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              Kit owner (required)
+              Autosomal tester (required)
             </span>
             {lockedOwnerId ? (
               <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-semibold text-slate-800">
-                {treePeople.find((person) => person.id === lockedOwnerId)
-                  ? [treePeople.find((person) => person.id === lockedOwnerId)?.first_name, treePeople.find((person) => person.id === lockedOwnerId)?.last_name]
+                {autosomalTesters.find((person) => person.id === lockedOwnerId) ||
+                treePeople.find((person) => person.id === lockedOwnerId)
+                  ? [
+                      (autosomalTesters.find((person) => person.id === lockedOwnerId) ||
+                        treePeople.find((person) => person.id === lockedOwnerId))?.first_name,
+                      (autosomalTesters.find((person) => person.id === lockedOwnerId) ||
+                        treePeople.find((person) => person.id === lockedOwnerId))?.last_name,
+                    ]
                       .filter(Boolean)
                       .join(' ')
                   : 'Current profile'}
@@ -170,7 +180,7 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
             ) : loadingPeople ? (
               <div className="flex items-center gap-2 text-slate-400">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Loading tree people…
+                Loading autosomal testers…
               </div>
             ) : (
               <select
@@ -178,8 +188,8 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
                 onChange={(event) => setOwnerPersonId(event.target.value)}
                 className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-slate-800"
               >
-                <option value="">Select kit owner…</option>
-                {treePeople.map((person) => (
+                <option value="">Select autosomal tester…</option>
+                {autosomalTesters.map((person) => (
                   <option key={person.id} value={person.id}>
                     {[person.first_name, person.last_name].filter(Boolean).join(' ')}
                   </option>
@@ -187,8 +197,8 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
               </select>
             )}
             <p className="text-xs text-slate-500">
-              The person whose autosomal test produced this comparison list. Stored as the test owner
-              and used instead of guessing from CSV names.
+              The person whose autosomal test produced this comparison list. Only registered autosomal
+              testers can own a shared-segment import.
             </p>
           </label>
 
@@ -223,7 +233,7 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
               />
               <span className="text-slate-700">
                 Save <span className="font-semibold">{csvOwnerName}</span> as a married-name alias on
-                the kit owner (helps future CSV / GEDCOM name matching).
+                the autosomal tester (helps future CSV / GEDCOM name matching).
               </span>
             </label>
           )}
