@@ -14,6 +14,7 @@ describe('withVercelBypassQuery', () => {
   });
 
   it('returns the path unchanged without a bypass secret', () => {
+    vi.stubEnv('VERCEL_AUTOMATION_BYPASS_SECRET', '');
     expect(withVercelBypassQuery('/tree/foo')).toBe('/tree/foo');
   });
 });

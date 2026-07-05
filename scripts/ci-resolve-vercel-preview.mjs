@@ -59,6 +59,16 @@ const listDeployments = async () => {
   return ghApi(`repos/${repository}/deployments?ref=${encodeURIComponent(deployRef)}&per_page=20`);
 };
 
+const vercelCommitFailed = async () => {
+  const statuses = await ghApi(`repos/${repository}/commits/${sha}/statuses?per_page=10`);
+  return statuses.some(
+    (status) =>
+      typeof status.context === 'string' &&
+      status.context.toLowerCase().includes('vercel') &&
+      status.state === 'failure'
+  );
+};
+
 const resolvePreviewUrl = async () => {
   const deployments = await listDeployments();
   const candidates = deployments.filter((dep) => matchesDeployEnv(dep.environment));
@@ -94,6 +104,12 @@ while (Date.now() < deadline) {
     await writeOutput(url);
     process.exit(0);
   } else {
+    if (await vercelCommitFailed()) {
+      console.error(
+        `[vercel-preview] Vercel deployment failed for ${sha.slice(0, 7)} — fix the Vercel build before e2e-smoke can run.`
+      );
+      process.exit(1);
+    }
     console.log(
       `[vercel-preview] No successful ${deployEnv} deployment for ${sha.slice(0, 7)} yet${
         deployRef ? ` (ref ${deployRef})` : ''
