@@ -20,8 +20,10 @@ import SharedSegmentImportModal from '../dna/SharedSegmentImportModal';
 import HaplogroupMigrationCard from '../dna/HaplogroupMigrationCard';
 import { purgeDnaRawData } from '../../services/archive';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase';
+import { mapDbRowToNameLookup } from '../../lib/dnaPersonNameVariants';
 import type { DNASharedSegmentRowPreview, DNASharedSegmentSummary } from '../../types';
 import type { SharedImportNameRow } from '../../lib/dnaSharedImportOwner';
+import type { SharedSegmentImportConfirmPayload } from '../dna/SharedSegmentImportModal';
 
 interface DNATabProps {
   personId: string;
@@ -110,7 +112,7 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importTargetId, setImportTargetId] = useState<string | null>(null);
-  const [importMode, setImportMode] = useState<'autosomal_raw' | 'shared_segments' | null>(null);
+  const [importMode, setImportMode] = useState<'autosomal_raw' | 'shared_segments' | 'shared_segments_batch' | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [pendingAutosomalImport, setPendingAutosomalImport] = useState<{
     testId: string;
@@ -126,6 +128,13 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
     summary: DNASharedSegmentSummary;
     preview: DNASharedSegmentRowPreview[];
   } | null>(null);
+  const [pendingSharedBatch, setPendingSharedBatch] = useState<
+    Array<{
+      testId: string;
+      summary: DNASharedSegmentSummary;
+      preview: DNASharedSegmentRowPreview[];
+    }>
+  | null>(null);
 
   useEffect(() => {
     if (!treeId || !isSupabaseConfigured()) {
@@ -137,14 +146,14 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
     void (async () => {
       const { data, error } = await supabase
         .from('persons')
-        .select('id, first_name, last_name, maiden_name')
+        .select('id, first_name, last_name, maiden_name, metadata')
         .eq('tree_id', treeId)
         .order('last_name');
       if (cancelled) return;
       if (error) {
         setTreePeople([]);
       } else {
-        setTreePeople((data || []) as SharedImportNameRow[]);
+        setTreePeople(((data || []) as any[]).map((row) => mapDbRowToNameLookup(row)));
       }
       setLoadingTreePeople(false);
     })();
@@ -170,7 +179,7 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
     return () => window.removeEventListener('linegra:dna-lineage-resolved', handleResolved);
   }, [onUpdateTest]);
 
-  const handleOpenImport = (testId: string, mode: 'autosomal_raw' | 'shared_segments') => {
+  const handleOpenImport = (testId: string, mode: 'autosomal_raw' | 'shared_segments' | 'shared_segments_batch') => {
     setImportError(null);
     setImportTargetId(testId);
     setImportMode(mode);
@@ -182,20 +191,47 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
     handleOpenImport(newTestId, 'shared_segments');
   };
 
+  const handleAddSharedMatchBatch = () => {
+    setImportError(null);
+    setImportMode('shared_segments_batch');
+    setImportTargetId('batch');
+    fileInputRef.current?.click();
+  };
+
   const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []);
     const targetId = importTargetId;
     const mode = importMode;
     e.target.value = '';
-    if (!file || !targetId || !mode) return;
+    if (!files.length || !targetId || !mode) return;
     try {
-      const text = await file.text();
       if (mode === 'autosomal_raw') {
+        const file = files[0];
+        if (!file) return;
+        const text = await file.text();
         parseAutosomalCsv(text, file.name);
         setPendingAutosomalImport({ testId: targetId, text, fileName: file.name });
         setConsentOpen(true);
         return;
       }
+      if (mode === 'shared_segments_batch') {
+        const parsed: Array<{
+          testId: string;
+          summary: DNASharedSegmentSummary;
+          preview: DNASharedSegmentRowPreview[];
+        }> = [];
+        for (const file of files) {
+          const text = await file.text();
+          const { summary, preview } = parseSharedSegmentsCsv(text, file.name);
+          parsed.push({ testId: onAddTest({ type: 'Shared Autosomal' }), summary, preview });
+        }
+        if (!parsed.length) return;
+        setPendingSharedBatch(parsed);
+        return;
+      }
+      const file = files[0];
+      if (!file) return;
+      const text = await file.text();
       const { summary, preview } = parseSharedSegmentsCsv(text, file.name);
       setPendingSharedImport({ testId: targetId, summary, preview });
     } catch (err) {
@@ -278,26 +314,37 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
 
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-  const finalizeSharedImport = (payload: {
-    ownerPersonId: string;
-    counterpartPersonId?: string | null;
-    saveMarriedNameAlias?: boolean;
-    marriedNameAlias?: string;
-  }) => {
-    if (!pendingSharedImport) return;
-    const { testId, summary, preview } = pendingSharedImport;
-    onUpdateTest(testId, {
-      type: 'Shared Autosomal',
-      sharedPersonId: payload.ownerPersonId,
-      sharedMatchName: summary.matchName,
-      sharedMatchPersonId: payload.counterpartPersonId || undefined,
-      sharedSegmentSummary: summary,
-      sharedSegmentsPreview: preview,
+  const applySharedImport = (
+    items: Array<{ testId: string; summary: DNASharedSegmentSummary; preview: DNASharedSegmentRowPreview[] }>,
+    payload: SharedSegmentImportConfirmPayload
+  ) => {
+    items.forEach(({ testId, summary, preview }) => {
+      onUpdateTest(testId, {
+        type: 'Shared Autosomal',
+        sharedPersonId: payload.ownerPersonId,
+        sharedMatchName: summary.matchName,
+        sharedMatchPersonId: payload.counterpartPersonId || undefined,
+        sharedSegmentSummary: summary,
+        sharedSegmentsPreview: preview,
+      });
     });
     if (payload.saveMarriedNameAlias && payload.marriedNameAlias && onAddMarriedNameAlias) {
       onAddMarriedNameAlias(payload.marriedNameAlias);
     }
+  };
+
+  const finalizeSharedImport = (payload: SharedSegmentImportConfirmPayload) => {
+    if (!pendingSharedImport) return;
+    applySharedImport([pendingSharedImport], payload);
     setPendingSharedImport(null);
+    setImportTargetId(null);
+    setImportMode(null);
+  };
+
+  const finalizeSharedBatchImport = (payload: SharedSegmentImportConfirmPayload) => {
+    if (!pendingSharedBatch?.length) return;
+    applySharedImport(pendingSharedBatch, payload);
+    setPendingSharedBatch(null);
     setImportTargetId(null);
     setImportMode(null);
   };
@@ -333,10 +380,34 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
           onConfirm={finalizeSharedImport}
         />
       )}
+      {pendingSharedBatch && pendingSharedBatch.length > 0 && (
+        <SharedSegmentImportModal
+          open
+          summary={pendingSharedBatch[0]!.summary}
+          preview={pendingSharedBatch[0]!.preview}
+          batchSummaries={pendingSharedBatch.map((item) => ({
+            fileName: item.summary.fileName,
+            matchName: item.summary.matchName,
+            segmentCount: item.summary.segmentCount,
+            totalCentimorgans: item.summary.totalCentimorgans,
+          }))}
+          treePeople={treePeople}
+          defaultOwnerPersonId={personId}
+          lockOwnerPersonId={personId}
+          loadingPeople={loadingTreePeople}
+          onClose={() => {
+            setPendingSharedBatch(null);
+            setImportTargetId(null);
+            setImportMode(null);
+          }}
+          onConfirm={finalizeSharedBatchImport}
+        />
+      )}
       <input
         ref={fileInputRef}
         type="file"
         accept=".csv,text/csv"
+        multiple={importMode === 'shared_segments_batch'}
         className="hidden"
         onChange={handleImportCsv}
       />
@@ -514,14 +585,24 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
             </div>
           ))}
           {canAccessDNA && (
-            <button
-              type="button"
-              onClick={handleAddSharedMatch}
-              className="w-full px-6 py-4 rounded-[32px] border-2 border-dashed border-slate-300 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center justify-center gap-2 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-colors"
-            >
-              <Upload className="w-4 h-4" />
-              Add shared match
-            </button>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={handleAddSharedMatch}
+                className="w-full px-6 py-4 rounded-[32px] border-2 border-dashed border-slate-300 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center justify-center gap-2 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                Add shared match
+              </button>
+              <button
+                type="button"
+                onClick={handleAddSharedMatchBatch}
+                className="w-full px-6 py-4 rounded-[32px] border-2 border-dashed border-slate-300 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center justify-center gap-2 hover:border-violet-400 hover:text-violet-600 hover:bg-violet-50/50 transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                Import multiple CSVs
+              </button>
+            </div>
           )}
           {dnaTests.length === 0 && <p className="text-center py-20 text-xs text-slate-400 italic">No genetic records logged in this archive.</p>}
         </div>

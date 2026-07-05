@@ -12,6 +12,10 @@ import { parseMatchDisplayName } from '../../lib/dnaMatchPlacement';
 import { isK3DismissedForFocus, withK3DismissedForFocus } from '../../lib/dnaK3Dismiss';
 import { normalizeNameMatchScore, scoreNameMatch } from '../../lib/dnaNameMatch';
 import {
+  bestPersonNameMatchScore,
+  mapDbRowToNameLookup,
+} from '../../lib/dnaPersonNameVariants';
+import {
   inferCounterpartDisplayName,
   sharedTestAppliesToFocusPerson,
 } from '../../lib/dnaSharedImportOwner';
@@ -34,6 +38,13 @@ export interface NameLookupRow {
   first_name: string;
   last_name: string | null;
   maiden_name: string | null;
+  alternate_names?: Array<{
+    type?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+  }>;
 }
 
 interface RelationshipLookupRow {
@@ -85,18 +96,10 @@ export const resolvePersonIdByName = (
 
   const ranked = candidates
     .filter((candidate) => !(excludedPersonId && candidate.id === excludedPersonId))
-    .map((candidate) => {
-      const displayName = `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim();
-      const maidenName = candidate.maiden_name?.trim()
-        ? `${candidate.first_name || ''} ${candidate.maiden_name}`.trim()
-        : '';
-      const scores = [scoreNameMatch(input, displayName)];
-      if (maidenName) scores.push(scoreNameMatch(input, maidenName));
-      return {
-        id: candidate.id,
-        score: Math.max(...scores),
-      };
-    })
+    .map((candidate) => ({
+      id: candidate.id,
+      score: bestPersonNameMatchScore(input, candidate),
+    }))
     .sort((a, b) => b.score - a.score);
 
   const best = ranked[0];
@@ -118,15 +121,10 @@ const findBestNameMatch = (
     .filter((candidate) => !(excludedPersonId && candidate.id === excludedPersonId))
     .map((candidate) => {
       const displayName = `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim();
-      const maidenName = candidate.maiden_name?.trim()
-        ? `${candidate.first_name || ''} ${candidate.maiden_name}`.trim()
-        : '';
-      const scores = [scoreNameMatch(input, displayName)];
-      if (maidenName) scores.push(scoreNameMatch(input, maidenName));
       return {
         id: candidate.id,
         displayName,
-        score: Math.max(...scores),
+        score: bestPersonNameMatchScore(input, candidate),
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -478,13 +476,11 @@ const resolvePathRelationships = async (
 ): Promise<RelationshipLookupRow[]> => options?.pathRelationships ?? fetchDnaPathRelationships(treeId);
 
 export const fetchPersonNameRows = async (personIds: string[]): Promise<NameLookupRow[]> => {
-  const rows = await fetchPersonSummaryRowsByIds(personIds, 'id, first_name, last_name, maiden_name');
-  return rows.map((row: any) => ({
-    id: row.id,
-    first_name: row.first_name || '',
-    last_name: row.last_name || '',
-    maiden_name: row.maiden_name || null,
-  }));
+  const rows = await fetchPersonSummaryRowsByIds(
+    personIds,
+    'id, first_name, last_name, maiden_name, metadata'
+  );
+  return rows.map((row: any) => mapDbRowToNameLookup(row));
 };
 
 const PERSON_SUMMARY_SELECT =
@@ -520,14 +516,16 @@ export const buildDnaMatchPayload = async (targetPersonId: string, dnaTests: DNA
   const [peopleResponse, typedRows] = await Promise.all([
     supabase
       .from('persons')
-      .select('id, first_name, last_name, maiden_name')
+      .select('id, first_name, last_name, maiden_name, metadata')
       .eq('tree_id', personRow.tree_id),
     fetchDnaPathRelationships(personRow.tree_id)
   ]);
 
   if (peopleResponse.error) throw new Error(peopleResponse.error.message);
 
-  const nameRows = (peopleResponse.data || []) as NameLookupRow[];
+  const nameRows: NameLookupRow[] = ((peopleResponse.data || []) as any[]).map((row) =>
+    mapDbRowToNameLookup(row)
+  );
   const relationshipRows = typedRows;
 
   const payloadItems: DnaMatchPayloadItem[] = [];
@@ -627,10 +625,10 @@ export const listSharedMatchesForAutosomalPerson = async (
   if (focusError) throw new Error(focusError.message);
   if (!focusRow) return [];
 
-  const personById = new Map<string, any>([[focusPersonId, focusRow]]);
   const focusFullName = buildFullName(focusRow.first_name, focusRow.last_name);
 
-  const [typedRelationships, matchResponse, sharedTestsResponse, familyKitsResponse] = await Promise.all([
+  const [typedRelationships, matchResponse, sharedTestsResponse, familyKitsResponse, treePeopleResponse] =
+    await Promise.all([
     fetchDnaPathRelationships(treeId),
     supabase
       .from('dna_matches')
@@ -645,42 +643,22 @@ export const listSharedMatchesForAutosomalPerson = async (
       target_tree_id: treeId,
       focus_person_id: focusPersonId,
     }),
+    supabase
+      .from('persons')
+      .select('id, first_name, last_name, maiden_name, metadata')
+      .eq('tree_id', treeId),
   ]);
   if (matchResponse.error) throw new Error(matchResponse.error.message);
   if (sharedTestsResponse.error) throw new Error(sharedTestsResponse.error.message);
   if (familyKitsResponse.error) throw new Error(familyKitsResponse.error.message);
+  if (treePeopleResponse.error) throw new Error(treePeopleResponse.error.message);
   const matchRows = matchResponse.data ?? [];
   const sharedTests: any[] = parseRpcJsonPage(sharedTestsResponse.data);
   const familyKits: any[] = parseRpcJsonPage(familyKitsResponse.data);
-
-  const neededPersonIds = new Set<string>([focusPersonId]);
-  (matchRows || []).forEach((row: any) => {
-    if (row.person_id) neededPersonIds.add(row.person_id);
-    if (row.matched_person_id) neededPersonIds.add(row.matched_person_id);
-  });
-  sharedTests.forEach((testRow) => {
-    const ownerPersonId = readSharedTestOwnerId(testRow);
-    if (ownerPersonId) neededPersonIds.add(ownerPersonId);
-    if (typeof testRow.counterpart_person_id === 'string') neededPersonIds.add(testRow.counterpart_person_id);
-    if (typeof testRow.shared_person_id === 'string') neededPersonIds.add(testRow.shared_person_id);
-    if (typeof testRow.shared_match_person_id === 'string') neededPersonIds.add(testRow.shared_match_person_id);
-  });
-  familyKits.forEach((kitRow) => {
-    if (typeof kitRow.owner_person_id === 'string') neededPersonIds.add(kitRow.owner_person_id);
-  });
-
-  const missingPersonIds = Array.from(neededPersonIds).filter((id) => !personById.has(id));
-  if (missingPersonIds.length) {
-    const nameRows = await fetchPersonNameRows(missingPersonIds);
-    nameRows.forEach((row) => personById.set(row.id, row));
-  }
-
-  const nameRows: NameLookupRow[] = Array.from(personById.values()).map((row) => ({
-    id: row.id,
-    first_name: row.first_name || '',
-    last_name: row.last_name || '',
-    maiden_name: row.maiden_name || null,
-  }));
+  const nameRows: NameLookupRow[] = ((treePeopleResponse.data || []) as any[]).map((row) =>
+    mapDbRowToNameLookup(row)
+  );
+  const personById = new Map<string, NameLookupRow>(nameRows.map((row) => [row.id, row]));
 
   const results: DNASharedMatchRecord[] = [];
   const existingTestIds = new Set<string>();
@@ -863,6 +841,9 @@ export const listSharedMatchesForAutosomalPerson = async (
       inferCounterpartDisplayName(focusPersonId, ownerPersonId, summary, focusFullName) ||
       summary.matchName ||
       'Unknown';
+    const nameSuggestion = !counterpartPersonId
+      ? findBestNameMatch(counterpartPersonName, nameRows, focusPersonId)
+      : null;
 
     results.push({
       id: `test:${testId}`,
@@ -873,6 +854,9 @@ export const listSharedMatchesForAutosomalPerson = async (
       counterpartPersonId,
       counterpartPersonName,
       isCounterpartLinked: !!counterpartPersonId,
+      suggestedNameMatchPersonId: nameSuggestion?.id,
+      suggestedNameMatchPersonName: nameSuggestion?.displayName,
+      suggestedNameMatchScore: nameSuggestion?.score,
       sharedCM: summary.totalCentimorgans,
       segments: summary.segmentCount,
       longestSegment: summary.largestSegmentCentimorgans,
@@ -984,7 +968,7 @@ export const listUnlinkedSharedMatchesForAutosomalPerson = async (
 
   const focusFullName = buildFullName(focusRow.first_name, focusRow.last_name);
   const [nameRowsResponse, sharedTestsResponse] = await Promise.all([
-    supabase.from('persons').select('id, first_name, last_name, maiden_name').eq('tree_id', treeId),
+    supabase.from('persons').select('id, first_name, last_name, maiden_name, metadata').eq('tree_id', treeId),
     supabase.rpc('list_focus_shared_autosomal_tests', {
       target_tree_id: treeId,
       focus_person_id: focusPersonId,
@@ -993,7 +977,7 @@ export const listUnlinkedSharedMatchesForAutosomalPerson = async (
   if (nameRowsResponse.error) throw new Error(nameRowsResponse.error.message);
   if (sharedTestsResponse.error) throw new Error(sharedTestsResponse.error.message);
 
-  const nameRows = (nameRowsResponse.data || []) as NameLookupRow[];
+  const nameRows = ((nameRowsResponse.data || []) as any[]).map((row) => mapDbRowToNameLookup(row));
   const sharedTests: any[] = parseRpcJsonPage(sharedTestsResponse.data);
   const unlinked: UnlinkedDnaMatchRecord[] = [];
   const seenTestIds = new Set<string>();

@@ -46,11 +46,11 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       or cousin never appears on the DNA panel. Enumerate all in-tree autosomal kits and label each
       via `relationshipCalculator.computeRelationship` (grandparent / 1C1R + MRCA + expected cM
       range); flag K6 raw-kit comparison when both have SNP data. **High priority.**
-- [ ] **K11 — BUG: shared matches drop unless counterpart is a tree person + married/maiden name
-      mismatch.** Only Ulla shows for Helle though ~7 CSVs imported. **In progress (slice 1):**
-      owner confirmation at shared CSV import, FK-trust at load, unified list shows unlinked
-      counterparts, re-link owner repair in admin K3. Remaining: batch import owner-once, married
-      alias in name matching at load.
+- [x] **K11 — BUG: shared matches drop unless counterpart is a tree person + married/maiden name
+      mismatch.** Only Ulla shows for Helle though ~7 CSVs imported. Owner confirmation at shared CSV
+      import, FK-trust at load, unified list shows unlinked counterparts, re-link owner repair,
+      batch import (one owner for multiple CSVs), married-name aliases in load-time name matching
+      (`lib/dnaPersonNameVariants.ts`), inline link/create/dismiss on unlinked rows in admin match list.
 - [x] **K9 — Candidate-branch hypothesis for unplaced matches.** Join cM→generation-band
       prediction + cluster exclusion + per-line DNA coverage gaps into a ranked "this match most
       likely connects via ancestor couple X" suggestion with research to-dos. Pedigree UI: amber

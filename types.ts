@@ -157,6 +157,9 @@ export interface DNASharedMatchRecord {
   counterpartPersonId: string | null;
   counterpartPersonName: string;
   isCounterpartLinked?: boolean;
+  suggestedNameMatchPersonId?: string;
+  suggestedNameMatchPersonName?: string;
+  suggestedNameMatchScore?: number;
   sharedCM: number | null;
   segments: number | null;
   longestSegment: number | null;

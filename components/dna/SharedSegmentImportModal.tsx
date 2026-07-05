@@ -16,10 +16,18 @@ export interface SharedSegmentImportConfirmPayload {
   marriedNameAlias?: string;
 }
 
+export interface SharedSegmentBatchSummary {
+  fileName: string;
+  matchName: string;
+  segmentCount: number;
+  totalCentimorgans: number;
+}
+
 interface SharedSegmentImportModalProps {
   open: boolean;
   summary: DNASharedSegmentSummary;
   preview: DNASharedSegmentRowPreview[];
+  batchSummaries?: SharedSegmentBatchSummary[];
   treePeople: SharedImportNameRow[];
   defaultOwnerPersonId?: string | null;
   loadingPeople?: boolean;
@@ -36,9 +44,11 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
   defaultOwnerPersonId,
   lockOwnerPersonId,
   loadingPeople = false,
+  batchSummaries,
   onClose,
   onConfirm,
 }) => {
+  const isBatch = !!batchSummaries?.length;
   const suggestedOwnerId = useMemo(
     () => suggestKitOwnerPersonId(summary, treePeople, defaultOwnerPersonId),
     [summary, treePeople, defaultOwnerPersonId]
@@ -97,7 +107,9 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
             <p className="text-[10px] font-black uppercase tracking-[0.25em] text-violet-500">
               Shared segment import
             </p>
-            <h3 className="text-lg font-serif font-bold text-slate-900 mt-1">Confirm kit owner</h3>
+            <h3 className="text-lg font-serif font-bold text-slate-900 mt-1">
+              {isBatch ? `Confirm kit owner (${batchSummaries!.length} files)` : 'Confirm kit owner'}
+            </h3>
             <p className="text-sm text-slate-500 mt-1 truncate" title={summary.fileName}>
               {summary.fileName}
             </p>
@@ -120,11 +132,27 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
               <span className="font-semibold text-slate-800">{summary.matchName}</span>
             </p>
             <p className="text-slate-600">
-              {summary.segmentCount} segments · {summary.totalCentimorgans.toFixed(1)} cM
+              {isBatch ? (
+                <>
+                  {batchSummaries!.length} shared-segment files will attach to the same kit owner.
+                </>
+              ) : (
+                <>
+                  {summary.segmentCount} segments · {summary.totalCentimorgans.toFixed(1)} cM
+                </>
+              )}
             </p>
-            {preview.length > 0 && (
+            {isBatch ? (
+              <ul className="text-xs text-slate-500 space-y-1 max-h-32 overflow-y-auto">
+                {batchSummaries!.map((file) => (
+                  <li key={file.fileName} className="truncate">
+                    {file.fileName} · {file.matchName} · {file.totalCentimorgans.toFixed(1)} cM
+                  </li>
+                ))}
+              </ul>
+            ) : preview.length > 0 ? (
               <p className="text-xs text-slate-400">Preview loaded ({preview.length} rows).</p>
-            )}
+            ) : null}
           </div>
 
           <label className="block space-y-2">
@@ -216,7 +244,7 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
             className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
           >
             <Upload className="w-4 h-4" />
-            Import match
+            Import {isBatch ? `${batchSummaries!.length} matches` : 'match'}
           </button>
         </div>
       </div>

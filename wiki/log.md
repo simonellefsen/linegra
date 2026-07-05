@@ -15,6 +15,15 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — K11 slice 2: alias-aware matching, batch import, inline placement
+
+**K11 (complete):** Load-time name matching now considers maiden names and `metadata.alternateNames`
+(`lib/dnaPersonNameVariants.ts`); shared CSV batch import applies one kit owner to multiple files
+(`DNATab` + `SharedSegmentImportModal`); unlinked shared rows in the admin match list get inline
+Link / Create match person / Dismiss actions (`lib/dnaUnlinkedMatchAdapter.ts`, `AdminDnaPanel`).
+
+---
+
 ## 2026-07-05 — K11 slice 1: shared-match owner selection + FK trust
 
 **K11:** Shared-segment CSV import now requires confirming the kit owner (`SharedSegmentImportModal`);

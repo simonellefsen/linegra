@@ -20,6 +20,7 @@ import {
   type ParentalSideHint,
 } from '../lib/dnaParentalHints';
 import { suggestUnknownMatchPlacements } from '../lib/dnaMatchPlacement';
+import { sharedMatchToUnlinkedRecord } from '../lib/dnaUnlinkedMatchAdapter';
 import { buildClusterLabelByIndex, formatClusterHeading } from '../lib/dnaClusterLabels';
 import {
   createDnaMatchPlaceholderPerson,
@@ -285,9 +286,25 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
     [segmentBackedMatches, segmentsByMatchId]
   );
 
+  const inlineUnlinkedByMatchId = useMemo(() => {
+    const map = new Map<string, UnlinkedDnaMatchRecord>();
+    matches.forEach((match) => {
+      const unlinked = sharedMatchToUnlinkedRecord(match);
+      if (unlinked) map.set(match.id, unlinked);
+    });
+    return map;
+  }, [matches]);
+
+  const allUnlinkedForPlacement = useMemo(() => {
+    const fromMain = Array.from(inlineUnlinkedByMatchId.values());
+    const mainTestIds = new Set(fromMain.map((row) => row.dnaTestId));
+    const fromK3 = unlinkedMatches.filter((row) => !mainTestIds.has(row.dnaTestId));
+    return [...fromMain, ...fromK3];
+  }, [inlineUnlinkedByMatchId, unlinkedMatches]);
+
   const placementByUnlinkedId = useMemo(() => {
     const map = new Map<string, ReturnType<typeof suggestUnknownMatchPlacements>>();
-    unlinkedMatches.forEach((match) => {
+    allUnlinkedForPlacement.forEach((match) => {
       map.set(
         match.id,
         suggestUnknownMatchPlacements(
@@ -322,7 +339,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
     });
     return map;
   }, [
-    unlinkedMatches,
+    allUnlinkedForPlacement,
     mrcaCandidates,
     linkedMatchSegmentInputs,
     clusterGroups,
@@ -392,6 +409,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
         focusPersonId: selectedPersonId,
       });
       setUnlinkedMatches((current) => current.filter((item) => item.id !== match.id));
+      await loadMatches();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not dismiss unknown match.');
     } finally {
@@ -905,6 +923,76 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             <p className="font-bold">{match.predictionLabel}</p>
                           </div>
                         </div>
+                        {(() => {
+                          const unlinked = inlineUnlinkedByMatchId.get(match.id);
+                          if (!unlinked) return null;
+                          const suggestions = placementByUnlinkedId.get(unlinked.id) || [];
+                          const linkSuggestion = suggestions.find((item) => item.kind === 'link_existing');
+                          const linkTargetPersonId =
+                            linkSuggestion?.anchorPersonId || unlinked.suggestedNameMatchPersonId || null;
+                          const linkTargetPersonName =
+                            linkSuggestion?.anchorPersonName || unlinked.suggestedNameMatchPersonName || null;
+                          const isPlacing = placingMatchId === unlinked.id;
+                          const isDismissing = dismissingMatchId === unlinked.id;
+                          const isBusy = isPlacing || isDismissing;
+                          return (
+                            <div
+                              className="rounded-xl border border-amber-200 bg-amber-50/50 px-3 py-3 space-y-2"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              role="presentation"
+                            >
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">
+                                Link this match in your tree
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {match.ownerPersonId !== selectedPersonId && match.dnaTestId && (
+                                  <button
+                                    type="button"
+                                    disabled={isBusy || relinkingOwnerTestId === match.dnaTestId}
+                                    onClick={() => {
+                                      if (match.dnaTestId) handleRelinkKitOwner(match.dnaTestId);
+                                    }}
+                                    className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-amber-300 text-amber-800 hover:bg-white disabled:opacity-50"
+                                  >
+                                    {relinkingOwnerTestId === match.dnaTestId
+                                      ? 'Re-linking…'
+                                      : 'Set kit owner to selected person'}
+                                  </button>
+                                )}
+                                {linkTargetPersonId && linkTargetPersonName && (
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => handleLinkUnlinkedToPerson(unlinked, linkTargetPersonId)}
+                                    className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
+                                  >
+                                    <Link2 className="w-3.5 h-3.5" />
+                                    Link to {linkTargetPersonName}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleCreateDnaMatchPerson(unlinked)}
+                                  className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1.5"
+                                >
+                                  <UserPlus className="w-3.5 h-3.5" />
+                                  {isPlacing ? 'Placing…' : 'Create match person'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleDismissUnlinkedMatch(unlinked)}
+                                  className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-slate-300 text-slate-600 hover:bg-white disabled:opacity-50 flex items-center gap-1.5"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  {isDismissing ? 'Dismissing…' : 'Not in my tree'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <span
                             className={`inline-flex items-center gap-1 rounded-full px-2 py-1 border ${
