@@ -15,6 +15,14 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — U18h traffic trend chart scaling
+
+**U18:** Overlay bot vs visitor daily series on a fixed UTC window (zero-fill missing days) with a
+shared axis max instead of per-day full-width bars. `lib/crawlTrafficCharts.ts`,
+`CrawlTrafficTrendChart.tsx`.
+
+---
+
 ## 2026-07-05 — U18g self-traffic exclusion
 
 **U18:** Signed-in viewers set a `linegra_viewer` cookie; middleware tags `viewer_user_id` on crawl

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Activity,
   Bot,
@@ -18,6 +18,7 @@ import {
   type CrawlTrafficResourceLabel,
   type CrawlTrafficStats,
 } from '../../services/crawlTraffic';
+import CrawlTrafficTrendChart from './CrawlTrafficTrendChart';
 
 interface AdminCrawlTrafficPanelProps {
   supabaseActive: boolean;
@@ -111,14 +112,7 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
     };
   }, [supabaseActive, days, agentFilter, excludeMyTraffic, currentUserId]);
 
-  const maxBotDayHits = useMemo(
-    () => Math.max(1, ...(stats?.bot.byDay.map((row) => row.hits) ?? [1])),
-    [stats?.bot.byDay]
-  );
-  const maxVisitorDayHits = useMemo(
-    () => Math.max(1, ...(stats?.visitor.byDay.map((row) => row.hits) ?? [1])),
-    [stats?.visitor.byDay]
-  );
+  const botTrendLabel = agentFilter ? labelCrawlerAgent(agentFilter) : 'Bots';
 
   if (!supabaseActive) {
     return (
@@ -196,6 +190,13 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
 
         {stats && !loading && (
           <>
+            <CrawlTrafficTrendChart
+              windowDays={days}
+              botByDay={stats.bot.byDay}
+              visitorByDay={stats.visitor.byDay}
+              botLabel={botTrendLabel}
+            />
+
             <section className="space-y-6 rounded-[28px] border border-violet-100 bg-violet-50/40 p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -306,31 +307,6 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
                   )}
                 </div>
               </div>
-
-              {stats.bot.byDay.length > 0 && (
-                <div className="rounded-2xl border border-white bg-white p-4 space-y-3">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                    <Activity className="w-4 h-4" />
-                    {agentFilter
-                      ? `Daily hits — ${labelCrawlerAgent(agentFilter)} (UTC)`
-                      : 'Daily bot hits (UTC)'}
-                  </p>
-                  <div className="space-y-2">
-                    {stats.bot.byDay.map((row) => (
-                      <div key={row.day} className="flex items-center gap-3 text-xs">
-                        <span className="w-24 shrink-0 text-slate-500 font-mono">{row.day}</span>
-                        <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-violet-500/80"
-                            style={{ width: `${Math.max(4, (row.hits / maxBotDayHits) * 100)}%` }}
-                          />
-                        </div>
-                        <span className="w-8 text-right font-bold text-slate-700">{row.hits}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {stats.bot.recent.length > 0 && (
                 <div className="rounded-2xl border border-white bg-white overflow-hidden">
@@ -465,28 +441,6 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
                   )}
                 </div>
               </div>
-
-              {stats.visitor.byDay.length > 0 && (
-                <div className="rounded-2xl border border-white bg-white p-4 space-y-3">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                    <Activity className="w-4 h-4" /> Daily visitor hits (UTC)
-                  </p>
-                  <div className="space-y-2">
-                    {stats.visitor.byDay.map((row) => (
-                      <div key={row.day} className="flex items-center gap-3 text-xs">
-                        <span className="w-24 shrink-0 text-slate-500 font-mono">{row.day}</span>
-                        <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-slate-500/70"
-                            style={{ width: `${Math.max(4, (row.hits / maxVisitorDayHits) * 100)}%` }}
-                          />
-                        </div>
-                        <span className="w-8 text-right font-bold text-slate-700">{row.hits}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {stats.visitor.recent.length > 0 && (
                 <div className="rounded-2xl border border-white bg-white overflow-hidden">

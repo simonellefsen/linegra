@@ -252,6 +252,57 @@ that gates raw data.
   Policy: [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md).
 - **Sequencing:** K7 → K6 → K1 → K5 — **complete.**
 
+**K11. Shared matches vanish unless the counterpart is already a tree person + married/maiden name
+identity breaks association (BUG, found 2026-07-05).** Reported: ~7 shared-segment CSVs imported for
+Helle (Ulla Thøgersen, Ruben Lykke Pedersen, Eva Hansson, David Allan Christiansen, Mona Howell,
+Birgitta Hallgren, Laurie Griffith…) but only **Ulla** shows under "Shared Autosomal Matches". Two
+compounding causes in [../services/archive/dna.ts](../services/archive/dna.ts):
+- **(a) Counterpart must resolve to a tree person or the row is dropped.** `loadDnaSharedMatches`
+  computes the counterpart entirely by fuzzy name (`focusIsSharedMatchParty` +
+  `resolveCounterpartFromSummaryNames`/`inferCounterpartForFocus`, all `scoreNameMatch ≥ 60`), and
+  if no counterpart person resolves it does `if (!counterpartPersonId) return;` — so every match
+  whose counterpart isn't yet a tree person is **removed from the list** and only reappears in the
+  separate K3 "Unknown Matches" pile. Ulla shows solely because she was turned into a tree person.
+  The two sections read as unrelated, so it looks like the imports "disappeared." **Fix:** show
+  *every* shared import for the focus in one list with a per-row **linked / unlinked** status
+  (fold K3 placement inline), rather than dropping unlinked ones. Continues K8c/K8d.
+- **(b) Name identity: DNA-kit name ≠ tree name.** The CSVs call her "Helle **Due**" (married name
+  — she married Aksel Egon Gether **Due**) but the tree stores "Helle **Andersen**" (birth name).
+  Association survives only because `scoreNameMatch("Helle Andersen","Helle Due")` lands at 65 (one
+  shared token + equal length); any less-lucky married-name change scores < 60 and the whole
+  import silently fails to attach — so some names may be **absent even from K3** (verify against
+  live data: are Ruben/Eva/Laurie in the K3 list or gone entirely? gone ⇒ import-time association
+  failure). **Fix:** (1) trust structured links first — associate a CSV via `dna_tests.person_id`
+  FK + stored counterpart UUID, only falling back to names when absent (the FK is already loaded
+  but the gate ignores it); (2) record a person's DNA-kit display name as a **married-name alias**
+  (the `AlternateNameType 'married'` from the GEDCOM work already exists) so name matching can find
+  them; (3) at import, let the curator **confirm which tree person** owns the kit / is the
+  counterpart and persist the UUID. Nordic maiden↔married surname changes make pure name-matching
+  structurally unreliable — same identity theme as K10. **High priority — user is losing imported
+  data from view.**
+
+> **DESIGN DECISION 2026-07-05 (owner-selection at import — the primary fix):** the shared-segment
+> CSV import must **require selecting the kit-owner tree person** (the individual whose autosomal
+> test produced the match list) and persist it as `dna_tests.person_id`. This turns fuzzy name
+> matching from the *silent load-time source of truth* into an *import-time pre-fill suggestion the
+> human confirms* — killing the K11(b) owner-side failure class entirely (Helle Due ↔ Helle
+> Andersen becomes a non-issue because a human picked Helle). Load-time then trusts the FK and never
+> re-guesses ownership. Design points:
+> - **Owner required; counterpart optional.** The counterpart is legitimately often unknown (that's
+>   what K3 places) — suggest an existing person or "create placeholder," else leave unlinked.
+> - **Pre-fill from the filename/header** (existing `extractComparisonNamesFromFileName` + name
+>   suggestion) so the dropdown defaults to the best guess; the human confirms/overrides.
+> - **Batch:** a match-list export is all from one owner → select the owner **once** for a
+>   multi-file import.
+> - **Default (don't require) owners who already have a raw `Autosomal` test** — a match list is
+>   generated from a raw kit, but you can hold the export without having uploaded the raw data.
+> - **Offer to save the CSV owner-name as a `married` alias** on confirm (one click; improves
+>   name-matching everywhere, incl. K10/GEDCOM).
+> - **Backfill:** add a **"re-link owner"** repair action for already-imported orphan tests (the
+>   current ~7 Helle CSVs) — the new requirement is not retroactive.
+> Sequencing: ship owner-selection + FK-trust first (fixes new + repaired imports), then the
+> unified linked/unlinked match list (a) and alias plumbing (b2).
+
 **K10. Family kits are 1-hop only — tested grandparents/siblings/cousins never surface (BUG, found
 2026-07-05).** Reported case: Helle Andersen has a full autosomal kit and is Pernille's grandmother
 (Helle → Niels → Pernille = **2 hops**), but neither shows on the other's DNA panel.
@@ -645,6 +696,7 @@ and the metrics that make it *actionable* rather than a hit counter.
   `payload_exclude_viewer_user_id`; panel toggle default on.
 - **U18h — Chart scaling.** A single hit renders as a full-width bar; use a fixed axis over the
   whole window with zero-days shown, and overlay bot vs visitor series for trend comparison.
+  **DONE 2026-07-05** — `lib/crawlTrafficCharts.ts` + `CrawlTrafficTrendChart` shared axis.
 - **U18i — Format breakdown per agent** (html / md / json / xml): measures whether LLM agents
   actually use the U7/U8 alternates — feedback loop for the whole U track.
 - **U18j — Crawl coverage.** Join sitemap entries against crawl events: "Googlebot has fetched
