@@ -15,7 +15,13 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
-## 2026-07-05 — U3 sitemap-index, noai meta, U9 link hygiene
+## 2026-07-05 — X E2E smoke pack (Playwright)
+
+**X:** `@playwright/test` with local SPA smoke (app shell, login modal, book viewer) and deployed
+public-surface smoke (sitemap, tree JSON/md/html APIs, optional auth + profile via env secrets).
+CI `e2e-smoke` job runs after `build`.
+
+---
 
 **U3:** `sitemap.xml` emits a sitemap-index when multiple trees or >4.5k URLs; `sitemap-core.xml` +
 per-tree `sitemap-tree-{id8}.xml` chunks.

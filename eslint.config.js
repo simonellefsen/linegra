@@ -9,6 +9,8 @@ export default [
   {
     ignores: [
       'dist/**',
+      'e2e/**',
+      'playwright.config.ts',
       'supabase/.temp/**',
       'supabase/.branches/**',
       'supabase/seed.sql',

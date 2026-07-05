@@ -18,3 +18,41 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      deployments: read
+      statuses: read
+    env:
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERCEL_DEPLOY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GITHUB_DEPLOY_REF: ${{ github.event.pull_request.head.ref && format('refs/heads/{0}', github.event.pull_request.head.ref) || github.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Resolve Vercel deployment URL
+        id: vercel
+        env:
+          VERCEL_DEPLOY_ENV: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Preview' }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/ci-resolve-vercel-preview.mjs
+      - run: npm run build:app
+      - run: npm run test:e2e:local
+      - name: Deployed E2E smoke (Vercel preview / production)
+        run: npm run test:e2e:deployed
+        env:
+          E2E_BASE_URL: ${{ steps.vercel.outputs.url }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          E2E_ACCESS_TOKEN: ${{ secrets.E2E_ACCESS_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
