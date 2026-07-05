@@ -11,3 +11,13 @@ export const vercelProtectionBypassHeaders = (): Record<string, string> | undefi
   if (!secret) return undefined;
   return { 'x-vercel-protection-bypass': secret };
 };
+
+/** Playwright browser navigations — sets the bypass cookie on first document load. */
+export const vercelPlaywrightBypassHeaders = (): Record<string, string> | undefined => {
+  const secret = readBypassSecret();
+  if (!secret) return undefined;
+  return {
+    'x-vercel-protection-bypass': secret,
+    'x-vercel-set-bypass-cookie': 'samesitenone',
+  };
+};

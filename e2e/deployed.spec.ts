@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { withVercelBypassQuery } from '../lib/e2eAppUrl';
 
 const profilePath = process.env.E2E_PROFILE_PATH;
 const hasE2eToken = Boolean(process.env.E2E_ACCESS_TOKEN);
@@ -58,7 +59,7 @@ describeDeployed('Deployed public crawl surfaces', () => {
 
 describeAuthenticated('Deployed authenticated smoke', () => {
   test('opens the interactive tree tab with a bootstrapped session', async ({ page }) => {
-    await page.goto('/');
+    await page.goto(withVercelBypassQuery('/'));
     await expect(page.getByRole('button', { name: /log out/i })).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: /interactive tree/i }).click();
     await expect(page.getByText(/interactive tree/i).first()).toBeVisible();
@@ -67,9 +68,9 @@ describeAuthenticated('Deployed authenticated smoke', () => {
   test('opens a person profile from a public URL', async ({ page }) => {
     test.skip(!profilePath, 'Set E2E_PROFILE_PATH to a public person route.');
 
-    await page.goto('/');
+    await page.goto(withVercelBypassQuery('/'));
     await expect(page.getByRole('button', { name: /log out/i })).toBeVisible({ timeout: 20_000 });
-    await page.goto(profilePath!);
+    await page.goto(withVercelBypassQuery(profilePath!));
     await expect(page.getByRole('button', { name: /open in interactive tree/i })).toBeVisible({
       timeout: 25_000,
     });
