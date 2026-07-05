@@ -18,7 +18,7 @@ import {
 import DnaRawConsentModal from '../dna/DnaRawConsentModal';
 import SharedSegmentImportModal from '../dna/SharedSegmentImportModal';
 import HaplogroupMigrationCard from '../dna/HaplogroupMigrationCard';
-import { purgeDnaRawData, updateSharedAutosomalKitOwner } from '../../services/archive';
+import { purgeDnaRawData, updateSharedAutosomalKitOwner, fetchAutosomalTesterNameRows } from '../../services/archive';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { mapDbRowToNameLookup } from '../../lib/dnaPersonNameVariants';
 import type { DNASharedSegmentRowPreview, DNASharedSegmentSummary } from '../../types';
@@ -89,57 +89,65 @@ const nameForTreePerson = (people: SharedImportNameRow[], id: string) => {
 const SharedKitOwnerField: React.FC<{
   test: DNATest;
   personId: string;
-  treePeople: SharedImportNameRow[];
+  autosomalTesters: SharedImportNameRow[];
   kitOwnerPersonId?: string;
   kitOwnerDisplayName: string;
   suggestedKitOwnerPersonId: string | null;
-  loadingPeople: boolean;
+  loadingTesters: boolean;
   savingKitOwner: boolean;
   onOpenPersonId?: (personId: string) => void;
   onKitOwnerChange: (test: DNATest, ownerPersonId: string) => void;
 }> = ({
   test,
   personId,
-  treePeople,
+  autosomalTesters,
   kitOwnerPersonId,
   kitOwnerDisplayName,
   suggestedKitOwnerPersonId,
-  loadingPeople,
+  loadingTesters,
   savingKitOwner,
   onOpenPersonId,
   onKitOwnerChange,
 }) => {
   const suggestedName = suggestedKitOwnerPersonId
-    ? nameForTreePerson(treePeople, suggestedKitOwnerPersonId)
+    ? nameForTreePerson(autosomalTesters, suggestedKitOwnerPersonId)
     : null;
   const showSuggestion =
     suggestedKitOwnerPersonId &&
     suggestedKitOwnerPersonId !== kitOwnerPersonId &&
     suggestedName;
+  const storedOwnerIsTester =
+    !kitOwnerPersonId || autosomalTesters.some((row) => row.id === kitOwnerPersonId);
+  const testerOptions = autosomalTesters.filter((row) => row.id !== personId);
 
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-2">
-        <span>Kit owner:</span>
+        <span>Autosomal tester:</span>
         <select
           value={kitOwnerPersonId || ''}
-          disabled={loadingPeople || savingKitOwner}
+          disabled={loadingTesters || savingKitOwner}
           onChange={(e) => {
             const nextOwnerId = e.target.value;
             if (nextOwnerId) onKitOwnerChange(test, nextOwnerId);
           }}
           className="max-w-full rounded-lg border border-white/20 bg-slate-900/80 px-2 py-1 text-xs font-semibold text-white outline-none focus:border-blue-300"
         >
-          <option value="" className="text-slate-900">
-            {kitOwnerDisplayName !== 'Unknown' ? kitOwnerDisplayName : 'Select kit owner…'}
-          </option>
-          {treePeople
-            .filter((row) => row.id !== personId)
-            .map((row) => (
-              <option key={row.id} value={row.id} className="text-slate-900">
-                {nameForTreePerson(treePeople, row.id) || row.id}
-              </option>
-            ))}
+          {!kitOwnerPersonId && (
+            <option value="" disabled className="text-slate-900">
+              Select autosomal tester…
+            </option>
+          )}
+          {kitOwnerPersonId && !storedOwnerIsTester && (
+            <option value={kitOwnerPersonId} className="text-slate-900">
+              {kitOwnerDisplayName !== 'Unknown' ? kitOwnerDisplayName : kitOwnerPersonId}
+            </option>
+          )}
+          {testerOptions.map((row) => (
+            <option key={row.id} value={row.id} className="text-slate-900">
+              {nameForTreePerson(autosomalTesters, row.id) || row.id}
+            </option>
+          ))}
         </select>
         {kitOwnerPersonId && kitOwnerPersonId !== personId && onOpenPersonId && (
           <button
@@ -159,8 +167,13 @@ const SharedKitOwnerField: React.FC<{
           onClick={() => onKitOwnerChange(test, suggestedKitOwnerPersonId)}
           className="text-[10px] text-amber-200 underline decoration-dotted underline-offset-2 hover:text-amber-100"
         >
-          Use suggested kit owner: {suggestedName}
+          Use suggested autosomal tester: {suggestedName}
         </button>
+      )}
+      {!storedOwnerIsTester && kitOwnerPersonId && (
+        <p className="text-[10px] text-amber-200">
+          Stored owner is not a registered autosomal tester — pick a tester above to re-link.
+        </p>
       )}
     </div>
   );
@@ -236,7 +249,9 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
   const [consentOpen, setConsentOpen] = useState(false);
   const [purgingTestId, setPurgingTestId] = useState<string | null>(null);
   const [treePeople, setTreePeople] = useState<SharedImportNameRow[]>([]);
+  const [autosomalTesters, setAutosomalTesters] = useState<SharedImportNameRow[]>([]);
   const [loadingTreePeople, setLoadingTreePeople] = useState(false);
+  const [loadingAutosomalTesters, setLoadingAutosomalTesters] = useState(false);
   const [pendingSharedImport, setPendingSharedImport] = useState<{
     testId: string;
     summary: DNASharedSegmentSummary;
@@ -272,6 +287,28 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
       }
       setLoadingTreePeople(false);
     })();
+    return () => {
+      cancelled = true;
+    };
+  }, [treeId]);
+
+  useEffect(() => {
+    if (!treeId || !isSupabaseConfigured()) {
+      setAutosomalTesters([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingAutosomalTesters(true);
+    void fetchAutosomalTesterNameRows(treeId)
+      .then((rows) => {
+        if (!cancelled) setAutosomalTesters(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setAutosomalTesters([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAutosomalTesters(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -499,9 +536,10 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
           summary={pendingSharedImport.summary}
           preview={pendingSharedImport.preview}
           treePeople={treePeople}
+          autosomalTesters={autosomalTesters}
           defaultOwnerPersonId={personId}
           lockOwnerPersonId={personId}
-          loadingPeople={loadingTreePeople}
+          loadingPeople={loadingTreePeople || loadingAutosomalTesters}
           onClose={() => {
             setPendingSharedImport(null);
             setImportTargetId(null);
@@ -522,9 +560,10 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
             totalCentimorgans: item.summary.totalCentimorgans,
           }))}
           treePeople={treePeople}
+          autosomalTesters={autosomalTesters}
           defaultOwnerPersonId={personId}
           lockOwnerPersonId={personId}
-          loadingPeople={loadingTreePeople}
+          loadingPeople={loadingTreePeople || loadingAutosomalTesters}
           onClose={() => {
             setPendingSharedBatch(null);
             setImportTargetId(null);
@@ -696,11 +735,11 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
                             <SharedKitOwnerField
                               test={test}
                               personId={personId}
-                              treePeople={treePeople}
+                              autosomalTesters={autosomalTesters}
                               kitOwnerPersonId={parties.kitOwner.personId}
                               kitOwnerDisplayName={parties.kitOwner.displayName}
                               suggestedKitOwnerPersonId={parties.suggestedKitOwnerPersonId}
-                              loadingPeople={loadingTreePeople}
+                              loadingTesters={loadingAutosomalTesters}
                               savingKitOwner={savingKitOwnerTestId === test.id}
                               onOpenPersonId={onOpenPersonId}
                               onKitOwnerChange={handleKitOwnerChange}

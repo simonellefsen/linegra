@@ -2,6 +2,12 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { deriveMatchConfidence, relationshipPredictionLabel, supportsRelationshipHops } from '../../lib/dnaClassification';
 import { applyFileNameComparisonNames, extractComparisonNamesFromFileName } from '../../lib/dnaRawParser';
 import {
+  familyKitPredictionLabel,
+  hasEncryptedRawAutosomalMetadata,
+  relationshipRowsForCalculator,
+  resolveFamilyKitRelation,
+} from '../../lib/dnaFamilyKits';
+import {
   DNA_BLOOD_PATH_RELATIONSHIP_TYPES,
   buildChildToParentsMap,
   findDnaBloodRelationshipPath,
@@ -176,8 +182,6 @@ const rawAutosomalImportedAtFromMetadata = (metadata: Record<string, unknown>): 
   if (typeof raw.imported_at === 'string') return raw.imported_at;
   return undefined;
 };
-
-const familyKitPredictionLabel = (relationLabel: string) => `In-tree family kit (${relationLabel})`;
 
 const summaryFromDnaTestMetadata = (metadata: Record<string, unknown>): SharedSegmentSummaryLike | null => {
   const summaryRaw = asRecord(metadata.sharedSegmentSummary ?? metadata.shared_segment_summary);
@@ -578,6 +582,23 @@ export const listAutosomalPeopleInTree = async (treeId: string): Promise<DNAAuto
     .sort((a, b) => a.name.localeCompare(b.name));
 };
 
+/** Name rows for people with at least one Autosomal test — used for kit-owner / tester pickers. */
+export const fetchAutosomalTesterNameRows = async (treeId: string): Promise<NameLookupRow[]> => {
+  const testers = await listAutosomalPeopleInTree(treeId);
+  const ids = [...new Set(testers.map((row) => row.personId).filter(Boolean))];
+  if (!ids.length) return [];
+  const rows = await fetchPersonSummaryRowsByIds(
+    ids,
+    'id, first_name, last_name, maiden_name, metadata'
+  );
+  const byId = new Map<string, NameLookupRow>();
+  rows.forEach((row: any) => {
+    const mapped = mapDbRowToNameLookup(row);
+    if (mapped.id) byId.set(mapped.id, mapped);
+  });
+  return ids.map((id) => byId.get(id)).filter((row): row is NameLookupRow => !!row);
+};
+
 export const listSharedMatchesForAutosomalPerson = async (
   treeId: string,
   focusPersonId: string
@@ -597,7 +618,7 @@ export const listSharedMatchesForAutosomalPerson = async (
 
   const focusFullName = buildFullName(focusRow.first_name, focusRow.last_name);
 
-  const [typedRelationships, matchResponse, sharedTestsResponse, familyKitsResponse, treePeopleResponse] =
+  const [typedRelationships, matchResponse, sharedTestsResponse, familyKitsResponse, treePeopleResponse, focusAutosomalResponse] =
     await Promise.all([
     fetchDnaPathRelationships(treeId),
     supabase
@@ -617,11 +638,17 @@ export const listSharedMatchesForAutosomalPerson = async (
       .from('persons')
       .select('id, first_name, last_name, maiden_name, metadata')
       .eq('tree_id', treeId),
+    supabase
+      .from('dna_tests')
+      .select('id, metadata')
+      .eq('person_id', focusPersonId)
+      .eq('test_type', 'Autosomal'),
   ]);
   if (matchResponse.error) throw new Error(matchResponse.error.message);
   if (sharedTestsResponse.error) throw new Error(sharedTestsResponse.error.message);
   if (familyKitsResponse.error) throw new Error(familyKitsResponse.error.message);
   if (treePeopleResponse.error) throw new Error(treePeopleResponse.error.message);
+  if (focusAutosomalResponse.error) throw new Error(focusAutosomalResponse.error.message);
   const matchRows = matchResponse.data ?? [];
   const sharedTests: any[] = parseRpcJsonPage(sharedTestsResponse.data);
   const familyKits: any[] = parseRpcJsonPage(familyKitsResponse.data);
@@ -629,6 +656,10 @@ export const listSharedMatchesForAutosomalPerson = async (
     mapDbRowToNameLookup(row)
   );
   const personById = new Map<string, NameLookupRow>(nameRows.map((row) => [row.id, row]));
+  const calculatorRelationships = relationshipRowsForCalculator(typedRelationships);
+  const focusHasRawKit = (focusAutosomalResponse.data || []).some((row: any) =>
+    hasEncryptedRawAutosomalMetadata(asRecord(row.metadata))
+  );
 
   const results: DNASharedMatchRecord[] = [];
   const existingTestIds = new Set<string>();
@@ -849,14 +880,20 @@ export const listSharedMatchesForAutosomalPerson = async (
     const ownerPersonId = typeof kitRow.owner_person_id === 'string' ? kitRow.owner_person_id : null;
     if (!testId || !ownerPersonId || ownerPersonId === focusPersonId) return;
     if (existingTestIds.has(testId)) return;
+    const familyRelation = resolveFamilyKitRelation(
+      focusPersonId,
+      ownerPersonId,
+      calculatorRelationships
+    );
+    if (!familyRelation) return;
     const pairKey = [focusPersonId, ownerPersonId].sort().join(':');
     if (existingPairs.has(pairKey)) return;
 
     const metadata = asRecord(kitRow.metadata);
-    const relationLabel =
-      typeof kitRow.relation_label === 'string' && kitRow.relation_label.trim()
-        ? kitRow.relation_label.trim()
-        : 'Family member';
+    const relationLabel = familyRelation.relationLabel;
+    const expectedCmRange = familyRelation.expectedCmRange;
+    const rawKitComparisonAvailable =
+      focusHasRawKit && hasEncryptedRawAutosomalMetadata(metadata);
     const ownerPersonRow =
       personById.get(ownerPersonId) ||
       ({
@@ -864,7 +901,10 @@ export const listSharedMatchesForAutosomalPerson = async (
         last_name: kitRow.owner_last_name || '',
       } as any);
     const path = findRelationshipPath(focusPersonId, ownerPersonId, typedRelationships);
-    const pathPersonIds = path?.pathPersonIds || [];
+    const pathPersonIds =
+      familyRelation.pathPersonIds.length > 1
+        ? familyRelation.pathPersonIds
+        : path?.pathPersonIds || [];
     const pathRelationshipIds = path?.pathRelationshipIds || [];
     const pathFound = pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
     const pathFitsPrediction = computePathFitsPrediction(
@@ -881,6 +921,8 @@ export const listSharedMatchesForAutosomalPerson = async (
       id: `family-kit:${testId}`,
       source: 'family_kit',
       familyRelationLabel: relationLabel,
+      expectedCmRange,
+      rawKitComparisonAvailable,
       dnaTestId: testId,
       ownerPersonId,
       ownerPersonName: toDisplayName(ownerPersonRow),
@@ -890,7 +932,7 @@ export const listSharedMatchesForAutosomalPerson = async (
       segments: null,
       longestSegment: null,
       confidence: null,
-      predictionLabel: familyKitPredictionLabel(relationLabel),
+      predictionLabel: familyKitPredictionLabel(relationLabel, expectedCmRange),
       pathFound,
       pathFitsPrediction,
       pathPersonIds,

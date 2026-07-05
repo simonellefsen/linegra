@@ -15,6 +15,25 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — K12: autosomal-tester-scoped kit owner picker
+
+**K12:** Profile DNA tab and shared-segment import modal now source the kit-owner dropdown from
+`fetchAutosomalTesterNameRows` / `listAutosomalPeopleInTree` instead of every tree person; relabeled
+"Kit owner" → "Autosomal tester"; amber warning when a stored owner is not a registered tester.
+"Register new tester" escape hatch deferred.
+
+---
+
+## 2026-07-05 — K10: multi-hop in-tree family kits
+
+**K10:** `list_family_autosomal_kits` now returns all in-tree raw Autosomal tests (not just
+1-hop parent/child edges). `listSharedMatchesForAutosomalPerson` labels each kit with
+`relationshipCalculator.computeRelationship` (grandparent, sibling, cousin, etc.), shows a typical
+shared-cM band, and flags K6 raw-kit comparison when both focus and relative have encrypted SNP
+indexes (`lib/dnaFamilyKits.ts`, migration `20260705259000_k10_list_all_family_autosomal_kits.sql`).
+
+---
+
 ## 2026-07-05 — K11 slice 2: alias-aware matching, batch import, inline placement
 
 **K11 (complete):** Load-time name matching now considers maiden names and `metadata.alternateNames`

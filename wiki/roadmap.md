@@ -303,8 +303,28 @@ compounding causes in [../services/archive/dna.ts](../services/archive/dna.ts):
 > Sequencing: ship owner-selection + FK-trust first (fixes new + repaired imports), then the
 > unified linked/unlinked match list (a) and alias plumbing (b2).
 
-**K10. Family kits are 1-hop only — tested grandparents/siblings/cousins never surface (BUG, found
-2026-07-05).** Reported case: Helle Andersen has a full autosomal kit and is Pernille's grandmother
+**K12. Scope the kit-owner selector to Autosomal Testers — DONE 2026-07-05 (escape hatch deferred).**
+K11 shipped the owner selector, but it lists **every person in the tree** — on Kenneth Russell
+Hansen's profile the dropdown offers thousands of Hansdatters and had auto-picked **Hans Jacob
+Hansen**, a 19th-century ancestor who could never own a DNA kit. A Shared-Autosomal match list
+can only originate from someone who actually **took an autosomal test** — currently just Pernille
+Gether Gamby and Helle Andersen. Fix (small; the data already exists):
+- **Source the dropdown from `listAutosomalPeopleInTree`** ([../services/archive/dna.ts](../services/archive/dna.ts),
+  `list_tree_autosomal_testers`, `autosomal_test_count > 0`) — the exact list the main panel's
+  "AUTOSOMAL TESTER" picker uses — instead of `treePeople` (all people) at
+  [../components/person-profile/DNATab.tsx](../components/person-profile/DNATab.tsx) L136. Same fix
+  in [../components/dna/SharedSegmentImportModal.tsx](../components/dna/SharedSegmentImportModal.tsx)
+  if it lists all people too.
+- **Relabel** "Kit owner" → **"Autosomal tester"** for consistency with the main panel and to make
+  the constraint self-explanatory.
+- **Escape hatch:** an inline "＋ Register a new autosomal tester" option (creates the person's
+  `Autosomal` test and adds them) for when the true owner isn't yet a registered tester — so the
+  scoping never blocks a legitimate new tester.
+- **Data integrity:** a Shared-Autosomal test whose owner is a non-tester (e.g. the current
+  "Hans Jacob Hansen") is invalid — surface it for re-link (pairs with K11's re-link-owner repair)
+  and consider a validation flag in the DNA/Research panel.
+
+**K10. Family kits are 1-hop only — DONE 2026-07-05.** Reported case: Helle Andersen has a full autosomal kit and is Pernille's grandmother
 (Helle → Niels → Pernille = **2 hops**), but neither shows on the other's DNA panel.
 [list_family_autosomal_kits](../supabase/migrations/20260703191000_list_family_autosomal_kits.sql)
 only joins **direct parent ↔ child** edges (parent-type where `related_id = focus`, or a `child`

@@ -856,6 +856,12 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             {match.source === 'family_kit' && match.familyRelationLabel && (
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mt-0.5">
                                 {match.familyRelationLabel} · family kit
+                                {match.expectedCmRange ? ` · ${match.expectedCmRange}` : ''}
+                              </p>
+                            )}
+                            {match.source === 'family_kit' && match.rawKitComparisonAvailable && (
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-700 mt-0.5">
+                                Raw kit compare available (K6)
                               </p>
                             )}
                             <p className="text-xs text-slate-500">
