@@ -24,6 +24,7 @@ import { mapDbRowToNameLookup } from '../../lib/dnaPersonNameVariants';
 import type { DNASharedSegmentRowPreview, DNASharedSegmentSummary } from '../../types';
 import type { SharedImportNameRow } from '../../lib/dnaSharedImportOwner';
 import type { SharedSegmentImportConfirmPayload } from '../dna/SharedSegmentImportModal';
+import { resolveSharedAutosomalParties } from '../../lib/dnaSharedTestParties';
 
 interface DNATabProps {
   personId: string;
@@ -35,6 +36,7 @@ interface DNATabProps {
   onUpdateTest: (id: string, updates: Partial<DNATest>) => void;
   onRemoveTest: (id: string) => void;
   onAddMarriedNameAlias?: (fullName: string) => void;
+  onOpenPersonId?: (personId: string) => void;
 }
 
 // Resolved-lineage status shown on the profile DNA tab. Mirrors the admin DNA panel's
@@ -78,6 +80,29 @@ const SharedLineageStatusBadge: React.FC<{
   );
 };
 
+const SharedAutosomalPartyLine: React.FC<{
+  label: string;
+  name: string;
+  personId?: string;
+  currentPersonId: string;
+  onOpenPersonId?: (personId: string) => void;
+}> = ({ label, name, personId, currentPersonId, onOpenPersonId }) => (
+  <p>
+    {label}:{' '}
+    {personId && personId !== currentPersonId && onOpenPersonId ? (
+      <button
+        type="button"
+        onClick={() => onOpenPersonId(personId)}
+        className="font-semibold text-blue-200 underline decoration-dotted underline-offset-2 hover:text-blue-100"
+      >
+        {name}
+      </button>
+    ) : (
+      <span className="font-semibold text-white">{name}</span>
+    )}
+  </p>
+);
+
 const DNATab: React.FC<DNATabProps> = ({
   personId,
   treeId,
@@ -87,6 +112,7 @@ const DNATab: React.FC<DNATabProps> = ({
   onUpdateTest,
   onRemoveTest,
   onAddMarriedNameAlias,
+  onOpenPersonId,
 }) => (
   <DNATabInner
     personId={personId}
@@ -97,8 +123,15 @@ const DNATab: React.FC<DNATabProps> = ({
     onUpdateTest={onUpdateTest}
     onRemoveTest={onRemoveTest}
     onAddMarriedNameAlias={onAddMarriedNameAlias}
+    onOpenPersonId={onOpenPersonId}
   />
 );
+
+const nameForTreePerson = (people: SharedImportNameRow[], id: string) => {
+  const row = people.find((entry) => entry.id === id);
+  if (!row) return null;
+  return [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || null;
+};
 
 const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
   personId,
@@ -109,6 +142,7 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
   onUpdateTest,
   onRemoveTest,
   onAddMarriedNameAlias,
+  onOpenPersonId,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importTargetId, setImportTargetId] = useState<string | null>(null);
@@ -559,7 +593,29 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
                         <FileText className="w-4 h-4 text-blue-300" />
                         {test.sharedSegmentSummary.fileName}
                       </p>
-                      <p>Match: {test.sharedSegmentSummary.matchName}</p>
+                      {(() => {
+                        const parties = resolveSharedAutosomalParties(test, (id) =>
+                          nameForTreePerson(treePeople, id)
+                        );
+                        return (
+                          <>
+                            <SharedAutosomalPartyLine
+                              label="Kit owner"
+                              name={parties.kitOwner.displayName}
+                              personId={parties.kitOwner.personId}
+                              currentPersonId={personId}
+                              onOpenPersonId={onOpenPersonId}
+                            />
+                            <SharedAutosomalPartyLine
+                              label="Match"
+                              name={parties.match.displayName}
+                              personId={parties.match.personId}
+                              currentPersonId={personId}
+                              onOpenPersonId={onOpenPersonId}
+                            />
+                          </>
+                        );
+                      })()}
                       <p>
                         {test.sharedSegmentSummary.segmentCount} segments • {test.sharedSegmentSummary.totalCentimorgans.toFixed(1)} cM total •{' '}
                         {test.sharedSegmentSummary.largestSegmentCentimorgans.toFixed(1)} cM largest
