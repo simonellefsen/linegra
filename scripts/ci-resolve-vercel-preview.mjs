@@ -16,7 +16,12 @@ const maxTimeoutMs = Number(process.env.VERCEL_RESOLVE_TIMEOUT_MS ?? 300_000);
 const pollMs = Number(process.env.VERCEL_RESOLVE_POLL_MS ?? 10_000);
 
 if (!repository || !sha || !token) {
-  console.error('[vercel-preview] GITHUB_REPOSITORY, GITHUB_SHA, and GITHUB_TOKEN are required.');
+  const missing = [
+    !repository && 'GITHUB_REPOSITORY',
+    !sha && 'GITHUB_SHA',
+    !token && 'GITHUB_TOKEN',
+  ].filter(Boolean);
+  console.error(`[vercel-preview] Missing required env: ${missing.join(', ')}`);
   process.exit(1);
 }
 

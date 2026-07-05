@@ -63,7 +63,7 @@ them via `POST /api/e2e/redeem` (server signs in the dedicated service user).
 |-------|------|---------|
 | **GitHub secret** | `VERCEL_AUTOMATION_BYPASS_SECRET` | Bypass Vercel preview protection in CI (required for public API smoke) |
 | **GitHub secret** | `E2E_ACCESS_TOKEN` | Minted `lg_e2e_…` token for CI auth bootstrap — **not** a Vercel env var |
-| **GitHub variable** | `SUPABASE_URL` | Playwright `storageState` key (same value as on Vercel) |
+| **GitHub variable** | `SUPABASE_URL` | Playwright `storageState` key — use a **repository** variable (not only a Preview environment variable) |
 | GitHub secret (optional) | `E2E_PROFILE_PATH` | Public person path for profile smoke |
 | Vercel env | `E2E_SERVICE_USER_EMAIL` | Dedicated E2E runner account (redeem API) |
 | Vercel env | `E2E_SERVICE_USER_PASSWORD` | Service user password (redeem API) |
