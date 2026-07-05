@@ -310,6 +310,19 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     [person, applyConnectionData, canEditTree, currentUser]
   );
 
+  const handleOpenPersonId = useCallback(
+    async (personId: string) => {
+      if (!onNavigateToPerson || personId === person.id) return;
+      try {
+        const next = await fetchPersonDetails(personId);
+        if (next) onNavigateToPerson(next);
+      } catch (err) {
+        console.error('Failed to open linked person from DNA tab', err);
+      }
+    },
+    [onNavigateToPerson, person.id]
+  );
+
   useEffect(() => {
     setRelationPeople((prev) => ({ ...prev, [person.id]: person }));
   }, [person]);
@@ -1550,6 +1563,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             onAddTest={handleAddDNATest}
             onUpdateTest={handleUpdateDnaTest}
             onRemoveTest={handleRemoveDnaTest}
+            onOpenPersonId={handleOpenPersonId}
             onAddMarriedNameAlias={(fullName) => {
               const parts = fullName.trim().split(/\s+/);
               const firstName = parts[0] || '';

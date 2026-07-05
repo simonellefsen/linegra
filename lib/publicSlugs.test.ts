@@ -7,6 +7,7 @@ describe('publicSlugs', () => {
   it('slugifies Danish tree names', () => {
     expect(slugifyTreeName('Gether-Gamby')).toBe('gether-gamby');
     expect(slugifyTreeName('Hass-Jensen')).toBe('hass-jensen');
+    expect(slugifyTreeName('Gøth-Tunsted')).toBe('goeth-tunsted');
   });
 
   it('builds person slug segments with id8 suffix', () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   inferCounterpartDisplayName,
+  resolveSharedMatchCounterpartLabel,
   sharedTestAppliesToFocusPerson,
   suggestKitOwnerPersonId,
 } from './dnaSharedImportOwner';
@@ -59,5 +60,24 @@ describe('dnaSharedImportOwner', () => {
         matchName: 'Ruben Lykke Pedersen',
       }, 'Helle Andersen')
     ).toBe('Ruben Lykke Pedersen');
+  });
+
+  it('prefers kit owner name over stale RPC join when ids align', () => {
+    const kazanisId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const nisId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    expect(
+      resolveSharedMatchCounterpartLabel(
+        'Pernille Gether Gamby',
+        kazanisId,
+        { first_name: 'E. G.', last_name: 'Kazanis' },
+        kazanisId,
+        null,
+        {
+          personName: 'Pernille Gamby',
+          matchName: 'Nis Rasmussen',
+        },
+        nisId
+      )
+    ).toBe('E. G. Kazanis');
   });
 });

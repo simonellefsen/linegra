@@ -97,6 +97,40 @@ export const inferCounterpartDisplayName = (
   return summary.matchName || summary.personName || 'Unknown match';
 };
 
+const rowDisplayName = (row?: { first_name?: string | null; last_name?: string | null } | null) =>
+  row ? [row.first_name, row.last_name].filter(Boolean).join(' ').trim() : '';
+
+/** Display label for the non-focus party in a shared-segment match list row. */
+export const resolveSharedMatchCounterpartLabel = (
+  focusFullName: string,
+  ownerPersonId: string,
+  ownerRow: { first_name?: string | null; last_name?: string | null },
+  counterpartPersonId: string | null,
+  counterpartRow: { first_name?: string | null; last_name?: string | null } | null,
+  summary: SharedSegmentSummaryNames,
+  staleRpcCounterpartId?: string | null
+): string => {
+  if (counterpartPersonId && counterpartPersonId === ownerPersonId) {
+    const ownerDisplay = rowDisplayName(ownerRow);
+    if (ownerDisplay) return ownerDisplay;
+  }
+  if (
+    counterpartPersonId &&
+    counterpartRow &&
+    (!staleRpcCounterpartId || staleRpcCounterpartId === counterpartPersonId)
+  ) {
+    const display = rowDisplayName(counterpartRow);
+    if (display) return display;
+  }
+  if (scoreNameMatch(focusFullName, summary.personName) >= 60 && summary.matchName?.trim()) {
+    return summary.matchName.trim();
+  }
+  if (scoreNameMatch(focusFullName, summary.matchName) >= 60 && summary.personName?.trim()) {
+    return summary.personName.trim();
+  }
+  return summary.matchName || summary.personName || rowDisplayName(ownerRow) || 'Unknown';
+};
+
 const displayNameForRow = (row: SharedImportNameRow) =>
   [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
 

@@ -93,6 +93,18 @@ describe('parseSharedSegmentsCsv', () => {
     expect(summary.matchName).toBe('Torb Ellefsen');
   });
 
+  it('ignores spurious FTDNA MATCH NAME cells that are not filename parties', () => {
+    const csv = [ftdnaHeader, 'Nis Rasmussen,3,1000,9000,28.1,500'].join('\n');
+
+    const { summary } = parseSharedSegmentsCsv(
+      csv,
+      'Shared DNA segments of Pernille Gamby and E G Kazanis.csv'
+    );
+
+    expect(summary.personName).toBe('Pernille Gamby');
+    expect(summary.matchName).toBe('E G Kazanis');
+  });
+
   it('extracts comparison names from shared-segment filenames', () => {
     expect(
       extractComparisonNamesFromFileName('Shared DNA segments of Simon Ellefsen and Torb Ellefsen.csv')
