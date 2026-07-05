@@ -1,4 +1,5 @@
 import { isCrawlerUserAgent } from './lib/crawlerAgents';
+import { recordApiError } from './lib/apiErrorTelemetry';
 import { recordPublicCrawlEvent } from './lib/crawlTelemetry';
 import { extractRequestGeo } from './lib/requestGeo';
 import { checkPublicRateLimit, clientIpFromRequest } from './lib/publicRateLimit';
@@ -90,6 +91,12 @@ export default async function middleware(
     const rateKey = `${clientIpFromRequest(request)}:${(userAgent ?? 'unknown').slice(0, 80)}`;
     const rate = checkPublicRateLimit(rateKey);
     if (!rate.allowed) {
+      await recordApiError({
+        source: 'middleware',
+        route: url.pathname,
+        statusCode: 429,
+        message: 'Public API rate limit exceeded',
+      });
       return new Response('Too many requests', {
         status: 429,
         headers: {

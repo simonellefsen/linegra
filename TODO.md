@@ -63,7 +63,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       white-screens the SPA.
 - [x] **V2 — Client error capture** → `client_errors` table via RPC, admin panel rollup
       (reuse the `public_crawl_events` pattern; no new deps).
-- [ ] **V3 — Edge/API error surfacing** in admin panels (ai-proxy + `/api/public/*` non-2xx).
+- [x] **V3 — Edge/API error surfacing** in admin panels (ai-proxy + `/api/public/*` non-2xx).
 - [ ] **X — E2E smoke pack** (5 flows): public-tree browse, sign-in, pedigree + profile open,
       `/book/:id`, `?format=md` + JSON APIs. Playwright or the local agent-browser harness.
 - [ ] **Y1 — Split `services/archive.ts`** (4,102 lines) by domain behind a barrel export;

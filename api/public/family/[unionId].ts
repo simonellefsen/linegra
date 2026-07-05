@@ -1,3 +1,4 @@
+import { apiErrorResponse } from '../../../lib/apiErrorTelemetry';
 import { recordPublicCrawlEvent } from '../../../lib/crawlTelemetry';
 import { renderPublicFamilyHtml } from '../../../lib/publicCrawlHtml';
 import { renderPublicFamilyMarkdown } from '../../../lib/publicCrawlMarkdown';
@@ -9,8 +10,12 @@ export const config = { runtime: 'edge' };
 
 const CACHE = 'public, s-maxage=3600, stale-while-revalidate=86400';
 
+const ROUTE = '/api/public/family/:id';
+
 const notFound = () =>
-  new Response('Family union not found or not publicly crawlable.', { status: 404 });
+  apiErrorResponse('public-api', ROUTE, 'Family union not found or not publicly crawlable.', {
+    status: 404,
+  });
 
 const resolveFormat = (request: Request): 'json' | 'md' | 'html' => {
   const url = new URL(request.url);

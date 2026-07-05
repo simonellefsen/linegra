@@ -1,3 +1,4 @@
+import { apiErrorResponse } from '../../../lib/apiErrorTelemetry';
 import { recordPublicCrawlEvent } from '../../../lib/crawlTelemetry';
 import { renderPublicTreeHtml, renderPublicTreeMarkdown } from '../../../lib/publicCrawlHtml';
 import { loadPublicTreeCrawlPayload } from '../../../lib/publicCrawlService';
@@ -9,12 +10,14 @@ export const config = { runtime: 'edge' };
 
 const CACHE = 'public, s-maxage=3600, stale-while-revalidate=86400';
 
+const ROUTE = '/api/public/tree/:id';
+
 export default async function handler(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const segments = url.pathname.split('/').filter(Boolean);
   const segment = segments[segments.length - 1];
   if (!segment) {
-    return new Response('Tree not found.', { status: 404 });
+    return apiErrorResponse('public-api', ROUTE, 'Tree not found.', { status: 404 });
   }
 
   const format = url.searchParams.get('format') ?? 'html';
@@ -24,7 +27,7 @@ export default async function handler(request: Request): Promise<Response> {
 
   const treeId = isPublicUuid(segment) ? segment : await resolvePublicTreeId(segment);
   if (!treeId) {
-    return new Response('Tree not found or not public.', { status: 404 });
+    return apiErrorResponse('public-api', ROUTE, 'Tree not found or not public.', { status: 404 });
   }
 
   await recordPublicCrawlEvent({
@@ -37,7 +40,7 @@ export default async function handler(request: Request): Promise<Response> {
   const origin = getPublicSiteOrigin(url.origin);
   const payload = await loadPublicTreeCrawlPayload(treeId, rowOffset, pageSize);
   if (!payload) {
-    return new Response('Tree not found or not public.', { status: 404 });
+    return apiErrorResponse('public-api', ROUTE, 'Tree not found or not public.', { status: 404 });
   }
 
   if (format === 'json') {

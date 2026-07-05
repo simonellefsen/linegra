@@ -48,6 +48,40 @@ const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =
     headers: { "Content-Type": "application/json", ...corsHeaders, ...extra },
   });
 
+const logApiError = async (route: string, status: number, message: string) => {
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY || status < 400) return;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/rpc/record_api_error`, {
+      method: "POST",
+      headers: {
+        apikey: SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        payload_source: "ai-proxy",
+        payload_route: route,
+        payload_status_code: status,
+        payload_message: message.slice(0, 500),
+      }),
+    });
+  } catch {
+    // Best-effort telemetry only.
+  }
+};
+
+const jsonWithTelemetry = async (
+  body: unknown,
+  status = 200,
+  extra: Record<string, string> = {},
+  message?: string,
+) => {
+  if (status >= 400) {
+    await logApiError("/functions/v1/ai-proxy", status, message ?? JSON.stringify(body).slice(0, 200));
+  }
+  return json(body, status, extra);
+};
+
 // Rough USD-per-1M-tokens price map for a few common paid models so the spend view has an estimate.
 // The default model (nvidia/...:free) is free → 0. Unknown models → 0. This is an *estimate* only.
 const PRICE_PER_MTOK: Record<string, { prompt: number; completion: number }> = {
@@ -256,14 +290,14 @@ Deno.serve(async (req) => {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
+    return await jsonWithTelemetry({ error: "Method not allowed" }, 405, {}, "Method not allowed");
   }
 
   let body: Json;
   try {
     body = (await req.json()) as Json;
   } catch {
-    return json({ error: "Invalid JSON body" }, 400);
+    return await jsonWithTelemetry({ error: "Invalid JSON body" }, 400, {}, "Invalid JSON body");
   }
 
   const purpose = typeof body.purpose === "string" ? body.purpose : "unknown";
@@ -273,10 +307,15 @@ Deno.serve(async (req) => {
   const jwt = bearerJwt(req);
   const authUserId = await resolveAuthUserId(jwt);
   if (!authUserId) {
-    return json({ error: "Authentication required." }, 401);
+    return await jsonWithTelemetry({ error: "Authentication required." }, 401, {}, "Authentication required");
   }
   if (testKey && !(await isSuperAdminUser(authUserId))) {
-    return json({ error: "Superadmin required for connection test." }, 403);
+    return await jsonWithTelemetry(
+      { error: "Superadmin required for connection test." },
+      403,
+      {},
+      "Superadmin required for connection test",
+    );
   }
   const effectiveActorId = actorId || authUserId;
   const requestedTimeout = Number(body.timeoutMs);
@@ -322,7 +361,12 @@ Deno.serve(async (req) => {
         usage: null, cost: 0, latencyMs: 0, status: "error",
         error: "AI provider disabled",
       });
-      return json({ error: "OpenRouter provider is disabled in settings." }, 503);
+      return await jsonWithTelemetry(
+        { error: "OpenRouter provider is disabled in settings." },
+        503,
+        {},
+        "AI provider disabled",
+      );
     }
   }
 
@@ -332,16 +376,18 @@ Deno.serve(async (req) => {
       usage: null, cost: 0, latencyMs: 0, status: "error",
       error: "API key not configured",
     });
-    return json(
+    return await jsonWithTelemetry(
       { error: "OpenRouter API key is not configured. Set it in Administrator → Database." },
       503,
+      {},
+      "API key not configured",
     );
   }
   if (!effectiveModel) {
-    return json({ error: "No model specified." }, 400);
+    return await jsonWithTelemetry({ error: "No model specified." }, 400, {}, "No model specified");
   }
   if (!Array.isArray(messages)) {
-    return json({ error: "Missing messages array." }, 400);
+    return await jsonWithTelemetry({ error: "Missing messages array." }, 400, {}, "Missing messages array");
   }
 
   if (!testKey) {
@@ -359,13 +405,15 @@ Deno.serve(async (req) => {
         status: "error",
         error: `budget: ${budget.reason ?? "exceeded"}`,
       });
-      return json(
+      return await jsonWithTelemetry(
         {
           error: message,
           code: "AI_BUDGET_EXCEEDED",
           budget,
         },
         429,
+        {},
+        message,
       );
     }
   }
@@ -400,13 +448,22 @@ Deno.serve(async (req) => {
   });
 
   if (!result.json) {
-    return json(
+    return await jsonWithTelemetry(
       { error: `OpenRouter returned a non-JSON response (${result.status}).` },
       ok ? 200 : 502,
+      {},
+      `OpenRouter non-JSON ${result.status}`,
     );
   }
 
-  // Return OpenRouter's JSON verbatim (client parses exactly as before). On upstream error, mirror
-  // the status through so the client's error path runs and the deterministic fallback engages.
-  return json(result.json, ok ? 200 : 502);
+  if (!ok) {
+    return await jsonWithTelemetry(
+      result.json,
+      502,
+      {},
+      `OpenRouter ${result.status}`,
+    );
+  }
+
+  return json(result.json, 200);
 });

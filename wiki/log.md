@@ -15,7 +15,13 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
-## 2026-07-05 — V2 client error capture
+## 2026-07-05 — V3 Edge/API error surfacing
+
+**V3:** `api_error_events` + `record_api_error` for `/api/public/*`, sitemap 503s, middleware 429s,
+and ai-proxy non-2xx; `admin_get_api_error_stats` rolls up crawl API errors plus `ai_usage_logs`
+proxy failures in the Admin **Errors** tab.
+
+---
 
 **V2:** `client_errors` table + `record_client_error` / `admin_get_client_error_stats` RPCs;
 `installClientErrorReporting()` in `index.tsx`; ErrorBoundary reports boundary crashes; superadmin
