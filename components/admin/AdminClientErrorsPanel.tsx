@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Loader2, Route, TriangleAlert } from 'lucide-react';
+import { AlertTriangle, Loader2, Route, ServerCrash, TriangleAlert } from 'lucide-react';
+import { labelApiErrorSource } from '../../lib/apiErrorStats';
 import { labelClientErrorKind } from '../../lib/clientErrorStats';
+import { fetchAdminApiErrorStats, type ApiErrorStats } from '../../services/apiErrors';
 import { fetchAdminClientErrorStats, type ClientErrorStats } from '../../services/clientErrors';
 
 interface AdminClientErrorsPanelProps {
@@ -15,6 +17,7 @@ const formatUtc = (value: string | null | undefined): string => {
 const AdminClientErrorsPanel: React.FC<AdminClientErrorsPanelProps> = ({ supabaseActive }) => {
   const [days, setDays] = useState(30);
   const [stats, setStats] = useState<ClientErrorStats | null>(null);
+  const [apiStats, setApiStats] = useState<ApiErrorStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,14 +26,18 @@ const AdminClientErrorsPanel: React.FC<AdminClientErrorsPanelProps> = ({ supabas
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchAdminClientErrorStats(days)
-      .then((summary) => {
-        if (!cancelled) setStats(summary);
+    Promise.all([fetchAdminClientErrorStats(days), fetchAdminApiErrorStats(days)])
+      .then(([clientSummary, apiSummary]) => {
+        if (!cancelled) {
+          setStats(clientSummary);
+          setApiStats(apiSummary);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load client error stats.');
+          setError(err instanceof Error ? err.message : 'Failed to load error stats.');
           setStats(null);
+          setApiStats(null);
         }
       })
       .finally(() => {
@@ -44,6 +51,11 @@ const AdminClientErrorsPanel: React.FC<AdminClientErrorsPanelProps> = ({ supabas
   const maxDayHits = useMemo(
     () => Math.max(1, ...(stats?.byDay.map((row) => row.hits) ?? [1])),
     [stats?.byDay]
+  );
+
+  const maxApiDayHits = useMemo(
+    () => Math.max(1, ...(apiStats?.byDay.map((row) => row.hits) ?? [1])),
+    [apiStats?.byDay]
   );
 
   if (!supabaseActive) {
@@ -236,6 +248,129 @@ const AdminClientErrorsPanel: React.FC<AdminClientErrorsPanelProps> = ({ supabas
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm p-8 space-y-6">
+        <div className="flex items-center gap-3">
+          <ServerCrash className="w-6 h-6 text-amber-600" />
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">
+              Edge & API telemetry
+            </p>
+            <h4 className="text-lg font-serif font-bold text-slate-900">API / proxy errors</h4>
+          </div>
+        </div>
+
+        <p className="text-sm text-slate-500 max-w-3xl">
+          Non-2xx responses from `/api/public/*`, sitemap, rate-limited middleware, and the ai-proxy
+          Edge Function. AI proxy failures also appear in Database → AI Usage; this view groups them
+          with crawl API errors.
+        </p>
+
+        {apiStats && !loading && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-amber-100 bg-amber-50/50 px-4 py-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">
+                  API errors
+                </p>
+                <p className="text-3xl font-serif font-bold text-slate-900 mt-1">{apiStats.totals.hits}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Routes</p>
+                <p className="text-3xl font-serif font-bold text-slate-900 mt-1">
+                  {apiStats.totals.uniqueRoutes}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-violet-600">
+                  AI proxy errors
+                </p>
+                <p className="text-3xl font-serif font-bold text-slate-900 mt-1">
+                  {apiStats.aiProxy.totals.hits}
+                </p>
+              </div>
+            </div>
+
+            {apiStats.byDay.length > 0 && (
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 space-y-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  API errors by day
+                </p>
+                <ul className="space-y-2">
+                  {apiStats.byDay.map((row) => (
+                    <li key={row.day} className="flex items-center gap-3 text-sm">
+                      <span className="w-24 font-mono text-xs text-slate-500">{row.day}</span>
+                      <div className="flex-1 h-2 rounded-full bg-white border border-slate-100 overflow-hidden">
+                        <div
+                          className="h-full bg-amber-400"
+                          style={{ width: `${Math.round((row.hits / maxApiDayHits) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="w-10 text-right font-black text-slate-800">{row.hits}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {apiStats.recent.length > 0 && (
+              <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  Recent API errors
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm mt-2">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                        <th className="px-4 py-2 font-black">Time (UTC)</th>
+                        <th className="px-4 py-2 font-black">Source</th>
+                        <th className="px-4 py-2 font-black">Status</th>
+                        <th className="px-4 py-2 font-black">Route</th>
+                        <th className="px-4 py-2 font-black">Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {apiStats.recent.map((row, index) => (
+                        <tr key={`${row.recordedAt}-${index}`} className="border-b border-slate-50">
+                          <td className="px-4 py-2 font-mono text-xs text-slate-600">
+                            {formatUtc(row.recordedAt)}
+                          </td>
+                          <td className="px-4 py-2 text-slate-700">{labelApiErrorSource(row.source)}</td>
+                          <td className="px-4 py-2 font-black text-slate-900">{row.statusCode}</td>
+                          <td className="px-4 py-2 font-mono text-xs text-slate-500 max-w-[12rem] truncate">
+                            {row.route}
+                          </td>
+                          <td className="px-4 py-2 text-slate-800 max-w-[20rem] truncate">
+                            {row.message || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {apiStats.aiProxy.recent.length > 0 && (
+              <div className="rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">
+                  Recent AI proxy failures (from ai_usage_logs)
+                </p>
+                <ul className="space-y-2 mt-2">
+                  {apiStats.aiProxy.recent.map((row, index) => (
+                    <li key={`${row.recordedAt}-${index}`} className="text-sm border-b border-violet-100 pb-2">
+                      <span className="font-mono text-xs text-slate-500">{formatUtc(row.recordedAt)}</span>
+                      <span className="mx-2 text-slate-400">·</span>
+                      <span className="font-semibold text-slate-800">{row.purpose}</span>
+                      <p className="text-xs text-slate-600 mt-1">{row.error || row.status || 'error'}</p>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </>

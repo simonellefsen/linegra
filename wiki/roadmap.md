@@ -709,9 +709,10 @@ is watching. Zero-new-deps path available: reuse the `public_crawl_events` patte
 - **V2. Client error capture.** ~~`window.onerror` / `unhandledrejection` → a small `client_errors`
   table via RPC~~ **Done (2026-07-05):** `record_client_error` RPC + session rate limit +
   `AdminClientErrorsPanel` daily rollup (message + stack hash only; no PII).
-- **V3. Edge/API error surfacing.** ai-proxy and `/api/public/*` failures currently live only in
-  Vercel/Supabase logs. Log non-2xx counts into the same table (or `ai_usage_logs.error` already
-  exists for AI) and show them in the admin Database/Traffic panels.
+- **V3. Edge/API error surfacing.** ~~ai-proxy and `/api/public/*` failures currently live only in
+  Vercel/Supabase logs~~ **Done (2026-07-05):** `api_error_events` + `record_api_error` on public
+  crawl APIs, middleware 429s, and ai-proxy non-2xx; rollup in Admin → Errors tab (with
+  `ai_usage_logs` proxy failures).
 - **V4. Ops check: both configured OpenRouter keys were expired** ("User not found" 401) as of the
   2026-07-02 N-Phase-1 verification, so the proxy's success path has never been exercised live
   end-to-end. Renew a key, run a real book/bio generation, confirm usage logging + spend cap fire.

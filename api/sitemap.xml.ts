@@ -1,3 +1,4 @@
+import { apiErrorResponse } from '../lib/apiErrorTelemetry';
 import { recordPublicCrawlEvent } from '../lib/crawlTelemetry';
 import { listPublicTreesDirectory } from '../lib/publicRouteResolve';
 import { createServerSupabase } from '../lib/supabaseServer';
@@ -42,7 +43,12 @@ export default async function handler(request: Request): Promise<Response> {
     listPublicTreesDirectory(),
   ]);
   if (error) {
-    return new Response(`Sitemap unavailable: ${error.message}`, { status: 503 });
+    return apiErrorResponse(
+      'public-api',
+      '/api/sitemap.xml',
+      `Sitemap unavailable: ${error.message}`,
+      { status: 503 }
+    );
   }
 
   const slugByTreeId = new Map(directory.map((tree) => [tree.treeId, tree.slug]));

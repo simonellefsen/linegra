@@ -1,3 +1,4 @@
+import { apiErrorResponse } from '../../../lib/apiErrorTelemetry';
 import { recordPublicCrawlEvent } from '../../../lib/crawlTelemetry';
 import { renderPublicPersonHtml } from '../../../lib/publicCrawlHtml';
 import { renderPublicPersonMarkdown } from '../../../lib/publicCrawlMarkdown';
@@ -9,8 +10,10 @@ export const config = { runtime: 'edge' };
 
 const CACHE = 'public, s-maxage=3600, stale-while-revalidate=86400';
 
+const ROUTE = '/api/public/person/:id';
+
 const notFound = () =>
-  new Response('Person not found or not publicly crawlable.', { status: 404 });
+  apiErrorResponse('public-api', ROUTE, 'Person not found or not publicly crawlable.', { status: 404 });
 
 const resolveFormat = (request: Request): 'json' | 'md' | 'html' => {
   const url = new URL(request.url);
