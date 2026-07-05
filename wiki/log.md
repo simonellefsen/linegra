@@ -15,6 +15,13 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — Y2 App.tsx hooks (route, tree bootstrap, profile)
+
+**Y:** `useAppAuth`, `useAppTreeBootstrap`, `useAppPublicRoutes`, `usePersonProfileSelection` —
+public URL resolution, initial tree load, session chrome, and profile modal wiring.
+
+---
+
 ## 2026-07-05 — Y1 archive.ts decomposition (complete)
 
 **Y:** `services/archive.ts` is now a 12-line barrel re-exporting `services/archive/*`

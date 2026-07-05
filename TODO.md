@@ -70,7 +70,8 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **Y1 — Split `services/archive.ts`** by domain behind a barrel export; move pure mappers to
       `lib/` with tests. *(2026-07-05: full split — `services/archive/` modules + 12-line barrel;
       `lib/archiveDbMappers.ts`.)*
-- [ ] **Y2 — Extract App.tsx route/state clusters** into hooks (1,923 lines).
+- [x] **Y2 — Extract App.tsx route/state clusters** into hooks (`useAppAuth`, `useAppTreeBootstrap`,
+      `useAppPublicRoutes`, `usePersonProfileSelection`).
 
 ## Bot & LLM agent navigation (traversal audit)
 

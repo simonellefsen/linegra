@@ -786,8 +786,8 @@ navigation, review, and test isolation.
 - **Y1 — DONE 2026-07-05.** Split `services/archive.ts` into `services/archive/*` (persons,
   relationships, dna, layout, familyLinks, gedcom, trees, collaborators, aiUsage, publicResolve,
   shared) behind a 12-line barrel; mappers in `lib/archiveDbMappers.ts` + tests.
-- **Y2.** Extract App.tsx route/state clusters (public-route resolution, tree-selection, profile
-  modal wiring) into hooks. No behavior change; measure by file line counts + unchanged tests.
+- **Y2 — DONE 2026-07-05.** Extracted `hooks/useAppAuth`, `useAppTreeBootstrap`, `useAppPublicRoutes`,
+  and `usePersonProfileSelection` from `App.tsx` (public routes, tree bootstrap, profile selection).
 - Do opportunistically alongside feature work, not as a big-bang rewrite.
 
 ## Maintenance note (2026-06-23)
