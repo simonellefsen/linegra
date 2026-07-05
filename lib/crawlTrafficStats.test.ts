@@ -5,6 +5,7 @@ describe('crawlTrafficStats', () => {
   it('maps nested bot and visitor aggregates', () => {
     const stats = mapCrawlTrafficStats({
       days: 7,
+      raw_retention_days: 14,
       agent_filter: 'googlebot',
       bot: {
         totals: { hits: 12, unique_agents: 3, llm_hits: 4 },
@@ -39,6 +40,7 @@ describe('crawlTrafficStats', () => {
       },
     });
     expect(stats.agentFilter).toBe('googlebot');
+    expect(stats.rawRetentionDays).toBe(14);
     expect(stats.bot.totals.llmHits).toBe(4);
     expect(stats.bot.recent[0]?.userAgent).toBe('GPTBot/1.0');
     expect(stats.visitor.totals.hits).toBe(3);

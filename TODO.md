@@ -97,7 +97,8 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 
 ## Pre-existing open items surfaced during review (already tracked in roadmap)
 
-- [ ] Book HTML prerender for crawlers (U); sitemap-index chunking (U3); `noai` media meta;
-      in-app link hygiene audit (U9); traffic rollup + retention (U10a).
+- [x] **Book HTML prerender for crawlers** — `/api/public/book/*` HTML/md/JSON shells + middleware rewrite on `/book/*`.
+- [x] **U10a — Traffic rollup & retention** — `public_crawl_traffic_rollups` + `rollup_public_crawl_traffic`; admin stats blend rollups with 14-day raw tail.
+- [ ] Sitemap-index chunking (U3); `noai` media meta; in-app link hygiene audit (U9).
 - [ ] Backfill `wiki/log.md` for the 2026-06-22→07 auth work (A).
 - [ ] OAuth providers + ownership transfer (A).

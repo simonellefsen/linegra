@@ -96,7 +96,7 @@ Edge API routes log bot hits to `public_crawl_events` (migration
 
 ## Still open (roadmap U)
 
-- Book HTML prerender for crawlers (person/tree shells shipped first).
+- Book HTML prerender for crawlers — **done 2026-07-05** (`/api/public/book/*`, middleware).
 - `sitemap-index` chunking for very large trees.
 - Admin metrics dashboard for crawler hits — **Administrator → Traffic** (superadmin, 2026-07-04).
 - `noai` / `noimageai` meta for restricted media.

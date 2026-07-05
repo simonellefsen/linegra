@@ -4,7 +4,7 @@ import { recordPublicCrawlEvent } from './lib/crawlTelemetry';
 import { extractRequestGeo } from './lib/requestGeo';
 import { checkPublicRateLimit, clientIpFromRequest } from './lib/publicRateLimit';
 import { isPublicUuid, parsePersonIdPrefix } from './lib/publicSlugs';
-import { resolvePublicPersonId, resolvePublicTreeId } from './lib/publicRouteResolve';
+import { resolvePublicPersonId, resolvePublicBookId, resolvePublicTreeId } from './lib/publicRouteResolve';
 import { resolvePublicUnionRelationshipId } from './lib/publicCrawlService';
 
 export const config = {
@@ -142,6 +142,16 @@ export default async function middleware(
       const treeId = await resolveTreeIdForCrawler(url.pathname);
       if (treeId) {
         const apiUrl = new URL(`/api/public/tree/${treeId}`, url.origin);
+        apiUrl.searchParams.set('format', wantsMarkdown ? 'md' : 'html');
+        return fetch(apiUrl.toString());
+      }
+    }
+
+    const bookMatch = url.pathname.match(/^\/book\/([^/]+)\/?$/i);
+    if (bookMatch?.[1]) {
+      const bookId = await resolvePublicBookId(bookMatch[1]);
+      if (bookId) {
+        const apiUrl = new URL(`/api/public/book/${bookId}`, url.origin);
         apiUrl.searchParams.set('format', wantsMarkdown ? 'md' : 'html');
         return fetch(apiUrl.toString());
       }

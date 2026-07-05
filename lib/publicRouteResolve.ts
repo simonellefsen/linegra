@@ -1,5 +1,6 @@
 // Server-side resolution for slug/id8 public routes (U16).
 
+import { isPublicUuid, parseBookIdPrefix } from './publicSlugs';
 import { createServerSupabase } from './supabaseServer';
 
 export const resolvePublicTreeId = async (segment: string): Promise<string | null> => {
@@ -18,6 +19,16 @@ export const resolvePublicPersonId = async (
     target_tree_id: treeId,
     id_prefix: idPrefix,
   });
+  if (error) throw new Error(error.message);
+  return typeof data === 'string' ? data : null;
+};
+
+export const resolvePublicBookId = async (segment: string): Promise<string | null> => {
+  if (isPublicUuid(segment)) return segment;
+  const idPrefix = parseBookIdPrefix(segment);
+  if (!idPrefix) return null;
+  const supabase = createServerSupabase();
+  const { data, error } = await supabase.rpc('resolve_public_book_id', { id_prefix: idPrefix });
   if (error) throw new Error(error.message);
   return typeof data === 'string' ? data : null;
 };

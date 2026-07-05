@@ -546,7 +546,7 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
 - **U7/U8** `?format=md` / JSON person API on the same route.
 - **U10** crawler User-Agent buckets + `public_crawl_hit` logs; `middleware.ts` serves HTML to bots on `/tree/*`; visitor (non-bot) hits + geo on public pages; admin Traffic panel with agent drill-down.
 
-**Still open:** book HTML prerender for crawlers, sitemap-index chunking, `noai` media meta, full in-app link hygiene audit (U9), **traffic rollup** (hour/day/week/month/year aggregates to cap `public_crawl_events` growth), **rate limiting on `/api/public/*` + sitemap** (each hit queries the DB; a bot storm is uncapped load — add a simple per-IP/UA token bucket in `middleware.ts` + stronger CDN cache headers; U8 flagged this TBD).
+**Still open:** sitemap-index chunking, `noai` media meta, full in-app link hygiene audit (U9), **rate limiting on `/api/public/*` + sitemap** (each hit queries the DB; a bot storm is uncapped load — add a simple per-IP/UA token bucket in `middleware.ts` + stronger CDN cache headers; U8 flagged this TBD).
 
 **Traversal audit 2026-07-05** (root → trees → persons → families, as a bot/agent walks it):
 - **U11. Root `/` is a dead end (highest gap).** `middleware.ts` matches only `/tree/*` + `/book/*`,
@@ -685,11 +685,10 @@ Renames never break links; no slug-history table needed.
   headers, no IP storage) in admin metrics; document opt-out in `robots.txt` where desired. Optional
   `noai` / `noimageai` meta for restricted media later.
   _Logging + robots policy shipped; admin Traffic panel (bot drill-down + visitor geo) shipped 2026-07-04._
-- **U10a. Traffic rollup & retention.** Raw `public_crawl_events` rows are fine for launch but will
-  grow without bound. Add scheduled aggregation into **hour / day / week / month / year** summary
-  tables (hits by agent, route, country; optional unique-resource counts) and prune or archive raw
-  events after a retention window. Admin panel reads rollups for long windows; recent drill-down keeps
-  a short raw tail. Goal: bounded storage and faster stats RPCs as traffic scales.
+- **U10a. Traffic rollup & retention.** ~~Raw `public_crawl_events` rows are fine for launch but will
+  grow without bound~~ **Done (2026-07-05):** `public_crawl_traffic_rollups` (hour→year grains),
+  `rollup_public_crawl_traffic` maintenance RPC, admin stats blend daily rollups with a 14-day raw
+  tail; recent drill-down stays on raw events only.
 
 *Privacy & sequencing:*
 
