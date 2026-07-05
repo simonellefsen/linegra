@@ -150,6 +150,10 @@ export interface DNASharedMatchRecord {
   source: 'dna_match' | 'dna_test' | 'family_kit';
   /** Human label for in-tree family kits (e.g. Biological mother). */
   familyRelationLabel?: string;
+  /** Typical shared-cM band for a documented family-kit relationship. */
+  expectedCmRange?: string;
+  /** Both focus and relative have encrypted raw autosomal indexes (K6 compare). */
+  rawKitComparisonAvailable?: boolean;
   dnaMatchId?: string;
   dnaTestId?: string;
   ownerPersonId: string;

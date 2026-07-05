@@ -41,7 +41,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 
 ## DNA analysis (roadmap K9/K10)
 
-- [ ] **K10 — BUG: family kits are 1-hop only.** `list_family_autosomal_kits` joins only direct
+- [x] **K10 — BUG: family kits are 1-hop only.** `list_family_autosomal_kits` joins only direct
       parent↔child edges, so a tested grandmother (Helle Andersen, 2 hops from Pernille), sibling,
       or cousin never appears on the DNA panel. Enumerate all in-tree autosomal kits and label each
       via `relationshipCalculator.computeRelationship` (grandparent / 1C1R + MRCA + expected cM
@@ -51,6 +51,12 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       import, FK-trust at load, unified list shows unlinked counterparts, re-link owner repair,
       batch import (one owner for multiple CSVs), married-name aliases in load-time name matching
       (`lib/dnaPersonNameVariants.ts`), inline link/create/dismiss on unlinked rows in admin match list.
+- [ ] **K12 — Kit-owner selector lists the whole tree (follow-up to K11).** DNATab kit-owner
+      dropdown offers every person (thousands of Hansdatters; auto-picked "Hans Jacob Hansen", a
+      19th-c. ancestor). Scope to autosomal testers via `listAutosomalPeopleInTree`
+      (`autosomal_test_count > 0` — currently Pernille + Helle); relabel "Kit owner" → "Autosomal
+      tester"; add inline "register new tester" escape hatch; flag non-tester owners for re-link.
+      Files: `components/person-profile/DNATab.tsx` L136, `components/dna/SharedSegmentImportModal.tsx`.
 - [x] **K9 — Candidate-branch hypothesis for unplaced matches.** Join cM→generation-band
       prediction + cluster exclusion + per-line DNA coverage gaps into a ranked "this match most
       likely connects via ancestor couple X" suggestion with research to-dos. Pedigree UI: amber
