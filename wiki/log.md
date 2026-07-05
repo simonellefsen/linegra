@@ -13,6 +13,16 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+---
+
+## 2026-07-05 — OpenRouter live + public crawl smoke (V4, W3)
+
+**V4:** Admin **Test Connection** verified against live ai-proxy + stored key. Next: confirm **AI Usage**
+shows a `test` row, then run one in-app generation to validate token logging.
+
+**W3:** `npm run smoke:public [baseUrl]` — production smoke on `linegra.vercel.app` passed 6/6
+(sitemap, llms.txt, tree directory JSON, tree HTML/md, pagination shell).
+
 ## 2026-07-05 — Bug/security/crawl slice (V1, K8c, N4, U11–U15, U17b)
 
 **Errors (V1):** top-level `ErrorBoundary` in [../index.tsx](../index.tsx); per lazy admin panel in [../App.tsx](../App.tsx).

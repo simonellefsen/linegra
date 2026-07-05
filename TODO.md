@@ -13,8 +13,9 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       Markdown; contradictory `rel`/`relationshipLabel` in JSON). Fix labels in
       `lib/publicCrawlRelations.ts` + assert labels in the test. *(Background-task chip spawned
       2026-07-05.)*
-- [ ] **V4 — Both OpenRouter keys expired.** The ai-proxy success path has never run live
-      end-to-end. Renew a key, run a real generation, confirm usage logging + spend cap fire.
+- [~] **V4 — OpenRouter live path.** Test Connection verified 2026-07-05; confirm **AI Usage** shows
+      a `test` purpose row, then run one in-app generation (place parse / death-cause / book) and
+      confirm tokens + budget counters move.
 
 ## DNA panel (screenshot review 2026-07-05 — roadmap K8)
 
@@ -47,8 +48,8 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **W1 — GitHub Actions CI**: `npm ci && lint && typecheck && test` on push/PR (none exists;
       husky is skippable). Pin Node to Vercel's version.
 - [ ] **W2 — Make CI a required check** so Dependabot grouped PRs are validated before merge.
-- [ ] **W3 — Preview-deploy smoke**: curl `/sitemap.xml`, `/api/public/tree/:id`, `/book/:id`
-      on the Vercel preview and assert 200 + markers.
+- [x] **W3 — Preview-deploy smoke**: `npm run smoke:public [baseUrl]` curls sitemap, llms.txt,
+      tree directory JSON, tree HTML/md shells, and pagination markers.
 - [x] **V1 — Top-level React ErrorBoundary** (+ per lazy admin panel); today any render crash
       white-screens the SPA.
 - [ ] **V2 — Client error capture** → `client_errors` table via RPC, admin panel rollup
