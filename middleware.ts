@@ -16,6 +16,7 @@ export const config = {
     '/book/:path*',
     '/api/public/:path*',
     '/api/sitemap.xml',
+    '/api/sitemap/chunk',
   ],
 };
 
@@ -87,7 +88,7 @@ export default async function middleware(
   const userAgent = request.headers.get('user-agent');
   const url = new URL(request.url);
 
-  if (url.pathname.startsWith('/api/public') || url.pathname === '/api/sitemap.xml') {
+  if (url.pathname.startsWith('/api/public') || url.pathname.startsWith('/api/sitemap')) {
     const rateKey = `${clientIpFromRequest(request)}:${(userAgent ?? 'unknown').slice(0, 80)}`;
     const rate = checkPublicRateLimit(rateKey);
     if (!rate.allowed) {

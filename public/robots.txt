@@ -1,5 +1,6 @@
 # Linegra public crawl policy
 # https://linegra.app
+# Family photos and restricted media: noai / noimageai on public shells (see HTML meta).
 
 User-agent: *
 Allow: /

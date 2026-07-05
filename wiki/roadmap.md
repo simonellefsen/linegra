@@ -546,7 +546,7 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
 - **U7/U8** `?format=md` / JSON person API on the same route.
 - **U10** crawler User-Agent buckets + `public_crawl_hit` logs; `middleware.ts` serves HTML to bots on `/tree/*`; visitor (non-bot) hits + geo on public pages; admin Traffic panel with agent drill-down.
 
-**Still open:** sitemap-index chunking, `noai` media meta, full in-app link hygiene audit (U9), **rate limiting on `/api/public/*` + sitemap** (each hit queries the DB; a bot storm is uncapped load — add a simple per-IP/UA token bucket in `middleware.ts` + stronger CDN cache headers; U8 flagged this TBD).
+**Still open:** full in-app SPA link hygiene (interactive pedigree canvas remains click-driven).
 
 **Traversal audit 2026-07-05** (root → trees → persons → families, as a bot/agent walks it):
 - **U11. Root `/` is a dead end (highest gap).** `middleware.ts` matches only `/tree/*` + `/book/*`,
@@ -648,7 +648,7 @@ Renames never break links; no slug-history table needed.
 - **U3. `robots.txt` + dynamic `sitemap.xml`.** Allow public prefixes; disallow admin/auth/API. Sitemap
   lists every **public** tree landing page, person page, and book URL (respect `RESN` / living flags —
   omit restricted persons). Optional `sitemap-index` when trees are large; chunk person URLs per tree.
-  _Shipped 2026-07-04 (no sitemap-index yet)._
+  _Shipped 2026-07-04; sitemap-index + per-tree chunks shipped 2026-07-05._
 - **U4. Per-entity meta + Schema.org.** OpenGraph/Twitter cards per person/tree/book (title, description,
   image). JSON-LD: `Person` (name, birth/death, `sameAs` for external ids), `WebSite`/`Organization` for
   the archive, `CreativeWork`/`Book` for family books. Use existing structured dates/places from GEDCOM
@@ -676,15 +676,14 @@ Renames never break links; no slug-history table needed.
   directly. Include `rel: parent|child|spouse`, `href`, and human-readable `relationshipLabel` (reuse
   [../lib/relationshipCalculator.ts](../lib/relationshipCalculator.ts)). Rate-limit + cache headers.
   _Person JSON shipped with cache headers; rate-limit TBD._
-- **U9. Internal link hygiene in rendered markup.** Avoid `javascript:` or click-only div navigation on
-  public pages; every traversable edge in the tree should be a **followable anchor** with descriptive
-  `title`/`aria-label` ("Father: …", "Child: …"). Helps both accessibility and agent heuristics that
-  score `<a>` tags over canvas/SVG.
+- **U9. Internal link hygiene in rendered markup.** ~~Avoid `javascript:` or click-only div navigation on
+  public pages~~ **Done on crawl shells (2026-07-05):** descriptive `title`/`aria-label` on relation
+  and directory anchors. Interactive pedigree canvas remains click-driven (SPA).
 - **U10. Bot observability & policy.** Log agent/crawler hits on public routes (User-Agent buckets:
   `Googlebot`, `GPTBot`, `ClaudeBot`, `PerplexityBot`, etc.) and human visitor hits (geo from edge
   headers, no IP storage) in admin metrics; document opt-out in `robots.txt` where desired. Optional
   `noai` / `noimageai` meta for restricted media later.
-  _Logging + robots policy shipped; admin Traffic panel (bot drill-down + visitor geo) shipped 2026-07-04._
+  _Logging + robots policy shipped; `noai, noimageai` on crawl HTML shells + `index.html` (2026-07-05)._
 - **U10a. Traffic rollup & retention.** ~~Raw `public_crawl_events` rows are fine for launch but will
   grow without bound~~ **Done (2026-07-05):** `public_crawl_traffic_rollups` (hour→year grains),
   `rollup_public_crawl_traffic` maintenance RPC, admin stats blend daily rollups with a 14-day raw

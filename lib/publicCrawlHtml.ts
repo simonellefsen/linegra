@@ -1,5 +1,6 @@
 // Roadmap U1/U4/U5 — server-rendered HTML shells for crawlers and agents.
 
+import { renderPublicCrawlRobotsMeta } from './crawlMetaPolicy';
 import type { PublicCrawlRelationshipGroups } from './publicCrawlRelations';
 import type { PublicCrawlSourceRef } from './publicCrawlSources';
 import { buildFamilyJsonLd, buildPersonJsonLd, buildWebsiteJsonLd } from './publicCrawlJsonLd';
@@ -51,10 +52,11 @@ const renderLinkList = (
   if (!links.length) return '';
   const items = links
     .map((link) => {
+      const linkLabel = `${link.relationshipLabel}: ${link.name}`;
       const familyLink = link.familyPageHref
-        ? ` · <a href="${escapeHtml(link.familyPageHref)}">family page</a>`
+        ? ` · <a href="${escapeHtml(link.familyPageHref)}" title="Family page for ${escapeHtml(link.name)}" aria-label="Family page for ${escapeHtml(link.name)}">family page</a>`
         : '';
-      return `<li><a href="${escapeHtml(link.href)}" title="${escapeHtml(`${link.relationshipLabel}: ${link.name}`)}">${escapeHtml(link.name)}</a> <span class="rel">(${escapeHtml(link.relationshipLabel)})</span>${familyLink}</li>`;
+      return `<li><a href="${escapeHtml(link.href)}" title="${escapeHtml(linkLabel)}" aria-label="${escapeHtml(linkLabel)}">${escapeHtml(link.name)}</a> <span class="rel">(${escapeHtml(link.relationshipLabel)})</span>${familyLink}</li>`;
     })
     .join('');
   return `<section><h2>${escapeHtml(title)}</h2><ul>${items}</ul></section>`;
@@ -70,10 +72,10 @@ const renderChildUnionSections = (
         ? `<h3><a href="${escapeHtml(group.familyPageHref)}">${escapeHtml(group.heading)}</a></h3>`
         : `<h3>${escapeHtml(group.heading)}</h3>`;
       const items = group.children
-        .map(
-          (link) =>
-            `<li><a href="${escapeHtml(link.href)}" title="${escapeHtml(`${link.relationshipLabel}: ${link.name}`)}">${escapeHtml(link.name)}</a> <span class="rel">(${escapeHtml(link.relationshipLabel)})</span></li>`
-        )
+        .map((link) => {
+          const linkLabel = `${link.relationshipLabel}: ${link.name}`;
+          return `<li><a href="${escapeHtml(link.href)}" title="${escapeHtml(linkLabel)}" aria-label="${escapeHtml(linkLabel)}">${escapeHtml(link.name)}</a> <span class="rel">(${escapeHtml(link.relationshipLabel)})</span></li>`;
+        })
         .join('');
       return `<section>${heading}<ul>${items}</ul></section>`;
     })
@@ -130,6 +132,7 @@ export const renderPublicPersonHtml = (input: PublicPersonHtmlInput): string => 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${renderPublicCrawlRobotsMeta()}
   <title>${escapeHtml(name)} · ${escapeHtml(input.treeName)} · Linegra</title>
   <meta name="description" content="${escapeHtml(description)}">
   <link rel="canonical" href="${escapeHtml(canonical)}">
@@ -202,6 +205,7 @@ export const renderPublicFamilyHtml = (input: PublicFamilyHtmlInput): string => 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${renderPublicCrawlRobotsMeta()}
   <title>${escapeHtml(spouseNames)} · ${escapeHtml(input.treeName)} · Linegra</title>
   <meta name="description" content="${escapeHtml(description)}">
   <link rel="canonical" href="${escapeHtml(canonical)}">
@@ -224,10 +228,10 @@ export const renderPublicFamilyHtml = (input: PublicFamilyHtmlInput): string => 
     <h1>${escapeHtml(spouseNames)}</h1>
     <p class="meta">${escapeHtml(unionLabel)}${unionFacts ? ` · ${escapeHtml(unionFacts)}` : ''}</p>
     <section><h2>Spouses</h2><ul>${input.spouses
-      .map(
-        (spouse) =>
-          `<li><a href="${escapeHtml(spouse.href)}">${escapeHtml(spouse.name)}</a></li>`
-      )
+      .map((spouse) => {
+        const linkLabel = `Spouse: ${spouse.name}`;
+        return `<li><a href="${escapeHtml(spouse.href)}" title="${escapeHtml(linkLabel)}" aria-label="${escapeHtml(linkLabel)}">${escapeHtml(spouse.name)}</a></li>`;
+      })
       .join('')}</ul></section>
     ${renderLinkList('Children', input.children)}
   </main>
@@ -264,7 +268,8 @@ export const renderPublicTreeHtml = (input: PublicTreeHtmlInput): string => {
         origin
       );
       const dates = [person.birthDate, person.deathDate].filter(Boolean).join(' – ');
-      return `<li><a href="${escapeHtml(href)}" title="${escapeHtml(person.name)}">${escapeHtml(person.name)}</a>${dates ? ` <span class="rel">(${escapeHtml(dates)})</span>` : ''}</li>`;
+      const linkLabel = dates ? `${person.name} (${dates})` : person.name;
+      return `<li><a href="${escapeHtml(href)}" title="${escapeHtml(linkLabel)}" aria-label="${escapeHtml(linkLabel)}">${escapeHtml(person.name)}</a>${dates ? ` <span class="rel">(${escapeHtml(dates)})</span>` : ''}</li>`;
     })
     .join('');
   const jsonLd = buildWebsiteJsonLd(origin);
@@ -274,6 +279,7 @@ export const renderPublicTreeHtml = (input: PublicTreeHtmlInput): string => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${renderPublicCrawlRobotsMeta()}
   <title>${escapeHtml(input.treeName)} · Linegra</title>
   <meta name="description" content="${escapeHtml(description)}">
   <link rel="canonical" href="${escapeHtml(page > 1 ? pageUrl(page) : canonical)}">
@@ -366,7 +372,8 @@ export const renderPublicTreesDirectoryHtml = (input: {
     .map((tree) => {
       const href = buildTreeUrl({ id: tree.treeId, slug: tree.slug }, origin);
       const blurb = tree.description?.trim() || `${tree.personCount} publicly indexed persons`;
-      return `<li><a href="${escapeHtml(href)}">${escapeHtml(tree.name)}</a> <span class="rel">(${escapeHtml(blurb)})</span></li>`;
+      const linkLabel = `${tree.name} — ${blurb}`;
+      return `<li><a href="${escapeHtml(href)}" title="${escapeHtml(linkLabel)}" aria-label="${escapeHtml(linkLabel)}">${escapeHtml(tree.name)}</a> <span class="rel">(${escapeHtml(blurb)})</span></li>`;
     })
     .join('');
 
@@ -375,6 +382,7 @@ export const renderPublicTreesDirectoryHtml = (input: {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${renderPublicCrawlRobotsMeta()}
   <title>Public family trees · Linegra</title>
   <meta name="description" content="Directory of public genealogy archives on Linegra.">
   <link rel="canonical" href="${escapeHtml(canonical)}">

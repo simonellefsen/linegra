@@ -41,6 +41,7 @@ describe('publicCrawlBook', () => {
   it('renders HTML with title, TOC, and escaped narrative', () => {
     const html = renderPublicBookHtml({ ...samplePayload, origin: 'https://linegra.example' });
     expect(html).toContain('<title>The Hansen Book · Linegra</title>');
+    expect(html).toContain('name="robots" content="noai, noimageai"');
     expect(html).toContain('Three generations');
     expect(html).toContain('Anna Hansen');
     expect(html).toContain('A narrative overview.');

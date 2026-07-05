@@ -32,7 +32,11 @@ const main = async () => {
   const sitemap = await fetchText('/sitemap.xml');
   assert(
     'sitemap.xml',
-    sitemap.status === 200 && (sitemap.text.includes('<urlset') || sitemap.text.includes('urlset')),
+    sitemap.status === 200 &&
+      (sitemap.text.includes('<urlset') ||
+        sitemap.text.includes('urlset') ||
+        sitemap.text.includes('<sitemapindex') ||
+        sitemap.text.includes('sitemapindex')),
     `status ${sitemap.status}`
   );
 

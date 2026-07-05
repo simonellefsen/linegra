@@ -1,6 +1,8 @@
 {
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
+    { "source": "/sitemap-core.xml", "destination": "/api/sitemap/chunk?chunk=core" },
+    { "source": "/sitemap-tree-:treeId8.xml", "destination": "/api/sitemap/chunk?chunk=tree-:treeId8" },
     { "source": "/llms.txt", "destination": "/api/llms.txt" },
     { "source": "/trees", "destination": "/" },
     { "source": "/tree/:treeId/person/:personId", "destination": "/" },

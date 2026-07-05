@@ -80,6 +80,9 @@ describe('public crawl shells', () => {
     expect(html).toContain('Anne King (1840–1910)');
     expect(html).toContain('(Father)');
     expect(html).toContain('(Daughter)');
+    expect(html).toContain('aria-label="Father: Lord Byron (1788–1824)"');
+    expect(html).toContain('name="robots" content="noai, noimageai"');
+    expect(html).not.toMatch(/javascript:/i);
   });
 
   it('renders lifespans on relation anchors in Markdown', () => {
@@ -159,6 +162,7 @@ describe('public crawl shells', () => {
     const jsonLd = buildFamilyJsonLd(familyInput);
     expect(html).toContain('Marriage · 1892, Copenhagen');
     expect(html).toContain('Anne King (1840–1910)');
+    expect(html).toContain('aria-label="Spouse:');
     expect(markdown).toContain('## Marriage');
     expect(markdown).toContain('1892, Copenhagen');
     expect(jsonLd['@type']).toBe('Family');
