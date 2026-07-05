@@ -404,10 +404,32 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3): Promise<T> => {
 };
 
 interface ProxyResponse {
-  error?: string;
+  error?: string | { message?: string; code?: number | string };
+  message?: string;
   choices?: ChatResponse['choices'];
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
+
+/** Normalize OpenRouter / Supabase gateway error payloads into a human-readable string. */
+export const formatAiProxyError = (value: unknown, fallback: string): string => {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === 'string' && record.message.trim()) {
+      return record.message.trim();
+    }
+    if (typeof record.error === 'string' && record.error.trim()) {
+      return record.error.trim();
+    }
+    if (record.error && typeof record.error === 'object') {
+      const nested = record.error as Record<string, unknown>;
+      if (typeof nested.message === 'string' && nested.message.trim()) {
+        return nested.message.trim();
+      }
+    }
+  }
+  return fallback;
+};
 
 /** Build the request body sent to the ai-proxy (pure, for testing). The OpenRouter API key is NEVER
  *  placed in this body — only an optional one-off `testKey` for the admin "Test Connection" path. */
@@ -471,9 +493,11 @@ const postToAiProxy = async (
       parsed = null;
     }
     if (parsed?.code === AI_BUDGET_EXCEEDED_CODE && parsed.error) {
-      throw new Error(parsed.error);
+      throw new Error(formatAiProxyError(parsed.error, 'Daily AI budget exhausted.'));
     }
-    throw new Error(parsed?.error ?? `AI proxy request failed: ${response.status}`);
+    throw new Error(
+      formatAiProxyError(parsed, `AI proxy request failed: ${response.status}`)
+    );
   }
   return (await response.json()) as ProxyResponse;
 };
@@ -486,7 +510,9 @@ const callOpenRouter = async (
   const { model, baseUrl } = await resolveOpenRouterConfig(options);
   const timeoutMs = options?.timeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS;
   const data = await postToAiProxy(model, baseUrl, messages, extraBody, options, timeoutMs);
-  if (data.error) throw new Error(data.error);
+  if (data.error) {
+    throw new Error(formatAiProxyError(data.error, 'AI proxy returned an error.'));
+  }
   return extractAssistantText(data.choices?.[0]?.message ?? {}, {
     allowReasoningFallback: options?.allowReasoningFallback,
   });
@@ -500,7 +526,9 @@ const callOpenRouterRaw = async (
   const { model, baseUrl } = await resolveOpenRouterConfig(options);
   const timeoutMs = options?.timeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS;
   const data = await postToAiProxy(model, baseUrl, messages, extraBody, options, timeoutMs);
-  if (data.error) throw new Error(data.error);
+  if (data.error) {
+    throw new Error(formatAiProxyError(data.error, 'AI proxy returned an error.'));
+  }
   return data as unknown as ChatResponse;
 };
 

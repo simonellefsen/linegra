@@ -10,6 +10,7 @@ import {
 import {
   fetchAdminAISettingsMetadata,
   fetchAdminAiBudgetStatus,
+  formatAiProxyError,
   saveAdminAISettings,
   testOpenRouterConnection,
 } from '../../services/ai';
@@ -177,7 +178,11 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
       });
       setTestMessage('OpenRouter connection verified.');
     } catch (error) {
-      setTestMessage(error instanceof Error ? error.message : 'Connection test failed.');
+      setTestMessage(
+        error instanceof Error
+          ? error.message
+          : formatAiProxyError(error, 'Connection test failed.')
+      );
     } finally {
       setTesting(false);
     }

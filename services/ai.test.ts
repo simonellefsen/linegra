@@ -1,10 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { buildAiProxyUrl, buildAiProxyRequestBody, AI_PROXY_PATH } from './ai';
+import { buildAiProxyUrl, buildAiProxyRequestBody, formatAiProxyError, AI_PROXY_PATH } from './ai';
 
 // Roadmap N: the security-critical invariant is that the OpenRouter API key NEVER leaves the
 // browser. These tests pin the request shape sent to the ai-proxy Edge Function: the URL is the
 // function (not openrouter.ai), the body carries attribution + params, and no key material is
 // serialized (only an optional one-off testKey for the admin "Test Connection" path).
+
+describe('formatAiProxyError', () => {
+  it('reads OpenRouter nested error objects', () => {
+    expect(
+      formatAiProxyError({ error: { message: 'User not found.', code: 401 } }, 'fallback')
+    ).toBe('User not found.');
+  });
+
+  it('reads Supabase gateway message fields', () => {
+    expect(formatAiProxyError({ code: 401, message: 'Invalid JWT' }, 'fallback')).toBe('Invalid JWT');
+  });
+
+  it('returns fallback for unknown shapes', () => {
+    expect(formatAiProxyError(null, 'fallback')).toBe('fallback');
+  });
+});
 
 describe('buildAiProxyUrl', () => {
   it('appends the ai-proxy Edge Function path', () => {
