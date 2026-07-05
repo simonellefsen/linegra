@@ -22,6 +22,7 @@ export interface RecordPublicCrawlEventInput {
   format?: string | null;
   geo?: RequestGeo;
   viewerUserId?: string | null;
+  referrerBucket?: string | null;
 }
 
 const isUuid = (value: string | null | undefined): value is string =>
@@ -52,6 +53,7 @@ export const recordPublicCrawlEvent = async (
       payload_city: input.geo?.city ?? null,
       payload_user_agent: truncateUserAgent(input.userAgent),
       payload_viewer_user_id: normalizeCrawlViewerUserId(input.viewerUserId),
+      payload_referrer_bucket: input.referrerBucket ?? null,
     });
     if (error) {
       console.warn('record_public_crawl_event failed', error.message);

@@ -702,12 +702,15 @@ and the metrics that make it *actionable* rather than a hit counter.
   — `bot_by_agent_format` in stats RPC + `CrawlTrafficFormatBreakdown` stacked bars.
 - **U18j — Crawl coverage.** Join sitemap entries against crawl events: "Googlebot has fetched
   38% of public person pages; 214 never crawled." Per-tree coverage % + a never-crawled list —
-  turns the panel into an SEO instrument.
+  turns the panel into an SEO instrument. **DONE 2026-07-05** — `admin_get_crawl_coverage_stats`
+  RPC + `CrawlTrafficCoverageSection`.
 - **U18k — First-seen + deltas.** Callout when a new agent appears ("ClaudeBot first visit
-  2026-07-08") and week-over-week change chips on the stat cards.
+  2026-07-08") and week-over-week change chips on the stat cards. **DONE 2026-07-05** —
+  `deltas` + `first_seen_agents` in stats RPC + `CrawlTrafficWowChip`.
 - **U18l — Referrer capture for human visits.** Store the `Referer` header bucket (google / bing
   / chatgpt.com / perplexity.ai / direct) — no IP, consistent with the privacy stance. "Humans
   referred by AI assistants" is the metric that shows the LLM-discoverability work paying off.
+  **DONE 2026-07-05** — `referrer_bucket` column + `lib/crawlReferrer.ts` + visitor breakdown.
 - CSV export of any drill-down view (small).
 
 #### U16. Proposed URL scheme v2 — slugs, indexes, family pages (proposed 2026-07-05)

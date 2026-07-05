@@ -1,4 +1,5 @@
 import { isPublicUuid } from '../lib/publicSlugs';
+import { mapCrawlCoverageStats, type CrawlCoverageStats } from '../lib/crawlCoverage';
 import {
   collectCrawlTrafficResourceRefs,
   resolveCrawlTrafficResourceLabels,
@@ -10,6 +11,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 export type { CrawlTrafficStats } from '../lib/crawlTrafficStats';
 export type { CrawlTrafficResourceLabel } from '../lib/crawlTrafficResourceLabels';
+export type { CrawlCoverageStats } from '../lib/crawlCoverage';
 
 export interface FetchAdminCrawlTrafficOptions {
   days?: number;
@@ -20,6 +22,7 @@ export interface FetchAdminCrawlTrafficOptions {
 export interface AdminCrawlTrafficResult {
   stats: CrawlTrafficStats;
   resourceLabels: Record<string, CrawlTrafficResourceLabel>;
+  coverage: CrawlCoverageStats;
 }
 
 const chunkIds = (ids: string[], size = 100): string[][] => {
@@ -185,10 +188,26 @@ export const fetchAdminCrawlTrafficStats = async (
     payload_exclude_viewer_user_id: options.excludeViewerUserId ?? null,
   });
   if (error) throw new Error(error.message);
+
+  const coveragePromise = supabase.rpc('admin_get_crawl_coverage_stats', {
+    payload_days: days,
+    payload_agent_filter: options.agentFilter ?? null,
+  });
+
   const stats = mapCrawlTrafficStats(data);
   const refs = collectCrawlTrafficResourceRefs(stats);
-  const resourceLabels = refs.length
-    ? await resolveResourceLabels(refs, typeof window !== 'undefined' ? window.location.origin : undefined)
-    : {};
-  return { stats, resourceLabels };
+  const [resourceLabels, coverageResult] = await Promise.all([
+    refs.length
+      ? resolveResourceLabels(refs, typeof window !== 'undefined' ? window.location.origin : undefined)
+      : Promise.resolve({} as Record<string, CrawlTrafficResourceLabel>),
+    coveragePromise,
+  ]);
+
+  if (coverageResult.error) throw new Error(coverageResult.error.message);
+
+  return {
+    stats,
+    resourceLabels,
+    coverage: mapCrawlCoverageStats(coverageResult.data),
+  };
 };

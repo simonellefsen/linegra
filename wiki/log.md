@@ -15,6 +15,16 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — U18j–l crawl coverage, WoW deltas, referrer buckets
+
+**U18 (complete):** Traffic panel now joins sitemap person URLs vs bot fetches (`admin_get_crawl_coverage_stats`),
+shows never-crawled samples per tree, week-over-week chips on stat cards, first-seen agent callouts, and
+visitor referrer buckets (google / bing / AI / direct — header only). Migration
+`20260705257000_crawl_traffic_u18jkl.sql`; `lib/crawlReferrer.ts`, `lib/crawlCoverage.ts`,
+`CrawlTrafficCoverageSection.tsx`, `CrawlTrafficWowChip.tsx`.
+
+---
+
 ## 2026-07-05 — U18i per-agent response format breakdown
 
 **U18:** Traffic panel shows HTML/Markdown/JSON/XML adoption stacked bars per crawler agent from

@@ -33,10 +33,10 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **U18h — Chart scaling:** fixed axis over the full window incl. zero days; bot + visitor
       series overlaid.
 - [x] **U18i — Format breakdown per agent** (html/md/json/xml) — measures U7/U8 adoption.
-- [ ] **U18j — Crawl coverage:** % of sitemap URLs actually fetched per bot/tree + never-crawled
+- [x] **U18j — Crawl coverage:** % of sitemap URLs actually fetched per bot/tree + never-crawled
       list.
-- [ ] **U18k — First-seen callouts + week-over-week deltas** on stat cards.
-- [ ] **U18l — Referrer buckets for human visits** (google / AI assistants / direct — header
+- [x] **U18k — First-seen callouts + week-over-week deltas** on stat cards.
+- [x] **U18l — Referrer buckets for human visits** (google / AI assistants / direct — header
       only, no IP).
 
 ## DNA analysis (roadmap K9/K10)

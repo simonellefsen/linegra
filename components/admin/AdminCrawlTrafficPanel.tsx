@@ -7,19 +7,23 @@ import {
   Loader2,
   MapPin,
   Route,
+  Sparkles,
   Users,
   X,
 } from 'lucide-react';
-import { labelCountryCode, labelCrawlerAgent } from '../../lib/crawlTrafficStats';
+import { labelCountryCode, labelCrawlerAgent, labelReferrerBucket } from '../../lib/crawlTrafficStats';
 import { crawlTrafficResourceCacheKey } from '../../lib/crawlTrafficResourceLabels';
 import { formatGeoLocation } from '../../lib/requestGeo';
 import {
   fetchAdminCrawlTrafficStats,
+  type CrawlCoverageStats,
   type CrawlTrafficResourceLabel,
   type CrawlTrafficStats,
 } from '../../services/crawlTraffic';
 import CrawlTrafficTrendChart from './CrawlTrafficTrendChart';
 import CrawlTrafficFormatBreakdown from './CrawlTrafficFormatBreakdown';
+import CrawlTrafficWowChip from './CrawlTrafficWowChip';
+import CrawlTrafficCoverageSection from './CrawlTrafficCoverageSection';
 
 interface AdminCrawlTrafficPanelProps {
   supabaseActive: boolean;
@@ -79,6 +83,7 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
   const [excludeMyTraffic, setExcludeMyTraffic] = useState(true);
   const [stats, setStats] = useState<CrawlTrafficStats | null>(null);
+  const [coverage, setCoverage] = useState<CrawlCoverageStats | null>(null);
   const [resourceLabels, setResourceLabels] = useState<Record<string, CrawlTrafficResourceLabel>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +100,7 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
       .then((summary) => {
         if (!cancelled) {
           setStats(summary.stats);
+          setCoverage(summary.coverage);
           setResourceLabels(summary.resourceLabels);
         }
       })
@@ -102,6 +108,7 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load traffic stats.');
           setStats(null);
+          setCoverage(null);
           setResourceLabels({});
         }
       })
@@ -191,6 +198,20 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
 
         {stats && !loading && (
           <>
+            {stats.firstSeenAgents.length > 0 && (
+              <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 flex items-start gap-2">
+                <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-violet-600" />
+                <div>
+                  <p className="font-semibold">New crawler agents this week</p>
+                  <p className="text-violet-800 mt-1">
+                    {stats.firstSeenAgents
+                      .map((row) => labelCrawlerAgent(row.agentBucket))
+                      .join(', ')}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <CrawlTrafficTrendChart
               windowDays={days}
               botByDay={stats.bot.byDay}
@@ -225,10 +246,13 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
                 <div className="rounded-2xl border border-white bg-white px-4 py-4">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bot hits</p>
                   <p className="text-3xl font-serif font-bold text-slate-900 mt-1">{stats.bot.totals.hits}</p>
+                  <CrawlTrafficWowChip delta={stats.deltas.bot} />
+                  <p className="text-[10px] text-slate-400 mt-1">Raw tail only (last 14 days)</p>
                 </div>
                 <div className="rounded-2xl border border-white bg-white px-4 py-4">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">LLM agent hits</p>
                   <p className="text-3xl font-serif font-bold text-violet-700 mt-1">{stats.bot.totals.llmHits}</p>
+                  <CrawlTrafficWowChip delta={stats.deltas.llm} />
                   <p className="text-xs text-slate-500 mt-1">
                     {stats.bot.totals.llmHits > 0
                       ? 'GPTBot, ClaudeBot, PerplexityBot'
@@ -365,6 +389,14 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
               )}
             </section>
 
+            {coverage && (
+              <CrawlTrafficCoverageSection
+                coverage={coverage}
+                agentFilter={agentFilter}
+                labelAgent={labelCrawlerAgent}
+              />
+            )}
+
             <section className="space-y-6 rounded-[28px] border border-slate-200 bg-slate-50/60 p-6">
               <div className="flex items-center gap-3">
                 <Users className="w-5 h-5 text-slate-700" />
@@ -382,6 +414,8 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
                   <p className="text-3xl font-serif font-bold text-slate-900 mt-1">
                     {stats.visitor.totals.hits}
                   </p>
+                  <CrawlTrafficWowChip delta={stats.deltas.visitor} />
+                  <p className="text-[10px] text-slate-400 mt-1">Raw tail only (last 14 days)</p>
                 </div>
                 <div className="rounded-2xl border border-white bg-white px-4 py-4">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Countries</p>
@@ -404,7 +438,7 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
                 </p>
               )}
 
-              <div className="grid gap-6 lg:grid-cols-2">
+              <div className="grid gap-6 lg:grid-cols-3">
                 <div className="rounded-2xl border border-white bg-white p-4 space-y-3">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
                     <MapPin className="w-4 h-4" /> By country
@@ -427,6 +461,32 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
                       ))}
                     </ul>
                   )}
+                </div>
+
+                <div className="rounded-2xl border border-white bg-white p-4 space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                    <Globe2 className="w-4 h-4" /> By referrer
+                  </p>
+                  {stats.visitor.byReferrer.length === 0 ? (
+                    <p className="text-sm text-slate-400">
+                      No referrer data yet. Buckets come from the Referer header on human visits (no full URL stored).
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {stats.visitor.byReferrer.map((row) => (
+                        <li
+                          key={row.referrerBucket}
+                          className="flex items-center justify-between gap-3 text-sm border-b border-slate-50 pb-2"
+                        >
+                          <span className="font-medium text-slate-800">
+                            {labelReferrerBucket(row.referrerBucket)}
+                          </span>
+                          <span className="font-black text-slate-900">{row.hits}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-xs text-slate-400">Raw tail only (last {stats.rawRetentionDays} days).</p>
                 </div>
 
                 <div className="rounded-2xl border border-white bg-white p-4 space-y-3">
@@ -462,6 +522,7 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
                         <tr className="text-left text-[10px] uppercase tracking-widest text-slate-400 border-b border-slate-100">
                           <th className="px-4 py-2 font-black">Time (UTC)</th>
                           <th className="px-4 py-2 font-black">Country</th>
+                          <th className="px-4 py-2 font-black">Referrer</th>
                           <th className="px-4 py-2 font-black">Location</th>
                           <th className="px-4 py-2 font-black">Route</th>
                           <th className="px-4 py-2 font-black">Resource</th>
@@ -475,6 +536,9 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
                             </td>
                             <td className="px-4 py-2 text-slate-800">
                               {labelCountryCode(row.countryCode)}
+                            </td>
+                            <td className="px-4 py-2 text-slate-600">
+                              {labelReferrerBucket(row.referrerBucket)}
                             </td>
                             <td className="px-4 py-2 text-slate-600">
                               {formatGeoLocation(row.countryCode, row.city, row.region) || '—'}
