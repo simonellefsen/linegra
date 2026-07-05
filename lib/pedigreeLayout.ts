@@ -23,7 +23,7 @@ export interface PedigreeEdge {
   id: string;
   fromId: string;
   toId: string;
-  type: 'parent';
+  type: 'parent' | 'spouse';
 }
 
 export interface PedigreeLayout {
@@ -45,6 +45,15 @@ export interface BuildPedigreeOptions {
 
 const isFatherLink = (link: Relationship, parent?: Person | null) => parentLinkReadsAsFather(link, parent);
 const isMotherLink = (link: Relationship, parent?: Person | null) => parentLinkReadsAsMother(link, parent);
+const SPOUSE_TYPES = new Set<Relationship['type']>(['marriage', 'partner']);
+
+const partnerRowOffset = (partner: Person, focus: Person, index: number): number => {
+  if (partner.gender === 'M') return -1 - index;
+  if (partner.gender === 'F') return 1 + index;
+  if (focus.gender === 'M') return 1 + index;
+  if (focus.gender === 'F') return -1 - index;
+  return index % 2 === 0 ? -1 - index : 1 + index;
+};
 
 export const buildPedigreeLayout = (
   people: Person[],
@@ -141,7 +150,7 @@ export const buildPedigreeLayout = (
   const focusNode = createPersonNode(focusPerson, 0, 'focus');
 
   const addParentEdge = (parentNode: PedigreeNode, childNode: PedigreeNode) => {
-    const edgeId = `${parentNode.id}->${childNode.id}`;
+    const edgeId = `parent:${parentNode.id}->${childNode.id}`;
     if (edgeIds.has(edgeId)) return;
     edgeIds.add(edgeId);
     edges.push({
@@ -149,6 +158,82 @@ export const buildPedigreeLayout = (
       fromId: parentNode.id,
       toId: childNode.id,
       type: 'parent',
+    });
+  };
+
+  const addSpouseEdge = (leftId: string, rightId: string) => {
+    const edgeId = `spouse:${leftId}<->${rightId}`;
+    if (edgeIds.has(edgeId)) return;
+    edgeIds.add(edgeId);
+    edges.push({
+      id: edgeId,
+      fromId: leftId,
+      toId: rightId,
+      type: 'spouse',
+    });
+  };
+
+  const getSpouseIds = (personId: string): string[] => {
+    const ids = new Set<string>();
+    relationships.forEach((rel) => {
+      if (!SPOUSE_TYPES.has(rel.type)) return;
+      if (rel.personId === personId) ids.add(rel.relatedId);
+      if (rel.relatedId === personId) ids.add(rel.personId);
+    });
+    return Array.from(ids);
+  };
+
+  const getCoparentIds = (personId: string): string[] => {
+    const ids = new Set<string>();
+    const childLinks = childLinksByParent.get(personId) || [];
+    childLinks.forEach((link) => {
+      (parentLinksByChild.get(link.relatedId) || []).forEach((parentLink) => {
+        if (parentLink.personId !== personId) ids.add(parentLink.personId);
+      });
+    });
+    return Array.from(ids);
+  };
+
+  const placeGenerationPartners = () => {
+    const partnerIds = new Set<string>([...getSpouseIds(focusPerson.id), ...getCoparentIds(focusPerson.id)]);
+    partnerIds.delete(focusPerson.id);
+    const partners = Array.from(partnerIds)
+      .map((id) => peopleById.get(id))
+      .filter((person): person is Person => !!person)
+      .sort((a, b) => {
+        if (a.gender === 'M' && b.gender !== 'M') return -1;
+        if (a.gender === 'F' && b.gender !== 'F') return 1;
+        return `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`);
+      });
+
+    partners.forEach((partner, index) => {
+      const row = focusNode.row + partnerRowOffset(partner, focusPerson, index);
+      createPersonNode(partner, 0, 'focus', focusPerson.id, row);
+      addSpouseEdge(focusPerson.id, partner.id);
+    });
+  };
+
+  const attachCoparentEdges = (childId: string, childNode: PedigreeNode, primaryParentId: string) => {
+    const primaryParentNode = nodeMap.get(primaryParentId);
+    const partnerColumn = primaryParentNode?.column ?? 0;
+    const partnerBaseRow = primaryParentNode?.row ?? focusNode.row;
+    (parentLinksByChild.get(childId) || []).forEach((link) => {
+      if (link.personId === primaryParentId) return;
+      const coparent = peopleById.get(link.personId);
+      if (!coparent) return;
+      let coparentNode = nodeMap.get(coparent.id);
+      if (!coparentNode) {
+        const isFather = isFatherLink(link, coparent);
+        const isMother = isMotherLink(link, coparent);
+        let row: number;
+        if (isFather) row = partnerBaseRow - 1;
+        else if (isMother) row = partnerBaseRow + 1;
+        else row = partnerBaseRow + (coparent.id < primaryParentId ? -1 : 1);
+        const direction = partnerColumn === 0 ? 'focus' : 'descendant';
+        coparentNode = createPersonNode(coparent, partnerColumn, direction, childId, row);
+      }
+      if (!coparentNode) return;
+      addParentEdge(coparentNode, childNode);
     });
   };
 
@@ -322,6 +407,7 @@ export const buildPedigreeLayout = (
       if (!child) return;
       const childNode = createPersonNode(child, column, 'descendant', parentId, childRowCenter);
       addParentEdge(parentNode, childNode);
+      attachCoparentEdges(childId, childNode, parentId);
       if (!descendantVisited.has(child.id)) {
         descendantVisited.add(child.id);
         buildDescendants(child.id, column + 1, depth + 1);
@@ -332,6 +418,7 @@ export const buildPedigreeLayout = (
   ancestorVisited.add(focusPerson.id);
   descendantVisited.add(focusPerson.id);
 
+  placeGenerationPartners();
   buildAncestors(focusPerson.id, -1, 0);
   buildDescendants(focusPerson.id, 1, 0);
 

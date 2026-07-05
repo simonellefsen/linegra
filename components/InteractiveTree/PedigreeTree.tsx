@@ -199,12 +199,21 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   const childEdgeGroups = useMemo(() => {
     const groups = new Map<string, typeof layout.edges>();
     layout.edges.forEach((edge) => {
+      if (edge.type !== 'parent') return;
       const arr = groups.get(edge.toId) || [];
       arr.push(edge);
       groups.set(edge.toId, arr);
     });
     return groups;
   }, [layout]);
+  const spouseEdges = useMemo(
+    () => layout.edges.filter((edge) => edge.type === 'spouse'),
+    [layout]
+  );
+  const focusPartnerCount = useMemo(() => {
+    if (!focusId) return 0;
+    return spouseEdges.filter((edge) => edge.fromId === focusId || edge.toId === focusId).length;
+  }, [spouseEdges, focusId]);
   const highlightedChildId = hoveredPersonId || selectedPersonId || null;
 
   const dnaSupportByPersonId = useMemo(() => {
@@ -297,6 +306,29 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             style={{ width, height, transform: `scale(${zoom})`, transformOrigin: 'top left' }}
           >
           <svg width={width} height={height} className="absolute inset-0 pointer-events-none">
+            {spouseEdges.map((edge) => {
+              const rectA = nodeRects.get(edge.fromId);
+              const rectB = nodeRects.get(edge.toId);
+              if (!rectA || !rectB) return null;
+              const leftRect = rectA.left <= rectB.left ? rectA : rectB;
+              const rightRect = rectA.left <= rectB.left ? rectB : rectA;
+              const y = leftRect.top + cardHeight / 2;
+              return (
+                <g key={edge.id}>
+                  <line
+                    x1={leftRect.left + cardWidth}
+                    y1={y}
+                    x2={rightRect.left}
+                    y2={y}
+                    stroke="#f472b6"
+                    strokeWidth={2}
+                    strokeDasharray="6,4"
+                    opacity={0.9}
+                  />
+                  <title>Spousal union</title>
+                </g>
+              );
+            })}
             {Array.from(childEdgeGroups.entries()).map(([childId, edges]) => {
               const childRect = nodeRects.get(childId);
               if (!childRect) return null;
@@ -487,6 +519,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             const lifeLabel =
               birthYear && deathYear ? `${birthYear} - ${deathYear}` : birthYear || deathYear || undefined;
             const isPlaceholder = !!node.placeholder;
+            const isFocus = node.person?.id === focusId;
             const dnaSupportCount = node.person
               ? dnaSupportByPersonId.get(node.person.id)?.size ?? 0
               : 0;
@@ -548,6 +581,14 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                       {dnaCm ? (
                         <span className="text-[8px] font-bold leading-none opacity-80">{Math.round(dnaCm)}cM</span>
                       ) : null}
+                    </div>
+                  )}
+                  {isFocus && focusPartnerCount > 1 && (
+                    <div
+                      className="absolute top-2 left-2 rounded-full bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider"
+                      title={`${focusPartnerCount} spousal unions`}
+                    >
+                      {focusPartnerCount} unions
                     </div>
                   )}
                   <div

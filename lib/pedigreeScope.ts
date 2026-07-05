@@ -83,6 +83,30 @@ export const computePedigreeScope = (
     }
   }
 
+  const includePersonAndLinks = (personId: string) => {
+    if (!peopleById.get(personId)) return;
+    allowedPersonIds.add(personId);
+  };
+
+  Array.from(allowedPersonIds).forEach((personId) => {
+    const childLinks = childLinksByParent.get(personId) || [];
+    childLinks.forEach((link) => {
+      if (!allowedPersonIds.has(link.relatedId)) return;
+      (parentLinksByChild.get(link.relatedId) || []).forEach((parentLink) => {
+        includePersonAndLinks(parentLink.personId);
+        allowedRelationshipIds.add(parentLink.id);
+      });
+    });
+  });
+
+  relationships.forEach((rel) => {
+    if (rel.type !== 'marriage' && rel.type !== 'partner') return;
+    const touchesFocus =
+      rel.personId === focus.id || rel.relatedId === focus.id;
+    if (!touchesFocus) return;
+    includePersonAndLinks(rel.personId === focus.id ? rel.relatedId : rel.personId);
+    allowedRelationshipIds.add(rel.id);
+  });
 
   childLinksByParent.forEach((links) => {
     if (links.length <= 1) return;
