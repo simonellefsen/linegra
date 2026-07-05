@@ -34,6 +34,9 @@ export interface PedigreeLayout {
   minRow: number;
   maxRow: number;
   focusNode?: PedigreeNode;
+  childHints: Record<string, boolean>;
+  descendantHints: Record<string, boolean>;
+  siblingHints: Record<string, boolean>;
 }
 
 export interface BuildPedigreeOptions {
@@ -62,6 +65,24 @@ const areSpouses = (relationships: Relationship[], aId: string, bId: string): bo
       ((rel.personId === aId && rel.relatedId === bId) || (rel.personId === bId && rel.relatedId === aId))
   );
 
+const birthYearForPerson = (person?: Person): number => {
+  if (!person?.birthDate) return Number.POSITIVE_INFINITY;
+  const match = person.birthDate.match(/(\d{4})/);
+  return match ? Number.parseInt(match[1], 10) : Number.POSITIVE_INFINITY;
+};
+
+const sortChildIdsByAge = (childIds: string[], peopleById: Map<string, Person>): string[] =>
+  [...childIds].sort((a, b) => {
+    const personA = peopleById.get(a);
+    const personB = peopleById.get(b);
+    const yearA = birthYearForPerson(personA);
+    const yearB = birthYearForPerson(personB);
+    if (yearA !== yearB) return yearA - yearB;
+    const nameA = `${personA?.lastName ?? ''}${personA?.firstName ?? ''}`;
+    const nameB = `${personB?.lastName ?? ''}${personB?.firstName ?? ''}`;
+    return nameA.localeCompare(nameB);
+  });
+
 export const buildPedigreeLayout = (
   people: Person[],
   relationships: Relationship[],
@@ -69,7 +90,17 @@ export const buildPedigreeLayout = (
 ): PedigreeLayout => {
   const { focusId, maxAncestorDepth = 4, maxDescendantDepth = 3, allowPlaceholders = true } = options;
   if (!people.length) {
-    return { nodes: [], edges: [], minColumn: 0, maxColumn: 0, minRow: 0, maxRow: 0 };
+    return {
+      nodes: [],
+      edges: [],
+      minColumn: 0,
+      maxColumn: 0,
+      minRow: 0,
+      maxRow: 0,
+      childHints: {},
+      descendantHints: {},
+      siblingHints: {},
+    };
   }
 
   const peopleById = new Map<string, Person>(people.map((p) => [p.id, p]));
@@ -152,8 +183,20 @@ export const buildPedigreeLayout = (
 
   const focusPerson = focusId ? peopleById.get(focusId) : people[0];
   if (!focusPerson) {
-    return { nodes: [], edges: [], minColumn: 0, maxColumn: 0, minRow: 0, maxRow: 0 };
+    return {
+      nodes: [],
+      edges: [],
+      minColumn: 0,
+      maxColumn: 0,
+      minRow: 0,
+      maxRow: 0,
+      childHints: {},
+      descendantHints: {},
+      siblingHints: {},
+    };
   }
+  const layoutChildHints: Record<string, boolean> = {};
+  const layoutDescendantHints: Record<string, boolean> = {};
   const focusNode = createPersonNode(focusPerson, 0, 'focus');
 
   const addParentEdge = (parentNode: PedigreeNode, childNode: PedigreeNode) => {
@@ -201,47 +244,110 @@ export const buildPedigreeLayout = (
     return Array.from(ids);
   };
 
-  const placeGenerationPartners = () => {
-    const partnerIds = new Set<string>([...getSpouseIds(focusPerson.id), ...getCoparentIds(focusPerson.id)]);
-    partnerIds.delete(focusPerson.id);
+  const placePersonPartners = (personId: string) => {
+    const personNode = nodeMap.get(personId);
+    const person = peopleById.get(personId);
+    if (!personNode || !person) return;
+
+    const partnerIds = new Set<string>([...getSpouseIds(personId), ...getCoparentIds(personId)]);
+    partnerIds.delete(personId);
+
     const partners = Array.from(partnerIds)
       .map((id) => peopleById.get(id))
-      .filter((person): person is Person => !!person)
+      .filter((candidate): candidate is Person => !!candidate)
       .sort((a, b) => {
         if (a.gender === 'M' && b.gender !== 'M') return -1;
         if (a.gender === 'F' && b.gender !== 'F') return 1;
         return `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`);
       });
 
-    partners.forEach((partner, index) => {
-      const row = focusNode.row + partnerRowOffset(partner, focusPerson, index);
-      createPersonNode(partner, 0, 'focus', focusPerson.id, row);
-      addSpouseEdge(focusPerson.id, partner.id);
+    let partnerIndex = 0;
+    nodeMap.forEach((node) => {
+      if (node.id !== personId && node.column === personNode.column && partnerIds.has(node.id)) {
+        partnerIndex++;
+      }
+    });
+
+    partners.forEach((partner) => {
+      if (nodeMap.has(partner.id)) {
+        addSpouseEdge(personId, partner.id);
+        return;
+      }
+      const row = personNode.row + partnerRowOffset(partner, person, partnerIndex);
+      partnerIndex++;
+      createPersonNode(partner, personNode.column, personNode.direction, personId, row);
+      addSpouseEdge(personId, partner.id);
     });
   };
 
-  const attachCoparentEdges = (childId: string, childNode: PedigreeNode, primaryParentId: string) => {
+  const placeGenerationPartners = () => {
+    placePersonPartners(focusPerson.id);
+  };
+
+  const ensureCoparentNodesForChild = (childId: string, primaryParentId: string): PedigreeNode[] => {
     const primaryParentNode = nodeMap.get(primaryParentId);
+    const primaryParent = peopleById.get(primaryParentId);
     const partnerColumn = primaryParentNode?.column ?? 0;
     const partnerBaseRow = primaryParentNode?.row ?? focusNode.row;
+    const placed: PedigreeNode[] = [];
     (parentLinksByChild.get(childId) || []).forEach((link) => {
       if (link.personId === primaryParentId) return;
       const coparent = peopleById.get(link.personId);
       if (!coparent) return;
       let coparentNode = nodeMap.get(coparent.id);
       if (!coparentNode) {
-        const isFather = isFatherLink(link, coparent);
-        const isMother = isMotherLink(link, coparent);
-        let row: number;
-        if (isFather) row = partnerBaseRow - 1;
-        else if (isMother) row = partnerBaseRow + 1;
-        else row = partnerBaseRow + (coparent.id < primaryParentId ? -1 : 1);
-        const direction = partnerColumn === 0 ? 'focus' : 'descendant';
-        coparentNode = createPersonNode(coparent, partnerColumn, direction, childId, row);
+        if (primaryParent && areSpouses(relationships, primaryParentId, coparent.id)) {
+          placePersonPartners(primaryParentId);
+          coparentNode = nodeMap.get(coparent.id);
+        } else {
+          const isFather = isFatherLink(link, coparent);
+          const isMother = isMotherLink(link, coparent);
+          let row: number;
+          if (isFather) row = partnerBaseRow - 1;
+          else if (isMother) row = partnerBaseRow + 1;
+          else row = partnerBaseRow + (coparent.id < primaryParentId ? -1 : 1);
+          const direction = partnerColumn === 0 ? 'focus' : 'descendant';
+          coparentNode = createPersonNode(coparent, partnerColumn, direction, childId, row);
+        }
       }
-      if (!coparentNode) return;
+      if (coparentNode) {
+        if (primaryParent && areSpouses(relationships, primaryParentId, coparent.id)) {
+          addSpouseEdge(primaryParentId, coparent.id);
+        }
+        placed.push(coparentNode);
+      }
+    });
+    return placed;
+  };
+
+  const attachCoparentEdges = (childId: string, childNode: PedigreeNode, primaryParentId: string) => {
+    ensureCoparentNodesForChild(childId, primaryParentId).forEach((coparentNode) => {
       addParentEdge(coparentNode, childNode);
     });
+  };
+
+  const getCoparentIdForChild = (childId: string, primaryParentId: string): string | null => {
+    const coparentLink = (parentLinksByChild.get(childId) || []).find(
+      (link) => link.personId !== primaryParentId
+    );
+    return coparentLink?.personId ?? null;
+  };
+
+  const groupChildrenByCoparent = (
+    childIds: string[],
+    primaryParentId: string
+  ): Array<{ coparentId: string | null; childIds: string[] }> => {
+    const byCoparent = new Map<string | null, string[]>();
+    childIds.forEach((childId) => {
+      const coparentId = getCoparentIdForChild(childId, primaryParentId);
+      const list = byCoparent.get(coparentId) || [];
+      list.push(childId);
+      byCoparent.set(coparentId, list);
+    });
+    return Array.from(byCoparent.entries()).map(([coparentId, ids]) => ({
+      coparentId,
+      childIds: sortChildIdsByAge(ids, peopleById),
+    }));
   };
 
   const computeAncestorSpan = (personId: string, depth: number, stack: Set<string> = new Set()): number => {
@@ -404,26 +510,58 @@ export const buildPedigreeLayout = (
     if (!uniqueChildIds.length) return;
     const parentNode = nodeMap.get(parentId);
     if (!parentNode) return;
-    const spans = uniqueChildIds.map((childId) => {
-      const child = peopleById.get(childId);
-      if (!child) return 1;
-      return computeDescendantSpan(childId, depth + 1);
-    });
-    const totalSpan = spans.reduce((sum, span) => sum + span, 0) || uniqueChildIds.length;
-    let cursor = parentNode.row - totalSpan / 2;
-    uniqueChildIds.forEach((childId, index) => {
-      const span = spans[index] || 1;
-      const child = peopleById.get(childId);
-      const childRowCenter = cursor + span / 2;
-      cursor += span;
-      if (!child || areSpouses(relationships, parentId, childId)) return;
-      const childNode = createPersonNode(child, column, 'descendant', parentId, childRowCenter);
-      addParentEdge(parentNode, childNode);
-      attachCoparentEdges(childId, childNode, parentId);
-      if (!descendantVisited.has(child.id)) {
-        descendantVisited.add(child.id);
-        buildDescendants(child.id, column + 1, depth + 1);
+
+    const sortedChildIds = sortChildIdsByAge(uniqueChildIds, peopleById);
+    sortedChildIds.forEach((childId) => {
+      const childDescendantLinks = (childLinksByParent.get(childId) || []).filter(
+        (link) => !areSpouses(relationships, childId, link.relatedId)
+      );
+      if (!childDescendantLinks.length) return;
+      layoutChildHints[childId] = true;
+      if (depth + 1 >= maxDescendantDepth) {
+        layoutDescendantHints[childId] = true;
       }
+    });
+
+    placePersonPartners(parentId);
+
+    const groups = groupChildrenByCoparent(sortedChildIds, parentId);
+    groups.sort((a, b) => {
+      const rowForCoparent = (coparentId: string | null) => {
+        if (!coparentId) return parentNode.row;
+        return nodeMap.get(coparentId)?.row ?? parentNode.row;
+      };
+      return rowForCoparent(a.coparentId) - rowForCoparent(b.coparentId);
+    });
+
+    groups.forEach((group) => {
+      const coparentNode = group.coparentId ? nodeMap.get(group.coparentId) : null;
+      const groupCenterRow = coparentNode
+        ? (parentNode.row + coparentNode.row) / 2
+        : parentNode.row;
+
+      const spans = group.childIds.map((childId) => {
+        const child = peopleById.get(childId);
+        if (!child) return 1;
+        return computeDescendantSpan(childId, depth + 1);
+      });
+      const totalSpan = spans.reduce((sum, span) => sum + span, 0) || group.childIds.length;
+      let cursor = groupCenterRow - totalSpan / 2;
+
+      group.childIds.forEach((childId, index) => {
+        const span = spans[index] || 1;
+        const child = peopleById.get(childId);
+        const childRowCenter = cursor + span / 2;
+        cursor += span;
+        if (!child || areSpouses(relationships, parentId, childId)) return;
+        const childNode = createPersonNode(child, column, 'descendant', parentId, childRowCenter);
+        addParentEdge(parentNode, childNode);
+        attachCoparentEdges(childId, childNode, parentId);
+        if (!descendantVisited.has(child.id)) {
+          descendantVisited.add(child.id);
+          buildDescendants(child.id, column + 1, depth + 1);
+        }
+      });
     });
   };
 
@@ -434,6 +572,25 @@ export const buildPedigreeLayout = (
   buildAncestors(focusPerson.id, -1, 0);
   buildDescendants(focusPerson.id, 1, 0);
 
+  const layoutSiblingHints: Record<string, boolean> = {};
+  nodes.forEach((node) => {
+    if (!node.person) return;
+    (parentLinksByChild.get(node.person.id) || []).forEach((parentLink) => {
+      const parentId = parentLink.personId;
+      const siblings = (childLinksByParent.get(parentId) || []).filter(
+        (link) => !areSpouses(relationships, parentId, link.relatedId)
+      );
+      if (siblings.length <= 1) return;
+      if (
+        siblings.some(
+          (link) => link.relatedId !== node.person!.id && !nodeMap.has(link.relatedId)
+        )
+      ) {
+        layoutSiblingHints[node.person!.id] = true;
+      }
+    });
+  });
+
   return {
     nodes,
     edges,
@@ -442,5 +599,8 @@ export const buildPedigreeLayout = (
     minRow,
     maxRow,
     focusNode,
+    childHints: layoutChildHints,
+    descendantHints: layoutDescendantHints,
+    siblingHints: layoutSiblingHints,
   };
 };

@@ -1,6 +1,16 @@
 import { Person, Relationship } from '../types';
 import { indexParentChildLinks } from './parentChildLinks';
 
+const SPOUSE_TYPES = new Set<Relationship['type']>(['marriage', 'partner']);
+
+const areSpouses = (relationships: Relationship[], parentId: string, childId: string): boolean =>
+  relationships.some(
+    (rel) =>
+      SPOUSE_TYPES.has(rel.type) &&
+      ((rel.personId === parentId && rel.relatedId === childId) ||
+        (rel.personId === childId && rel.relatedId === parentId))
+  );
+
 export interface PedigreeScopeResult {
   people: Person[];
   relationships: Relationship[];
@@ -8,6 +18,7 @@ export interface PedigreeScopeResult {
   hasMoreDescendants: boolean;
   siblingHints: Record<string, boolean>;
   childHints: Record<string, boolean>;
+  descendantHints: Record<string, boolean>;
 }
 
 export const computePedigreeScope = (
@@ -16,10 +27,11 @@ export const computePedigreeScope = (
   focusId: string | null,
   maxAncestorDepth: number,
   maxDescendantDepth: number,
-  peoplePool: Person[] = []
+  peoplePool: Person[] = [],
+  relationshipPool: Relationship[] = relationships
 ): PedigreeScopeResult => {
   if (!focusId || !people.length) {
-    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
+    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {}, descendantHints: {} };
   }
 
   const poolById = new Map<string, Person>();
@@ -27,10 +39,11 @@ export const computePedigreeScope = (
   const peopleById = new Map<string, Person>(people.map((p) => [p.id, p]));
   const focus = peopleById.get(focusId);
   if (!focus) {
-    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
+    return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {}, descendantHints: {} };
   }
 
   const { parentLinksByChild, childLinksByParent } = indexParentChildLinks(relationships);
+  const hintChildLinksByParent = indexParentChildLinks(relationshipPool).childLinksByParent;
 
   const allowedPersonIds = new Set<string>([focus.id]);
   const allowedRelationshipIds = new Set<string>();
@@ -38,6 +51,7 @@ export const computePedigreeScope = (
   let hasMoreDescendants = false;
   const siblingHints: Record<string, boolean> = {};
   const childHints: Record<string, boolean> = {};
+  const descendantHints: Record<string, boolean> = {};
 
   const ancestorQueue: Array<{ id: string; depth: number }> = [{ id: focus.id, depth: 0 }];
   while (ancestorQueue.length) {
@@ -81,9 +95,6 @@ export const computePedigreeScope = (
         descendantQueue.push({ id: child.id, depth: depth + 1 });
       }
     });
-    if (allowedPersonIds.has(id)) {
-      childHints[id] = childLinks.length > 0;
-    }
   }
 
   const includePersonAndLinks = (personId: string) => {
@@ -111,11 +122,36 @@ export const computePedigreeScope = (
     allowedRelationshipIds.add(rel.id);
   });
 
-  childLinksByParent.forEach((links) => {
-    if (links.length <= 1) return;
+  hintChildLinksByParent.forEach((links, parentId) => {
+    if (!allowedPersonIds.has(parentId)) return;
     links.forEach((link) => {
-      if (allowedPersonIds.has(link.relatedId)) {
-        siblingHints[link.relatedId] = true;
+      if (areSpouses(relationshipPool, parentId, link.relatedId)) return;
+      if (!allowedPersonIds.has(link.relatedId)) {
+        allowedRelationshipIds.add(link.id);
+      }
+    });
+  });
+
+  hintChildLinksByParent.forEach((links, parentId) => {
+    const realChildren = links.filter(
+      (link) => !areSpouses(relationshipPool, parentId, link.relatedId)
+    );
+    if (!realChildren.length || !allowedPersonIds.has(parentId)) return;
+    childHints[parentId] = true;
+    if (realChildren.some((link) => !allowedPersonIds.has(link.relatedId))) {
+      descendantHints[parentId] = true;
+    }
+  });
+
+  Array.from(allowedPersonIds).forEach((personId) => {
+    (parentLinksByChild.get(personId) || []).forEach((parentLink) => {
+      const parentId = parentLink.personId;
+      const allSiblings = (hintChildLinksByParent.get(parentId) || []).filter(
+        (link) => !areSpouses(relationshipPool, parentId, link.relatedId)
+      );
+      if (allSiblings.length <= 1) return;
+      if (allSiblings.some((link) => !allowedPersonIds.has(link.relatedId))) {
+        siblingHints[personId] = true;
       }
     });
   });
@@ -132,5 +168,6 @@ export const computePedigreeScope = (
     hasMoreDescendants,
     siblingHints,
     childHints,
+    descendantHints,
   };
 };

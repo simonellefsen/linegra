@@ -1,11 +1,12 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership, createStandalonePerson, resolvePublicPersonIdClient, resolvePublicTreeIdClient } from './services/archive';
+import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership, createStandalonePerson, createPlaceholderParent, resolvePublicPersonIdClient, resolvePublicTreeIdClient } from './services/archive';
 import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, listMyPendingCollaboratorInvites, signOut, subscribeToAuthChanges } from './services/auth';
 import { buildPersonUrl, buildTreeUrl, canonicalizeLegacyPublicUrl, parsePublicRouteFromLocation } from './lib/publicRoutes';
 import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole, TreeLayoutType } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
+import { isParentChildEdge } from './lib/parentChildLinks';
 import {
   DEFAULT_PEDIGREE_ANCESTOR_DEPTH,
   DEFAULT_PEDIGREE_DESCENDANT_DEPTH,
@@ -219,7 +220,14 @@ const App: React.FC = () => {
           setPedigreeFocusId(scope.focusPersonId);
         }
         setAllPeople(scope.people);
-        setAllRelationships(scope.relationships);
+        setAllRelationships((prev) => {
+          if (opts.force) return scope.relationships;
+          const byId = new Map(
+            prev.filter((rel) => rel.treeId === tree.id).map((rel) => [rel.id, rel])
+          );
+          scope.relationships.forEach((rel) => byId.set(rel.id, rel));
+          return Array.from(byId.values());
+        });
         setPedigreeHasMore({
           ancestors: scope.hasMoreAncestors,
           descendants: scope.hasMoreDescendants,
@@ -535,11 +543,12 @@ useEffect(() => {
   const treeRelationships = useMemo(() => {
     if (!activeTreeId) return [];
     const visibleIds = new Set(treePeople.map((p) => p.id));
-    return allRelationships.filter(
-      (r) =>
-        r.treeId === activeTreeId &&
-        (canViewPrivate || (visibleIds.has(r.personId) && visibleIds.has(r.relatedId)))
-    );
+    return allRelationships.filter((r) => {
+      if (r.treeId !== activeTreeId) return false;
+      if (canViewPrivate) return true;
+      if (visibleIds.has(r.personId) && visibleIds.has(r.relatedId)) return true;
+      return isParentChildEdge(r) && visibleIds.has(r.personId);
+    });
   }, [allRelationships, activeTreeId, canViewPrivate, treePeople]);
 
   // shared_cm for the DNA matches that back this tree's resolved lineages, keyed by dna_matches.id.
@@ -569,8 +578,11 @@ useEffect(() => {
   const filteredPeople = useMemo(() => treePeople, [treePeople]);
 
   const filteredRelationships = useMemo(() => {
-    const visibleIds = new Set(filteredPeople.map(p => p.id));
-    return treeRelationships.filter(rel => visibleIds.has(rel.personId) && visibleIds.has(rel.relatedId));
+    const visibleIds = new Set(filteredPeople.map((p) => p.id));
+    return treeRelationships.filter((rel) => {
+      if (visibleIds.has(rel.personId) && visibleIds.has(rel.relatedId)) return true;
+      return isParentChildEdge(rel) && visibleIds.has(rel.personId);
+    });
   }, [treeRelationships, filteredPeople]);
   const parentalRelationshipSet = useMemo(() => new Set<Relationship['type']>(PARENTAL_REL_TYPES), []);
 
@@ -601,10 +613,18 @@ useEffect(() => {
 
   const pedigreeScope = useMemo(() => {
     if (!focusPersonId) {
-      return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {} };
+      return { people: [], relationships: [], hasMoreAncestors: false, hasMoreDescendants: false, siblingHints: {}, childHints: {}, descendantHints: {} };
     }
-    return computePedigreeScope(filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth, treePeople);
-  }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth, treePeople]);
+    return computePedigreeScope(
+      filteredPeople,
+      filteredRelationships,
+      focusPersonId,
+      ancestorDepth,
+      descendantDepth,
+      treePeople,
+      treeRelationships
+    );
+  }, [filteredPeople, filteredRelationships, focusPersonId, ancestorDepth, descendantDepth, treePeople, treeRelationships]);
 
   const handleFocusDefaultProband = useCallback(() => {
     const targetFocusId = focusPersonId ?? treeDefaultProbandId;
@@ -617,6 +637,7 @@ useEffect(() => {
   const pedigreeAllowsPlaceholders = canWriteActiveTree;
   const siblingHints = pedigreeScope.siblingHints || {};
   const childHints = pedigreeScope.childHints || {};
+  const descendantHints = pedigreeScope.descendantHints || {};
   const handleExpandSiblings = useCallback((personId: string) => {
     const parentLink = treeRelationships.find(
       (rel) => rel.relatedId === personId && parentalRelationshipSet.has(rel.type)
@@ -810,6 +831,41 @@ useEffect(() => {
       }
     },
     [handleEnsurePersonDetails, canViewPrivate]
+  );
+
+  const handleAddParentFromPedigree = useCallback(
+    async (childId: string, parentType: 'father' | 'mother') => {
+      if (!activeTree || !activeTreeId || !canWriteActiveTree) return;
+      setArchiveError(null);
+      try {
+        const newParent = await createPlaceholderParent({
+          treeId: activeTreeId,
+          childId,
+          parentType,
+          actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+        });
+        graphLoadKeyRef.current = null;
+        await loadPedigreeGraph(activeTree, focusPersonId ?? childId, ancestorDepth, descendantDepth, {
+          force: true,
+          silent: true,
+        });
+        handlePersonSelect(newParent);
+      } catch (err) {
+        console.error('Failed to create parent from pedigree', err);
+        setArchiveError(err instanceof Error ? err.message : 'Could not create parent record.');
+      }
+    },
+    [
+      activeTree,
+      activeTreeId,
+      canWriteActiveTree,
+      currentUser,
+      loadPedigreeGraph,
+      focusPersonId,
+      ancestorDepth,
+      descendantDepth,
+      handlePersonSelect,
+    ]
   );
 
   const handleOpenTreeFromProfile = useCallback(
@@ -1651,9 +1707,9 @@ useEffect(() => {
                           maxDescendants={descendantDepth}
                           showPlaceholders={pedigreeAllowsPlaceholders}
                           ancestorsRemaining={pedigreeHasMore.ancestors || pedigreeScope.hasMoreAncestors}
-                          descendantsRemaining={pedigreeHasMore.descendants || pedigreeScope.hasMoreDescendants}
                           siblingHints={siblingHints}
                           childHints={childHints}
+                          descendantHints={descendantHints}
                           onExpandAncestors={() =>
                             setAncestorDepth((depth) => Math.min(MAX_PEDIGREE_ANCESTOR_DEPTH, depth + 1))
                           }
@@ -1661,6 +1717,7 @@ useEffect(() => {
                             setDescendantDepth((depth) => Math.min(MAX_PEDIGREE_DESCENDANT_DEPTH, depth + 1))
                           }
                           onExpandSiblings={handleExpandSiblings}
+                          onAddParent={pedigreeAllowsPlaceholders ? handleAddParentFromPedigree : undefined}
                           onFocusHome={handleFocusDefaultProband}
                           homeEnabled={!!focusPersonId}
                           ancestorDepth={ancestorDepth}

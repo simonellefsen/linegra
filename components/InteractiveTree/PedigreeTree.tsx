@@ -6,7 +6,6 @@ import { getAvatarForPerson } from '../../lib/avatar';
 import {
   ChevronDown,
   ChevronUp,
-  ChevronLeft,
   ChevronRight,
   Dna,
   Home,
@@ -31,13 +30,14 @@ interface PedigreeTreeProps {
   maxDescendants?: number;
   selectedPersonId?: string;
   ancestorsRemaining?: boolean;
-  descendantsRemaining?: boolean;
   showPlaceholders?: boolean;
   siblingHints?: Record<string, boolean>;
   childHints?: Record<string, boolean>;
+  descendantHints?: Record<string, boolean>;
   onExpandAncestors?: () => void;
   onExpandDescendants?: () => void;
   onExpandSiblings?: (personId: string) => void;
+  onAddParent?: (childId: string, parentType: 'father' | 'mother') => void;
   onFocusHome?: () => void;
   homeEnabled?: boolean;
   ancestorDepth?: number;
@@ -75,7 +75,8 @@ const CONFIDENCE_STROKE: Record<
   Speculative: { color: '#cbd5e1', width: 2, dash: '5,4', opacity: 0.7 },
   Unknown: { color: '#cbd5e1', width: 1.5, dash: '1,5', opacity: 0.55 },
 };
-const DEFAULT_LINEAGE_STROKE = { color: '#a5b4fc', width: 2, dash: 'none', opacity: 0.9 };
+const DEFAULT_LINEAGE_STROKE = { color: '#6366f1', width: 2.5, dash: 'none', opacity: 0.95 };
+const UNION_BAR_STROKE = { color: '#4338ca', width: 3.5, dash: 'none', opacity: 1 };
 const DNA_STROKE = { color: '#059669', width: 3, dash: 'none', opacity: 1 };
 const PLACEHOLDER_OVERRIDE = { dash: '6,5', width: 2, opacity: 0.5 };
 
@@ -99,13 +100,14 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   maxDescendants = 3,
   selectedPersonId,
   ancestorsRemaining = false,
-  descendantsRemaining = false,
   showPlaceholders = true,
   siblingHints = {},
   childHints = {},
+  descendantHints = {},
   onExpandAncestors,
   onExpandDescendants,
   onExpandSiblings,
+  onAddParent,
   onFocusHome,
   homeEnabled = false,
   ancestorDepth = 1,
@@ -133,6 +135,19 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
         allowPlaceholders: showPlaceholders,
       }),
     [people, relationships, focusId, maxAncestors, maxDescendants, showPlaceholders]
+  );
+
+  const mergedChildHints = useMemo(
+    () => ({ ...childHints, ...layout.childHints }),
+    [childHints, layout.childHints]
+  );
+  const mergedDescendantHints = useMemo(
+    () => ({ ...descendantHints, ...layout.descendantHints }),
+    [descendantHints, layout.descendantHints]
+  );
+  const mergedSiblingHints = useMemo(
+    () => ({ ...siblingHints, ...layout.siblingHints }),
+    [siblingHints, layout.siblingHints]
   );
 
   const packedRowByNodeId = useMemo(() => {
@@ -338,7 +353,8 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
               // common, unsourced case is unchanged. The shared union bar + drop use the group style.
               const childDnaCount = dnaSupportByPersonId.get(childId)?.size ?? 0;
               const isDna = childDnaCount > 0;
-              const groupStroke = isDna ? DNA_STROKE : DEFAULT_LINEAGE_STROKE;
+              const groupStroke = isDna ? DNA_STROKE : UNION_BAR_STROKE;
+              const singleStroke = isDna ? DNA_STROKE : DEFAULT_LINEAGE_STROKE;
               const isHighlighted = !highlightedChildId || highlightedChildId === childId;
               const edgeOpacity = isHighlighted ? 1 : 0.2;
               const edgeConfidence = (fromId: string, toId: string): RelationshipConfidence | undefined =>
@@ -474,7 +490,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
               const toY = childRect.top;
               const midY = (fromY + toY) / 2;
               const s = parentNode.placeholder
-                ? { ...groupStroke, ...PLACEHOLDER_OVERRIDE }
+                ? { ...singleStroke, ...PLACEHOLDER_OVERRIDE }
                 : isDna
                 ? DNA_STROKE
                 : strokeForConfidence(edgeConfidence(edge.fromId, edge.toId));
@@ -519,6 +535,16 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             const lifeLabel =
               birthYear && deathYear ? `${birthYear} - ${deathYear}` : birthYear || deathYear || undefined;
             const isPlaceholder = !!node.placeholder;
+            const canAddParent =
+              isPlaceholder &&
+              showPlaceholders &&
+              !!onAddParent &&
+              !!node.relatedPersonId &&
+              (node.placeholder === 'father' || node.placeholder === 'mother');
+            const showDescendantHint =
+              !!node.person &&
+              (mergedDescendantHints[node.person.id] ||
+                (mergedChildHints[node.person.id] && node.column < layout.maxColumn));
             const isFocus = node.person?.id === focusId;
             const dnaSupportCount = node.person
               ? dnaSupportByPersonId.get(node.person.id)?.size ?? 0
@@ -532,7 +558,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
               'py-3',
               'transition-all',
               'border',
-              isPlaceholder ? 'bg-white/70 border-dashed border-slate-300 text-slate-400' : 'bg-white border-slate-200',
+              isPlaceholder ? 'bg-white/70 border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-500' : 'bg-white border-slate-200',
               isSelected ? 'ring-4 ring-blue-300' : '',
             ].join(' ');
             return (
@@ -540,36 +566,30 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                 key={node.id}
                 className={cardClasses}
                 style={{ left: rect.left, top: rect.top, width: cardWidth, height: cardHeight }}
-                disabled={!node.person}
-                onClick={() => node.person && onPersonSelect(node.person)}
+                disabled={isPlaceholder ? !canAddParent : !node.person}
+                onClick={() => {
+                  if (canAddParent && node.relatedPersonId) {
+                    onAddParent?.(node.relatedPersonId, node.placeholder as 'father' | 'mother');
+                    return;
+                  }
+                  if (node.person) onPersonSelect(node.person);
+                }}
                 onMouseEnter={() => setHoveredPersonId(node.person?.id ?? null)}
                 onMouseLeave={() => setHoveredPersonId((prev) => (prev === node.person?.id ? null : prev))}
               >
-                {node.person && siblingHints[node.person.id] && onExpandSiblings && (
-                  <>
-                    <button
-                      type="button"
-                      className="absolute -left-4 top-1/2 -translate-y-1/2 bg-white border border-slate-200 rounded-full shadow p-1 text-slate-500 hover:bg-slate-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onExpandSiblings?.(node.person!.id);
-                      }}
-                      aria-label="Show siblings"
-                    >
-                      <ChevronLeft className="w-3 h-3" />
-                    </button>
-                    <button
-                      type="button"
-                      className="absolute -right-4 top-1/2 -translate-y-1/2 bg-white border border-slate-200 rounded-full shadow p-1 text-slate-500 hover:bg-slate-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onExpandSiblings?.(node.person!.id);
-                      }}
-                      aria-label="Show siblings"
-                    >
-                      <ChevronRight className="w-3 h-3" />
-                    </button>
-                  </>
+                {node.person && mergedSiblingHints[node.person.id] && onExpandSiblings && (
+                  <button
+                    type="button"
+                    className="absolute -right-4 top-1/2 -translate-y-1/2 bg-white border border-slate-200 rounded-full shadow p-1 text-slate-500 hover:bg-slate-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onExpandSiblings(node.person!.id);
+                    }}
+                    aria-label="Show siblings"
+                    title="Show siblings"
+                  >
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
                 )}
                 <div className="flex h-full flex-col items-center text-center">
                   {node.person && dnaSupportCount > 0 && (
@@ -623,7 +643,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                         <span className="truncate">{lifeLabel}</span>
                       </div>
                     )}
-                    {node.person && childHints[node.person.id] && (
+                    {showDescendantHint && (
                       <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 font-semibold">
                         <ChevronDown className="w-3 h-3" />
                         <span>Descendants</span>
@@ -644,7 +664,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     <ChevronUp className="w-3 h-3" />
                   </button>
                 )}
-                {node.person && descendantsRemaining && node.column === layout.maxColumn && onExpandDescendants && (
+                {node.person && mergedDescendantHints[node.person.id] && node.column === layout.maxColumn && onExpandDescendants && (
                   <button
                     type="button"
                     className="absolute left-1/2 -translate-x-1/2 -bottom-4 bg-white border border-slate-200 rounded-full shadow p-1 text-slate-500 hover:bg-slate-100"
