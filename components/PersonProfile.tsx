@@ -736,8 +736,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       metadataPatch.structured_burial_place = burialPlace;
     }
     return {
-      first_name: firstName || person.firstName,
-      last_name: lastName || person.lastName,
+      first_name: firstName,
+      last_name: lastName,
       maiden_name: maidenName || null,
       gender,
       birth_date_text: birthDate || null,

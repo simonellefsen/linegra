@@ -38,11 +38,20 @@ if (!supabaseUrl) {
   process.exit(1);
 }
 
+const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+const bypassHeaders = bypassSecret
+  ? {
+      'x-vercel-protection-bypass': bypassSecret,
+      'x-vercel-set-bypass-cookie': 'true',
+    }
+  : {};
+
 const response = await fetch(`${baseUrl}/api/e2e/redeem`, {
   method: 'POST',
   headers: {
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
+    ...bypassHeaders,
   },
 });
 

@@ -1,9 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
+import { vercelProtectionBypassHeaders } from './lib/e2eVercelHeaders';
 
 const localBaseUrl = process.env.E2E_LOCAL_URL ?? 'http://127.0.0.1:4173';
 const deployedBaseUrl = process.env.E2E_BASE_URL;
 const skipLocalServer = process.env.E2E_SKIP_LOCAL_SERVER === '1';
 const useDeployedAuth = Boolean(process.env.E2E_ACCESS_TOKEN);
+const deployedBypassHeaders = vercelProtectionBypassHeaders();
 
 export default defineConfig({
   testDir: 'e2e',
@@ -31,6 +33,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         baseURL: deployedBaseUrl,
+        extraHTTPHeaders: deployedBypassHeaders,
         storageState: useDeployedAuth ? 'e2e/.auth/storageState.json' : undefined,
       },
     },

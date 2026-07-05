@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FullConfig } from '@playwright/test';
 import { supabaseAuthStorageKey } from '../lib/e2eToken';
+import { vercelProtectionBypassHeaders } from '../lib/e2eVercelHeaders';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const authDir = path.join(__dirname, '.auth');
@@ -16,8 +17,14 @@ async function globalSetup(_config: FullConfig): Promise<void> {
   const token = process.env.E2E_ACCESS_TOKEN;
   const supabaseUrl = resolveSupabaseUrl();
 
-  if (!token || !baseUrl) {
-    console.log('[e2e] Skipping session bootstrap (E2E_ACCESS_TOKEN or E2E_BASE_URL not set).');
+  if (!baseUrl) {
+    console.log('[e2e] Skipping session bootstrap (E2E_BASE_URL not set).');
+    return;
+  }
+  if (!token) {
+    console.log(
+      '[e2e] Skipping session bootstrap (E2E_ACCESS_TOKEN not set — add as a GitHub repository secret for CI, not Vercel env).'
+    );
     return;
   }
   if (!supabaseUrl) {
@@ -29,6 +36,7 @@ async function globalSetup(_config: FullConfig): Promise<void> {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      ...vercelProtectionBypassHeaders(),
     },
   });
 

@@ -49,6 +49,10 @@ After `build`, the workflow waits for the matching Vercel deployment
 (`patrickedqvist/wait-for-vercel-preview`) and sets `E2E_BASE_URL` to that URL before running
 Playwright.
 
+Preview deployments with **Deployment Protection** require the automation bypass header. Copy the
+secret from Vercel → Project → Settings → Deployment Protection → **Protection Bypass for
+Automation** into a GitHub repository secret (same value).
+
 ### E2E access tokens (authenticated smoke)
 
 Superadmins mint revocable tokens under **Admin → Errors → E2E access tokens**. Playwright redeems
@@ -56,12 +60,16 @@ them via `POST /api/e2e/redeem` (server signs in the dedicated service user).
 
 | Where | Name | Purpose |
 |-------|------|---------|
-| GitHub secret | `E2E_ACCESS_TOKEN` | Minted `lg_e2e_…` token for CI auth bootstrap |
-| GitHub variable | `SUPABASE_URL` | Storage key for Playwright `storageState` (same as Vercel) |
+| **GitHub secret** | `VERCEL_AUTOMATION_BYPASS_SECRET` | Bypass Vercel preview protection in CI (required for public API smoke) |
+| **GitHub secret** | `E2E_ACCESS_TOKEN` | Minted `lg_e2e_…` token for CI auth bootstrap — **not** a Vercel env var |
+| **GitHub variable** | `SUPABASE_URL` | Playwright `storageState` key (same value as on Vercel) |
 | GitHub secret (optional) | `E2E_PROFILE_PATH` | Public person path for profile smoke |
-| Vercel env | `E2E_SERVICE_USER_EMAIL` | Dedicated E2E runner account |
-| Vercel env | `E2E_SERVICE_USER_PASSWORD` | Service user password |
+| Vercel env | `E2E_SERVICE_USER_EMAIL` | Dedicated E2E runner account (redeem API) |
+| Vercel env | `E2E_SERVICE_USER_PASSWORD` | Service user password (redeem API) |
 | Vercel env | `SUPABASE_SERVICE_ROLE_KEY` | Redeem route consumes tokens + signs in |
+
+Do **not** put `E2E_ACCESS_TOKEN` on Vercel — GitHub Actions reads it from repository secrets when
+bootstrapping Playwright. Vercel only needs the service-user credentials for `/api/e2e/redeem`.
 
 Local bootstrap (optional):
 
