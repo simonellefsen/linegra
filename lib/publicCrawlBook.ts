@@ -2,6 +2,7 @@
 
 import type { BookChapter, BookLanguage, BookStatistics } from '../types';
 import { bookStrings, DEFAULT_BOOK_LANGUAGE } from './bookI18n';
+import { renderPublicCrawlRobotsMeta } from './crawlMetaPolicy';
 import { buildPublicBookUrl, buildTreeUrl, getPublicSiteOrigin } from './publicRoutes';
 import { resolvePublicBookId } from './publicRouteResolve';
 import { createServerSupabase } from './supabaseServer';
@@ -175,6 +176,7 @@ export const renderPublicBookHtml = (input: PublicBookCrawlPayload & { origin?: 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${renderPublicCrawlRobotsMeta()}
   <title>${escapeHtml(input.title)} · Linegra</title>
   <meta name="description" content="${escapeHtml(description)}">
   <link rel="canonical" href="${escapeHtml(canonical)}">

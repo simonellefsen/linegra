@@ -99,6 +99,8 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 
 - [x] **Book HTML prerender for crawlers** — `/api/public/book/*` HTML/md/JSON shells + middleware rewrite on `/book/*`.
 - [x] **U10a — Traffic rollup & retention** — `public_crawl_traffic_rollups` + `rollup_public_crawl_traffic`; admin stats blend rollups with 14-day raw tail.
-- [ ] Sitemap-index chunking (U3); `noai` media meta; in-app link hygiene audit (U9).
+- [x] **Sitemap-index chunking (U3)** — per-tree person sitemaps + core chunk when URL budget exceeded.
+- [x] **`noai` media meta** on public crawl HTML shells + SPA `index.html`.
+- [x] **U9 — Link hygiene** — `aria-label`/`title` on all crawl-shell relation and directory anchors.
 - [ ] Backfill `wiki/log.md` for the 2026-06-22→07 auth work (A).
 - [ ] OAuth providers + ownership transfer (A).

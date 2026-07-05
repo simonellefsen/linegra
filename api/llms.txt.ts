@@ -26,7 +26,9 @@ Legacy query URLs (\`?tree=&person=\`) redirect to the canonical paths above.
 
 ## Machine-readable alternates
 
-- Sitemap: ${origin}/sitemap.xml
+- Sitemap: ${origin}/sitemap.xml (sitemap-index with per-tree chunks when large)
+- Sitemap core chunk: ${origin}/sitemap-core.xml
+- Sitemap tree chunk: ${origin}/sitemap-tree-{treeId8}.xml
 - Tree directory Markdown: ${origin}/api/public/trees?format=md
 - Tree directory JSON: ${origin}/api/public/trees?format=json
 - Person JSON: ${origin}/api/public/person/{personUuid}

@@ -15,7 +15,16 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
-## 2026-07-05 — Book HTML prerender + U10a traffic rollups
+## 2026-07-05 — U3 sitemap-index, noai meta, U9 link hygiene
+
+**U3:** `sitemap.xml` emits a sitemap-index when multiple trees or >4.5k URLs; `sitemap-core.xml` +
+per-tree `sitemap-tree-{id8}.xml` chunks.
+
+**noai:** `noai, noimageai` robots meta on all public crawl HTML shells and `index.html`.
+
+**U9:** `aria-label` + `title` on relation/directory anchors in crawl shells (no `javascript:` links).
+
+---
 
 **Book crawl:** `/api/public/book/{uuid}` HTML/md/JSON shells; middleware rewrites crawler UAs on
 `/book/*`; `resolve_public_book_id` for slug id8 lookup.
