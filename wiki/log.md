@@ -15,6 +15,14 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — K8e DNA lineage card polish
+
+**K8e:** Shared-match cards show a compact hop/MRCA summary pill; expanded panel renders a generation
+breadcrumb (MRCA bolded) instead of duplicating the full arrow chain; **View in tree** focuses the
+pedigree on the MRCA. Path label helpers moved to `lib/dnaLineagePathLabel.ts`.
+
+---
+
 ## 2026-07-05 — V4 AI usage refresh + U17c crawl lifespans + W2 ruleset
 
 **V4:** `AdminDatabasePanel` refreshes **AI Usage** + budget after **Test Connection**; manual

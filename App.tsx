@@ -1216,6 +1216,13 @@ useEffect(() => {
     []
   );
 
+  const handleViewLineageInTree = useCallback((personId: string) => {
+    setPedigreeFocusId(personId);
+    setActiveTab('tree');
+    setTreeViewReady(true);
+    graphLoadKeyRef.current = null;
+  }, []);
+
   const handleNukeConfirm = useCallback(async () => {
     if (!supabaseActive) {
       setNukeError('Link a Supabase project before issuing a reset.');
@@ -1830,6 +1837,7 @@ useEffect(() => {
                     relationships={treeRelationships}
                     actor={{ id: currentUser?.id, name: currentUser?.name }}
                     onOpenPerson={handleAdminOpenPerson}
+                    onViewLineageInTree={handleViewLineageInTree}
                   />
                   </ErrorBoundary>
                 )}

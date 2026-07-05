@@ -1,10 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, Dna, Layers, Loader2, Search, Sparkles, UserPlus, Link2, X } from 'lucide-react';
+import { Activity, Dna, GitBranch, Layers, Loader2, Search, Sparkles, UserPlus, Link2, X } from 'lucide-react';
 import { DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution, Person, Relationship, UnlinkedDnaMatchRecord } from '../types';
 import { clusterSharedSegments, segmentsFromPreview, summarizeClusterIcw } from '../lib/dnaClustering';
 import DnaSegmentPainterView from './dna/DnaSegmentPainterView';
+import DnaLineagePathBreadcrumb from './dna/DnaLineagePathBreadcrumb';
 import type { PaintSegmentInput } from '../lib/dnaSegmentPainter';
 import { suggestMrcaCandidates, type MatchLineageInput } from '../lib/dnaMrcaSuggestions';
+import {
+  buildDnaLineagePathBreadcrumb,
+  formatDnaLineagePathSummary,
+  pickLineageMrcaPersonId,
+} from '../lib/dnaLineagePathLabel';
 import {
   grandparentSlotShortLabel,
   inferPathGrandparentSlot,
@@ -43,6 +49,7 @@ interface AdminDnaPanelProps {
   relationships?: Relationship[];
   actor?: { id?: string | null; name?: string | null };
   onOpenPerson?: (personId: string) => void | Promise<void>;
+  onViewLineageInTree?: (personId: string) => void | Promise<void>;
 }
 
 const formatVitals = (birthYear?: string | null, deathYear?: string | null) => {
@@ -70,6 +77,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   relationships = [],
   actor,
   onOpenPerson,
+  onViewLineageInTree,
 }) => {
   const [candidates, setCandidates] = useState<DNAAutosomalCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
@@ -96,6 +104,25 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   const matchById = useMemo(() => new Map(matches.map((match) => [match.id, match])), [matches]);
 
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
+
+  const personNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    people.forEach((person) => {
+      map.set(person.id, `${person.firstName || ''} ${person.lastName || ''}`.trim() || person.id);
+    });
+    return map;
+  }, [people]);
+
+  const lineageRelationshipRows = useMemo(
+    () =>
+      relationships.map((relationship) => ({
+        id: relationship.id,
+        person_id: relationship.personId,
+        related_id: relationship.relatedId,
+        type: relationship.type,
+      })),
+    [relationships]
+  );
 
   const grandparentSlots = useMemo(
     () => (selectedPersonId ? resolveGrandparentSlots(selectedPersonId, relationships, peopleById) : []),
@@ -680,11 +707,41 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                   {matches.map((match) => {
                     const resolution = resolutionByMatchId[match.id];
                     const isPathExpanded = !!expandedPathByMatchId[match.id];
-                    const pathText = resolution?.pathLabel
-                      ? resolution.pathLabel
-                      : match.pathFound
-                      ? `${match.pathPersonIds.length} people linked via ${match.pathRelationshipIds.length} relationships`
-                      : 'No linked lineage path';
+                    const pathPersonIds = resolution?.pathPersonIds?.length
+                      ? resolution.pathPersonIds
+                      : match.pathPersonIds;
+                    const pathRelationshipIds = resolution?.pathRelationshipIds?.length
+                      ? resolution.pathRelationshipIds
+                      : match.pathRelationshipIds;
+                    const pathNames = new Map(personNameById);
+                    pathNames.set(match.counterpartPersonId, match.counterpartPersonName);
+                    if (selectedPersonId) {
+                      const focusName = personNameById.get(selectedPersonId);
+                      if (focusName) pathNames.set(selectedPersonId, focusName);
+                    }
+                    const lineageBreadcrumb =
+                      match.pathFound && pathPersonIds.length
+                        ? buildDnaLineagePathBreadcrumb(
+                            pathPersonIds,
+                            pathRelationshipIds,
+                            lineageRelationshipRows,
+                            pathNames
+                          )
+                        : [];
+                    const pathSummary =
+                      match.pathFound && pathPersonIds.length
+                        ? formatDnaLineagePathSummary(
+                            pathPersonIds,
+                            pathRelationshipIds,
+                            lineageRelationshipRows,
+                            pathNames
+                          )
+                        : 'No linked lineage path';
+                    const mrcaPersonId =
+                      match.pathFound && pathPersonIds.length
+                        ? pickLineageMrcaPersonId(pathPersonIds, pathRelationshipIds, lineageRelationshipRows)
+                        : null;
+                    const viewInTreePersonId = mrcaPersonId || selectedPersonId;
                     return (
                       <div
                         key={match.id}
@@ -799,12 +856,25 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             className="inline-flex items-center gap-1 rounded-full px-2 py-1 border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
                           >
                             <Sparkles className="w-3.5 h-3.5" />
-                            {pathText}
+                            {isPathExpanded ? 'Hide lineage' : pathSummary}
                           </button>
                         </div>
-                        {isPathExpanded && resolution?.pathLabel && (
-                          <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                            {resolution.pathLabel}
+                        {isPathExpanded && lineageBreadcrumb.length > 0 && (
+                          <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 space-y-2">
+                            <DnaLineagePathBreadcrumb nodes={lineageBreadcrumb} className="text-xs" />
+                            {viewInTreePersonId && onViewLineageInTree ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void onViewLineageInTree(viewInTreePersonId);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-blue-800 hover:bg-blue-100"
+                              >
+                                <GitBranch className="w-3.5 h-3.5" />
+                                View in tree
+                              </button>
+                            ) : null}
                           </div>
                         )}
                       </div>
