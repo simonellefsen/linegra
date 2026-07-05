@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { renderPublicPersonHtml } from './publicCrawlHtml';
-import { buildPersonJsonLd } from './publicCrawlJsonLd';
-import { renderPublicPersonMarkdown } from './publicCrawlMarkdown';
+import { renderPublicPersonHtml, renderPublicFamilyHtml } from './publicCrawlHtml';
+import { buildFamilyJsonLd, buildPersonJsonLd } from './publicCrawlJsonLd';
+import { renderPublicPersonMarkdown, renderPublicFamilyMarkdown } from './publicCrawlMarkdown';
 import { bucketPublicCrawlRelationships } from './publicCrawlRelations';
 import type { Relationship } from '../types';
 
@@ -93,5 +93,46 @@ describe('public crawl shells', () => {
     const jsonLd = buildPersonJsonLd(shellInput);
     expect(jsonLd.parent).toMatchObject({ name: 'Lord Byron (1788–1824)' });
     expect(jsonLd.children).toMatchObject({ name: 'Anne King (1840–1910)' });
+  });
+
+  it('renders family union shells with marriage facts and children', () => {
+    const familyInput = {
+      treeId: TREE,
+      treeName: 'Example Tree',
+      union: {
+        id: '99999999-9999-4999-8999-999999999999',
+        type: 'marriage' as const,
+        date: '1892',
+        place: 'Copenhagen',
+        familyPageHref: 'https://linegra.app/tree/example/family/99999999',
+      },
+      spouses: [
+        {
+          id: FATHER,
+          firstName: 'Lord',
+          lastName: 'Byron',
+          name: 'Lord Byron (1788–1824)',
+          href: 'https://linegra.app/tree/example/person/lord',
+        },
+        {
+          id: FOCUS,
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          name: 'Ada Lovelace (1815–1852)',
+          href: 'https://linegra.app/tree/example/person/ada',
+        },
+      ],
+      children: relationshipGroups.children,
+      origin: 'https://linegra.app',
+    };
+    const html = renderPublicFamilyHtml(familyInput);
+    const markdown = renderPublicFamilyMarkdown(familyInput);
+    const jsonLd = buildFamilyJsonLd(familyInput);
+    expect(html).toContain('Marriage · 1892, Copenhagen');
+    expect(html).toContain('Anne King (1840–1910)');
+    expect(markdown).toContain('## Marriage');
+    expect(markdown).toContain('1892, Copenhagen');
+    expect(jsonLd['@type']).toBe('Family');
+    expect(jsonLd.foundingDate).toBe('1892');
   });
 });

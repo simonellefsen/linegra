@@ -1,8 +1,9 @@
 // Roadmap U4 / U17b — Schema.org JSON-LD for public person pages.
 
 import type { PublicCrawlRelationshipGroups } from './publicCrawlRelations';
+import type { PublicFamilyCrawlPayload } from './publicCrawlService';
 import { formatPersonDisplayName } from './publicCrawlPrivacy';
-import { buildPersonUrl, buildTreeUrl, getPublicSiteOrigin } from './publicRoutes';
+import { buildFamilyUrl, buildPersonUrl, buildTreeUrl, getPublicSiteOrigin } from './publicRoutes';
 
 export interface PublicPersonJsonLdInput {
   treeId: string;
@@ -40,7 +41,10 @@ export const buildPersonJsonLd = (input: PublicPersonJsonLdInput): Record<string
 
   const parents = input.relationships.parents.map((link) => toSchemaPerson(treeRef, link, origin));
   const children = input.relationships.children.map((link) => toSchemaPerson(treeRef, link, origin));
-  const spouses = input.relationships.spouses.map((link) => toSchemaPerson(treeRef, link, origin));
+  const spouses = input.relationships.spouses.map((link) => ({
+    ...toSchemaPerson(treeRef, link, origin),
+    ...(link.unionDate ? { startDate: link.unionDate } : {}),
+  }));
   const siblings = input.relationships.siblings.map((link) => toSchemaPerson(treeRef, link, origin));
 
   return {
@@ -82,3 +86,38 @@ export const buildWebsiteJsonLd = (origin?: string): Record<string, unknown> => 
   description:
     'Interactive genealogy archive with pedigree views, GEDCOM import/export, and AI-assisted research tools.',
 });
+
+export const buildFamilyJsonLd = (
+  input: Pick<PublicFamilyCrawlPayload, 'treeId' | 'treeName' | 'treeSlug' | 'union' | 'spouses' | 'children'> & {
+    origin?: string;
+  }
+): Record<string, unknown> => {
+  const origin = getPublicSiteOrigin(input.origin);
+  const treeRef = { id: input.treeId, slug: input.treeSlug };
+  const spouseNodes = input.spouses.map((spouse) => ({
+    '@type': 'Person',
+    name: spouse.name,
+    url: spouse.href.startsWith('http') ? spouse.href : `${origin}${spouse.href}`,
+  }));
+  const childNodes = input.children.map((child) => ({
+    '@type': 'Person',
+    name: child.name,
+    url: child.href.startsWith('http') ? child.href : `${origin}${child.href}`,
+  }));
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Family',
+    name: input.spouses.map((spouse) => spouse.name).join(' & '),
+    url: buildFamilyUrl(treeRef, input.union.id, origin),
+    ...(input.union.date ? { foundingDate: input.union.date } : {}),
+    ...(input.union.place ? { location: input.union.place } : {}),
+    isPartOf: {
+      '@type': 'WebSite',
+      name: input.treeName,
+      url: buildTreeUrl(treeRef, origin),
+    },
+    member: spouseNodes.length === 1 ? spouseNodes[0] : spouseNodes,
+    children: childNodes.length === 1 ? childNodes[0] : childNodes.length ? childNodes : undefined,
+  };
+};

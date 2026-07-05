@@ -1,7 +1,8 @@
 // Roadmap U1/U4/U5 — server-rendered HTML shells for crawlers and agents.
 
 import type { PublicCrawlRelationshipGroups } from './publicCrawlRelations';
-import { buildPersonJsonLd, buildWebsiteJsonLd } from './publicCrawlJsonLd';
+import { buildFamilyJsonLd, buildPersonJsonLd, buildWebsiteJsonLd } from './publicCrawlJsonLd';
+import type { PublicFamilyCrawlPayload } from './publicCrawlService';
 import { formatPersonDisplayName } from './publicCrawlPrivacy';
 import { buildPersonUrl, buildTreeUrl, getPublicSiteOrigin } from './publicRoutes';
 
@@ -43,16 +44,38 @@ const escapeHtml = (value: string): string =>
 
 const renderLinkList = (
   title: string,
-  links: { relationshipLabel: string; name: string; href: string }[]
+  links: { relationshipLabel: string; name: string; href: string; familyPageHref?: string }[]
 ) => {
   if (!links.length) return '';
   const items = links
-    .map(
-      (link) =>
-        `<li><a href="${escapeHtml(link.href)}" title="${escapeHtml(`${link.relationshipLabel}: ${link.name}`)}">${escapeHtml(link.name)}</a> <span class="rel">(${escapeHtml(link.relationshipLabel)})</span></li>`
-    )
+    .map((link) => {
+      const familyLink = link.familyPageHref
+        ? ` · <a href="${escapeHtml(link.familyPageHref)}">family page</a>`
+        : '';
+      return `<li><a href="${escapeHtml(link.href)}" title="${escapeHtml(`${link.relationshipLabel}: ${link.name}`)}">${escapeHtml(link.name)}</a> <span class="rel">(${escapeHtml(link.relationshipLabel)})</span>${familyLink}</li>`;
+    })
     .join('');
   return `<section><h2>${escapeHtml(title)}</h2><ul>${items}</ul></section>`;
+};
+
+const renderChildUnionSections = (
+  groups: PublicPersonHtmlInput['relationships']['childUnions']
+) => {
+  if (!groups.length) return '';
+  return groups
+    .map((group) => {
+      const heading = group.familyPageHref
+        ? `<h3><a href="${escapeHtml(group.familyPageHref)}">${escapeHtml(group.heading)}</a></h3>`
+        : `<h3>${escapeHtml(group.heading)}</h3>`;
+      const items = group.children
+        .map(
+          (link) =>
+            `<li><a href="${escapeHtml(link.href)}" title="${escapeHtml(`${link.relationshipLabel}: ${link.name}`)}">${escapeHtml(link.name)}</a> <span class="rel">(${escapeHtml(link.relationshipLabel)})</span></li>`
+        )
+        .join('');
+      return `<section>${heading}<ul>${items}</ul></section>`;
+    })
+    .join('');
 };
 
 export const renderPublicPersonHtml = (input: PublicPersonHtmlInput): string => {
@@ -125,10 +148,72 @@ export const renderPublicPersonHtml = (input: PublicPersonHtmlInput): string => 
     ${input.person.bio?.trim() ? `<section><h2>Biography</h2><p>${escapeHtml(input.person.bio.trim())}</p></section>` : ''}
     ${renderLinkList('Parents', input.relationships.parents)}
     ${renderLinkList('Spouses & partners', input.relationships.spouses)}
-    ${renderLinkList('Children', input.relationships.children)}
+    ${input.relationships.childUnions.length ? renderChildUnionSections(input.relationships.childUnions) : renderLinkList('Children', input.relationships.children)}
     ${renderLinkList('Siblings', input.relationships.siblings)}
   </main>
   <p id="app-boot"><a href="${escapeHtml(canonical)}">Open interactive archive</a> · <a href="${escapeHtml(`${canonical}?format=md`)}">Markdown</a> · <a href="${escapeHtml(`${origin}/api/public/person/${input.person.id}`)}">JSON</a></p>
+</body>
+</html>`;
+};
+
+export interface PublicFamilyHtmlInput {
+  treeId: string;
+  treeName: string;
+  treeSlug?: string | null;
+  union: PublicFamilyCrawlPayload['union'];
+  spouses: PublicFamilyCrawlPayload['spouses'];
+  children: PublicFamilyCrawlPayload['children'];
+  origin?: string;
+}
+
+export const renderPublicFamilyHtml = (input: PublicFamilyHtmlInput): string => {
+  const origin = getPublicSiteOrigin(input.origin);
+  const treeRef = { id: input.treeId, slug: input.treeSlug };
+  const canonical = input.union.familyPageHref;
+  const treeUrl = buildTreeUrl(treeRef, origin);
+  const spouseNames = input.spouses.map((spouse) => spouse.name).join(' and ');
+  const unionLabel = input.union.type === 'partner' ? 'Partnership' : 'Marriage';
+  const unionFacts = [input.union.date, input.union.place].filter(Boolean).join(', ');
+  const description = unionFacts
+    ? `${unionLabel} of ${spouseNames} (${unionFacts}) in ${input.treeName}.`
+    : `Family of ${spouseNames} in ${input.treeName}.`;
+  const jsonLd = buildFamilyJsonLd(input);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(spouseNames)} · ${escapeHtml(input.treeName)} · Linegra</title>
+  <meta name="description" content="${escapeHtml(description)}">
+  <link rel="canonical" href="${escapeHtml(canonical)}">
+  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
+  <style>
+    body { font-family: Georgia, serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; color: #0f172a; line-height: 1.6; }
+    h1 { font-size: 2rem; margin-bottom: 0.25rem; }
+    .meta { color: #475569; margin-bottom: 1.5rem; }
+    .rel { color: #64748b; font-size: 0.9rem; }
+    a { color: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <nav aria-label="Breadcrumb">
+    <a href="${escapeHtml(origin)}">Linegra</a> ›
+    <a href="${escapeHtml(treeUrl)}">${escapeHtml(input.treeName)}</a> ›
+    <span>${escapeHtml(spouseNames)}</span>
+  </nav>
+  <main>
+    <h1>${escapeHtml(spouseNames)}</h1>
+    <p class="meta">${escapeHtml(unionLabel)}${unionFacts ? ` · ${escapeHtml(unionFacts)}` : ''}</p>
+    <section><h2>Spouses</h2><ul>${input.spouses
+      .map(
+        (spouse) =>
+          `<li><a href="${escapeHtml(spouse.href)}">${escapeHtml(spouse.name)}</a></li>`
+      )
+      .join('')}</ul></section>
+    ${renderLinkList('Children', input.children)}
+  </main>
+  <p><a href="${escapeHtml(canonical)}">Open interactive archive</a> · <a href="${escapeHtml(`${origin}/api/public/family/${input.union.id}?format=md`)}">Markdown</a> · <a href="${escapeHtml(`${origin}/api/public/family/${input.union.id}`)}">JSON</a></p>
 </body>
 </html>`;
 };

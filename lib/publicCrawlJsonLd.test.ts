@@ -38,8 +38,15 @@ describe('buildPersonJsonLd', () => {
       },
       relationships: {
         parents: [rel('Father Example', 'https://linegra.app/tree/example-tree/person/father', 'parent', 'Father')],
-        spouses: [rel('Spouse Example', 'https://linegra.app/tree/example-tree/person/spouse', 'spouse', 'Spouse')],
+        spouses: [
+          {
+            ...rel('Spouse Example', 'https://linegra.app/tree/example-tree/person/spouse', 'spouse', 'Spouse'),
+            unionRelationshipId: 'union-1',
+            familyPageHref: 'https://linegra.app/tree/example-tree/family/union-1',
+          },
+        ],
         children: [rel('Child Example', 'https://linegra.app/tree/example-tree/person/child', 'child', 'Child')],
+        childUnions: [],
         siblings: [rel('Sibling Example', 'https://linegra.app/tree/example-tree/person/sibling', 'sibling', 'Sibling')],
       },
       origin: 'https://linegra.app',

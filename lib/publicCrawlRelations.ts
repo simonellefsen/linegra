@@ -1,9 +1,15 @@
-// Roadmap U5/U8 — bucket family connections into crawlable link lists.
+// Roadmap U5/U8/U13 — bucket family connections into crawlable link lists.
 
 import type { Person, Relationship, RelationshipType } from '../types';
 import { formatLifespanSuffix } from './publicSlugs';
 import { formatPersonDisplayName } from './publicCrawlPrivacy';
 import { buildPersonUrl } from './publicRoutes';
+import {
+  buildChildUnionGroups,
+  enrichSpouseRef,
+  type PublicCrawlChildUnionGroup,
+  type PublicCrawlSpouseRef,
+} from './publicCrawlUnions';
 
 const PARENTAL_TYPES: RelationshipType[] = [
   'bio_father',
@@ -42,8 +48,9 @@ export interface PublicCrawlPersonRef {
 
 export interface PublicCrawlRelationshipGroups {
   parents: PublicCrawlPersonRef[];
-  spouses: PublicCrawlPersonRef[];
+  spouses: PublicCrawlSpouseRef[];
   children: PublicCrawlPersonRef[];
+  childUnions: PublicCrawlChildUnionGroup[];
   siblings: PublicCrawlPersonRef[];
 }
 
@@ -100,7 +107,7 @@ export const bucketPublicCrawlRelationships = (
 ): PublicCrawlRelationshipGroups => {
   const peopleById = new Map(people.map((person) => [person.id, person]));
   const parents = new Map<string, PublicCrawlPersonRef>();
-  const spouses = new Map<string, PublicCrawlPersonRef>();
+  const spouses = new Map<string, PublicCrawlSpouseRef>();
   const children = new Map<string, PublicCrawlPersonRef>();
   const siblings = new Map<string, PublicCrawlPersonRef>();
   const siblingParentTypes = new Map<string, Set<RelationshipType>>();
@@ -143,16 +150,14 @@ export const bucketPublicCrawlRelationships = (
       const otherId = rel.personId === focusId ? rel.relatedId : rel.personId;
       const person = otherId ? peopleById.get(otherId) : undefined;
       if (person) {
-        spouses.set(
-          person.id,
-          refFor(
-            person,
-            'spouse',
-            rel.type,
-            SPOUSE_RELATIONSHIP_LABELS[rel.type] ?? rel.type,
-            origin
-          )
+        const base = refFor(
+          person,
+          'spouse',
+          rel.type,
+          SPOUSE_RELATIONSHIP_LABELS[rel.type] ?? rel.type,
+          origin
         );
+        spouses.set(person.id, enrichSpouseRef(base, rel, treeId, origin));
       }
     }
     if (parentalSet.has(rel.type) && parentIds.has(rel.personId) && rel.relatedId !== focusId) {
@@ -177,10 +182,21 @@ export const bucketPublicCrawlRelationships = (
     }
   }
 
+  const childRefs = [...children.values()];
+  const childUnions = buildChildUnionGroups(
+    focusId,
+    treeId,
+    childRefs,
+    relationships,
+    people,
+    origin
+  );
+
   return {
     parents: [...parents.values()],
     spouses: [...spouses.values()],
-    children: [...children.values()],
+    children: childRefs,
+    childUnions,
     siblings: [...siblings.values()],
   };
 };

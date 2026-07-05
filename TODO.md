@@ -82,8 +82,9 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **U12 — Tree index pagination.** Hard 500-person cap drops ~76% of the 2,148-person tree
       from the link graph; the RPC already supports `row_offset`, nothing passes it. Add
       `?page=N` + `rel=next/prev` + visible pagination anchors.
-- [ ] **U13 — Family/union surface.** Group children by co-parent, add marriage date/place to
-      spouse lines (union data landed 2026-07-04); family pages ride U16 routes.
+- [x] **U13 — Family/union surface.** Group children by co-parent, add marriage date/place to
+      spouse lines (union data landed 2026-07-04); family pages at `/tree/{slug}/family/{id8}` +
+      `/api/public/family/{unionId}` with HTML/md/JSON-LD shells.
 - [x] **U14 — Broaden crawler UA gate.** Added `Claude-Web`, `Perplexity-User`, `Meta-ExternalAgent`;
       `Accept: text/markdown` honored on public routes.
 - [~] **U15 — Format parity + shell completeness.** Tree `?format=md`; dynamic `llms.txt` API route.
