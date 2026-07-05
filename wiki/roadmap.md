@@ -407,6 +407,13 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
 > Over-budget calls log as errors and the client falls back to deterministic paths
 > ([../lib/aiUsageBudget.ts](../lib/aiUsageBudget.ts)).
 > **N track complete (Phase 1–3).**
+>
+> **Phase 4 candidate (unlocked by A, noted 2026-07-04):** the function still runs
+> `verify_jwt=false` — that was chosen because the *local* super-admin had no JWT, but **Supabase
+> Auth shipped 2026-07-03**, so real sessions now exist. Flip ai-proxy to require a valid JWT
+> (or verify in-function via `supabase.auth.getUser(token)`) and reject anonymous calls; keep
+> `testKey` admin-gated. This closes the "anyone with the publishable key can spend the budget"
+> residual noted below.
 
 Previously every OpenRouter call ran **client-side** with `Authorization: Bearer ${apiKey}`, so the key
 reached the browser and anyone who could read settings or sniff traffic could exfiltrate it and spend
@@ -489,7 +496,94 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
 - **U7/U8** `?format=md` / JSON person API on the same route.
 - **U10** crawler User-Agent buckets + `public_crawl_hit` logs; `middleware.ts` serves HTML to bots on `/tree/*`; visitor (non-bot) hits + geo on public pages; admin Traffic panel with agent drill-down.
 
-**Still open:** book HTML prerender for crawlers, sitemap-index chunking, `noai` media meta, full in-app link hygiene audit (U9), **traffic rollup** (hour/day/week/month/year aggregates to cap `public_crawl_events` growth).
+**Still open:** book HTML prerender for crawlers, sitemap-index chunking, `noai` media meta, full in-app link hygiene audit (U9), **traffic rollup** (hour/day/week/month/year aggregates to cap `public_crawl_events` growth), **rate limiting on `/api/public/*` + sitemap** (each hit queries the DB; a bot storm is uncapped load — add a simple per-IP/UA token bucket in `middleware.ts` + stronger CDN cache headers; U8 flagged this TBD).
+
+**Traversal audit 2026-07-05** (root → trees → persons → families, as a bot/agent walks it):
+- **U11. Root `/` is a dead end (highest gap).** `middleware.ts` matches only `/tree/*` + `/book/*`,
+  so every bot landing on `/` gets the empty SPA shell — no content, no anchors, not even a link to
+  `sitemap.xml`/`llms.txt`. There is **no public-tree directory page anywhere** in HTML; link-graph
+  discovery from the homepage is zero (sitemap alone carries SEO). Fix: bot branch for `/` rendering
+  a **tree directory shell** (public trees: name, description, person count, `<a href="/tree/:id">`),
+  plus a **`/api/public/trees` JSON/md directory** so agents can enumerate trees without parsing
+  10k-entry sitemap XML. Add static fallback links (`<link rel="alternate">`, a `<noscript>` block
+  pointing at `/llms.txt` + sitemap) into `index.html` for agents the UA gate misses.
+- **U12. Tree index caps at 500 persons, no pagination.** `loadPublicTreeCrawlPayload` calls
+  `list_public_tree_crawl_persons(row_limit=500, row_offset=0)` — the RPC already supports offsets
+  but nothing passes one. On the real 2,148-person tree, **~76% of persons have no inbound anchor**
+  (alphabetical order silently drops later surnames; sitemap is the only route to them). Fix:
+  `?page=N` on `/tree/:id` + `/api/public/tree/:id`, `<link rel="next/prev">` + visible pagination
+  anchors, and person-count/total in JSON.
+- **U13. Families/unions are invisible.** Person shells bucket parents/spouses/children/siblings,
+  but no marriage date/place, and children are one flat list — an agent can't tell which children
+  belong to which union. The union data now exists (`20260704170000_family_union_child_links`,
+  `20260704180000_family_coparent_connections`). Fix: group children by co-parent on person
+  pages/md/JSON ("Children with [spouse]"), add union date/place to the spouse line, and extend
+  JSON-LD `Person` with `spouse`/`children` refs.
+- **U14. Crawler UA gate misses newer agent UAs.** `crawlerAgents.ts` lacks `Claude-Web` /
+  `Claude-User` / `Claude-SearchBot`, `Perplexity-User`, `Meta-ExternalAgent` (classify-only),
+  `Google-Extended`/`GoogleOther`, `MistralAI-User` — those agents get the blank SPA on canonical
+  URLs. Broaden the pattern (keep classify buckets in sync) and treat `Accept: text/markdown` on
+  `/tree/*` as a shell request regardless of UA.
+- **U15. Format parity + shell completeness (small).** Tree endpoint has no `?format=md` (person
+  does); person shells omit the **sources/citations list** U1 specced; make `llms.txt` dynamic (or
+  append a generated section) listing actual public-tree URLs as concrete entry points.
+- **U17. Person-page relation semantics (the "agent reads a person and understands their family"
+  goal — audited 2026-07-05).** Three fixes in [../lib/publicCrawlRelations.ts](../lib/publicCrawlRelations.ts) /
+  [../lib/publicCrawlJsonLd.ts](../lib/publicCrawlJsonLd.ts):
+  **(a) BUG — children & siblings carry the parent's role label.** `bucketPublicCrawlRelationships`
+  reuses the parental `rel.type` when labeling the *other* endpoint, so on a father's page each
+  child renders as "Anne King **(Father)**" and each sibling as "**(Father)**" — in HTML, and worse
+  in Markdown (`- Father: [Anne King]` under `## Children`) and JSON (`relationshipLabel: "Father"`,
+  `rel: "child"` contradict). An agent reading the md/JSON gets actively wrong kinship facts. The
+  test only checks names/hrefs, so it passes. Fix: label children "Child" (Son/Daughter when gender
+  is threaded through), siblings "Sibling" (+ half/step when the shared-parent types differ).
+  **(b) JSON-LD lumps everything into `relatedTo`.** Schema.org `Person` has first-class `parent`,
+  `children`, `spouse`, `sibling` properties that knowledge graphs and LLMs parse directly — emit
+  those (plus `givenName`/`familyName`/`gender`), keep `relatedTo` as the union if desired.
+  **(c) Relation anchors show bare names.** No lifespan disambiguation — fatal in patronymic trees
+  full of identical "Jens Jensen"s. The crawl payload already loads each relative's birth/death
+  dates but the bucketing `PersonRow` drops them; thread them through and render
+  "Jens Jensen (1832–1901)" in anchor text/titles and md/JSON. Pairs with U13 (union grouping
+  gives children-per-spouse + marriage facts).
+#### U16. Proposed URL scheme v2 — slugs, indexes, family pages (proposed 2026-07-05)
+
+Replace UUID-only public paths with semantic, id-anchored slugs. **Why:** UUID paths give search
+engines zero keyword signal, and an LLM agent facing a list of 12 UUID hrefs must fetch every one
+to learn who they point at — semantic slugs let it pick "the child born 1832" from the URL alone,
+cut token cost, and make patterns guessable/constructible. **Timing: do it now or
+never-cheaply-again** — the UUID canonicals shipped 2026-07-04, so redirect debt is ~zero this
+week and grows from here.
+
+**Principle (Stack Overflow pattern):** the short-id is **authoritative**, the slug is
+**cosmetic**. Resolve by id only; any wrong/stale/renamed slug 301s to the current canonical.
+Renames never break links; no slug-history table needed.
+
+| Resource | v2 path | Example |
+|----------|---------|---------|
+| Tree directory | `/trees` | all public trees as anchors |
+| Tree landing | `/tree/{tree-slug}` | `/tree/hass-jensen` |
+| Person index (paginated) | `/tree/{tree-slug}/people?page=N` | `…/people?page=3` |
+| Surname index | `/tree/{tree-slug}/surnames` → `/surnames/{name}` | `…/surnames/hansdatter` |
+| Person | `/tree/{tree-slug}/person/{given}-{surname}-{birthyear}-{id8}` | `…/person/anna-hansdatter-1832-4a1b9c2e` |
+| Family / union | `/tree/{tree-slug}/family/{id8}` | spouses + marriage facts + children |
+| Book | `/book/{book-slug}-{id8}` | `/book/hass-jensen-chronicle-7be2a90f` |
+| Alternates | append `.md` / `.json` | `…-4a1b9c2e.md` (alias for `?format=`) |
+
+- `{id8}` = first 8 hex chars of the UUID (extend to 12 on the rare per-tree collision).
+- Slugs: lowercase, Danish transliteration (`æ→ae`, `ø→oe`, `å→aa`), diacritics stripped;
+  birthyear omitted when unknown. `family_trees.slug` gets a unique column; person slugs can be
+  derived at render time since only the id8 resolves.
+- **Compat:** UUID paths stay parseable forever and 301 to v2 canonicals; sitemap,
+  `<link rel="canonical">`, and JSON-LD switch to v2; legacy `?tree=&person=` collapses to one hop.
+- **Migration surface** (small — URL building is centralized): [../lib/publicRoutes.ts](../lib/publicRoutes.ts)
+  builders/parsers, [../middleware.ts](../middleware.ts) regexes, the two Edge handlers, the
+  sitemap, a `resolve_tree_slug` + id8-prefix person lookup RPC, and `App.tsx` route parsing.
+- Surname index pages are keyword-rich intermediate pages (classic genealogy-site pattern) and a
+  cheaper filter for agents than paging 2,148 people.
+- **Sequencing: implement U16 first** — it subsumes the routing halves of U11 (`/trees`
+  directory), U12 (pagination), and U13 (family pages); hang those payloads on the new routes.
+  Full design + rationale: [sources/crawler-agent-discoverability.md](sources/crawler-agent-discoverability.md)
+  §"Proposed URL scheme v2".
 
 *Classic search crawlers (HTML-first):*
 
@@ -556,6 +650,57 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
   U6–U8 (agent-specific formats) → U9–U10 (polish). Can ship book prerender (M5) before full tree SSR.
   _Foundation slice (U1–U8 partial, U10 logs) shipped 2026-07-04._
 
+### V. Production observability & runtime resilience — NEW 2026-07-04
+The app has **no React error boundary** (a render crash anywhere white-screens the whole SPA) and
+**no error reporting** (no Sentry/PostHog/console capture — production errors are invisible). With
+public crawl surfaces, Edge APIs, and multi-user auth now live, failures happen where no dev console
+is watching. Zero-new-deps path available: reuse the `public_crawl_events` pattern.
+- **V1. Top-level `ErrorBoundary`** around the app shell (and one around each lazy-loaded admin
+  panel) with a friendly reload UI — a crash in one panel shouldn't take down the archive.
+- **V2. Client error capture.** `window.onerror` / `unhandledrejection` → a small `client_errors`
+  table via RPC (message, stack hash, route, UA bucket; no PII), surfaced in an admin panel with
+  daily rollup — same shape as the Traffic panel. Rate-limit inserts per session.
+- **V3. Edge/API error surfacing.** ai-proxy and `/api/public/*` failures currently live only in
+  Vercel/Supabase logs. Log non-2xx counts into the same table (or `ai_usage_logs.error` already
+  exists for AI) and show them in the admin Database/Traffic panels.
+- **V4. Ops check: both configured OpenRouter keys were expired** ("User not found" 401) as of the
+  2026-07-02 N-Phase-1 verification, so the proxy's success path has never been exercised live
+  end-to-end. Renew a key, run a real book/bio generation, confirm usage logging + spend cap fire.
+
+### W. Continuous integration (GitHub Actions) — NEW 2026-07-04
+There is **no `.github/workflows`**. The build gate (`lint + typecheck + 255 tests`) runs only in
+husky hooks (skippable with `--no-verify`, dev-machine-dependent) and inside the Vercel deploy.
+Notably **Dependabot grouped PRs (added 2026-07-04) currently land with no CI to validate them.**
+- **W1.** A single workflow: `npm ci && npm run lint && npm run typecheck && npm test` on push +
+  PR. Node version pinned to match Vercel. Cache `~/.npm`.
+- **W2.** Make it a required check so Dependabot PRs are auto-validated before merge; then the
+  weekly `npm audit` runbook can lean on green-check merges instead of manual local runs.
+- **W3 (optional).** Preview-deploy smoke: after Vercel preview, curl `/sitemap.xml`,
+  `/api/public/tree/:id` (a known public tree), and `/book/:id` and assert 200 + expected markers —
+  cheap protection for the U crawl surfaces, which no unit test covers.
+
+### X. End-to-end smoke tests — NEW 2026-07-04
+All 255 tests are Vitest unit tests on pure libs; **no test exercises the real browser flows**:
+sign-in/sign-up, tree selection, pedigree render, GEDCOM import round-trip through the UI, book
+viewer, public routes. Regressions there surface only when a human clicks. Options: Playwright
+(new dev dep, flag per AGENT rules) or reuse the local `agent-browser` harness already used for
+manual verification (see N Phase 1 log entry). Start with a 5-flow smoke pack against a seeded
+test tree: anonymous public-tree browse, auth sign-in, pedigree focus + person profile open,
+`/book/:id` public viewer, `?format=md` + JSON public APIs. Pairs with W3.
+
+### Y. Service-layer decomposition (code health) — NEW 2026-07-04
+[../services/archive.ts](../services/archive.ts) is **4,102 lines** (trees, persons, relationships,
+DNA, layout persistence, crawl stats, AI usage — one file); [../App.tsx](../App.tsx) is 1,923 and
+[../components/PersonProfile.tsx](../components/PersonProfile.tsx) 1,561. This is the main drag on
+navigation, review, and test isolation.
+- **Y1.** Split `services/archive.ts` by domain (`services/trees.ts`, `persons.ts`,
+  `relationships.ts`, `dna.ts`, `traffic.ts`…) behind an unchanged barrel export so call sites
+  don't churn. Pure row→model mappers (`mapDbRelationship`, person/place mappers) move to `lib/`
+  where roadmap **C** already wants them unit-tested.
+- **Y2.** Extract App.tsx route/state clusters (public-route resolution, tree-selection, profile
+  modal wiring) into hooks. No behavior change; measure by file line counts + unchanged tests.
+- Do opportunistically alongside feature work, not as a big-bang rewrite.
+
 ## Maintenance note (2026-06-23)
 The 2026-06-22/23 work (M-series editing arc, L1, K1, husky hooks, DNA panel fixes) is **committed and
 reflected here, but `log.md` was not updated for it** — the living log's newest entry is 2026-06-21,
@@ -580,6 +725,12 @@ Two lenses:
 For user-facing progress on the themed groups: the **L interactive tree track (L1–L7)** and **M5 public book
 viewer** are complete. **G** (performance guardrails) and **E** (GEDCOM fidelity) are done. Strong next
 picks: **A** (auth), **U** (crawler/agent discoverability for public trees).
+
+Engineering-infrastructure review 2026-07-04 added **V** (observability/error boundary), **W** (CI —
+cheap, high leverage, unblocks Dependabot), **X** (E2E smoke), **Y** (archive.ts decomposition), the
+**N Phase 4** JWT hardening (unlocked by A), and public-API rate limiting (under U). Suggested order:
+**W first** (an afternoon, protects everything else) → **V1/V4** (error boundary + live AI key check)
+→ **N Phase 4** → the rest opportunistically.
 
 > **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit
 > owner* on the same region. True triangulation/Leeds also requires the two matches to share that
