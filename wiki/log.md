@@ -15,7 +15,15 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
-## 2026-07-05 — V3 Edge/API error surfacing
+## 2026-07-05 — Book HTML prerender + U10a traffic rollups
+
+**Book crawl:** `/api/public/book/{uuid}` HTML/md/JSON shells; middleware rewrites crawler UAs on
+`/book/*`; `resolve_public_book_id` for slug id8 lookup.
+
+**U10a:** `public_crawl_traffic_rollups` + `rollup_public_crawl_traffic` (hour→year grains, prune raw
+events); `admin_get_crawl_traffic_stats` blends daily rollups with a 14-day raw tail.
+
+---
 
 **V3:** `api_error_events` + `record_api_error` for `/api/public/*`, sitemap 503s, middleware 429s,
 and ai-proxy non-2xx; `admin_get_api_error_stats` rolls up crawl API errors plus `ai_usage_logs`

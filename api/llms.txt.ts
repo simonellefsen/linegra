@@ -37,8 +37,11 @@ Legacy query URLs (\`?tree=&person=\`) redirect to the canonical paths above.
 - Family HTML (crawler shell): ${origin}/api/public/family/{unionUuid}?format=html
 - Tree index HTML: ${origin}/api/public/tree/{treeUuid}?format=html
 - Tree index Markdown: ${origin}/api/public/tree/{treeUuid}?format=md
+- Book JSON: ${origin}/api/public/book/{bookUuid}
+- Book Markdown: ${origin}/api/public/book/{bookUuid}?format=md
+- Book HTML (crawler shell): ${origin}/api/public/book/{bookUuid}?format=html
 
-Send \`Accept: text/markdown\` to public tree/person routes for Markdown shells.
+Send \`Accept: text/markdown\` to public tree/person/book routes for Markdown shells.
 
 ## Privacy rules
 

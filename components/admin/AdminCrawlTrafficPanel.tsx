@@ -99,6 +99,13 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabas
         <p className="text-sm text-slate-500 max-w-3xl">
           Hits on public `/tree/*` and `/book/*` pages plus crawl APIs (`/api/public/*`, `/sitemap.xml`).
           Visitor geo uses Vercel/Cloudflare edge headers — no IP addresses are stored.
+          {stats && days > stats.rawRetentionDays ? (
+            <>
+              {' '}
+              Windows longer than {stats.rawRetentionDays} days combine daily rollups with a{' '}
+              {stats.rawRetentionDays}-day raw tail for recent drill-down.
+            </>
+          ) : null}
         </p>
 
         {loading && (
