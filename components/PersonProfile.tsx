@@ -264,13 +264,17 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
               personId: person.id,
               actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
             });
+          } catch (syncErr) {
+            console.warn('Parent union sync skipped', syncErr);
+          }
+          try {
             await syncSpouseChildLinksForPerson({
               treeId: person.treeId,
               personId: person.id,
               actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
             });
           } catch (syncErr) {
-            console.warn('Parent union sync skipped', syncErr);
+            console.warn('Spouse child link sync skipped', syncErr);
           }
         }
         const { relationships, people } = await fetchPersonConnections(person.treeId, person.id);

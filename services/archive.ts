@@ -3784,6 +3784,20 @@ export const syncSpouseChildLinksForPerson = async ({
   }
 };
 
+/** Repair missing coparent links across an entire tree (editor maintenance; idempotent). */
+export const syncSpouseChildLinksForTree = async (
+  treeId: string,
+  actor?: ImportActor | null
+): Promise<void> => {
+  if (!isSupabaseConfigured()) return;
+  const { data, error } = await supabase.from('persons').select('id').eq('tree_id', treeId);
+  if (error) throw new Error(error.message);
+  const personIds = (data ?? []).map((row) => String(row.id)).filter(Boolean);
+  for (const personId of personIds) {
+    await syncSpouseChildLinksForPerson({ treeId, personId, actor });
+  }
+};
+
 /** Ensure father–mother pairs who share a child also have a spousal union (idempotent). */
 export const syncParentUnionsForPerson = async ({
   treeId,
