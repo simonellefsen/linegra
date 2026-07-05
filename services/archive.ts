@@ -9,7 +9,6 @@ import {
 } from '../lib/dnaLineagePath';
 import { buildDnaLineagePathLabel } from '../lib/dnaLineagePathLabel';
 import { parseMatchDisplayName } from '../lib/dnaMatchPlacement';
-import { inferLivingStatus } from '../lib/lifespan';
 import { parseQuay } from '../lib/sourceQuality';
 import {
   assessArchiveLoad,
@@ -22,107 +21,34 @@ import { inferParentPairsForUnion, inferParentRelationshipType, isSpuriousCopare
 import { inferSpouseDefaultGender } from '../lib/personGender';
 import { isK3DismissedForFocus, withK3DismissedForFocus } from '../lib/dnaK3Dismiss';
 import { normalizeNameMatchScore, scoreNameMatch } from '../lib/dnaNameMatch';
-import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DNASharedSegmentRowPreview, DnaLineageResolution, UnlinkedDnaMatchRecord, AutosomalIndexStats, TreeCollaborator, TreeAccessRole } from '../types';
+import { Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNAAutosomalCandidate, DNASharedMatchRecord, DNASharedSegmentRowPreview, DnaLineageResolution, UnlinkedDnaMatchRecord, AutosomalIndexStats } from '../types';
 
-const randomId = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import {
+  asRelationshipMetadata,
+  mapBasicPeople,
+  mapDbDnaTest,
+  mapDbPerson,
+  mapDbRelationship,
+  normalizePlace,
+  toDbPerson,
+} from '../lib/archiveDbMappers';
+import {
+  UUID_REGEX,
+  chunkedInsert,
+  fetchArchiveRpcPages,
+  normalizeActor,
+  parseRpcJsonPage,
+  randomId,
+  recordAuditLogs,
+  type ImportActor,
+} from './archive/shared';
+import { updateTreeSettings } from './archive/trees';
 
-const normalizeActor = (actor?: ImportActor | null) => {
-  if (!actor) {
-    return { id: null, name: 'System' };
-  }
-  const safeId = actor.id && UUID_REGEX.test(actor.id) ? actor.id : null;
-  return {
-    id: safeId,
-    name: actor.name ?? 'System'
-  };
-};
-
-const normalizePlace = (place?: string | { fullText?: string }) => {
-  if (!place) return null;
-  if (typeof place === 'string') return place;
-  return place.fullText ?? null;
-};
-
-const asRelationshipMetadata = (value: unknown): Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return { ...(value as Record<string, unknown>) };
-};
-
-const relationshipDateFromMetadata = (metadata: Record<string, unknown>): string | undefined => {
-  const dateCandidate = metadata.date_text ?? metadata.relationship_date_text;
-  return typeof dateCandidate === 'string' && dateCandidate.trim() ? dateCandidate : undefined;
-};
-
-const relationshipPlaceFromMetadata = (metadata: Record<string, unknown>): string | undefined => {
-  const placeCandidate = metadata.place_text ?? metadata.relationship_place_text;
-  return typeof placeCandidate === 'string' && placeCandidate.trim() ? placeCandidate : undefined;
-};
-
-const mapDbRelationship = (row: any): Relationship => {
-  const metadata = asRelationshipMetadata(row.metadata);
-  return {
-    id: row.id,
-    treeId: row.tree_id,
-    personId: row.person_id,
-    relatedId: row.related_id,
-    type: row.type,
-    status: row.status || undefined,
-    confidence: row.confidence || undefined,
-    order: row.sort_order || undefined,
-    date: relationshipDateFromMetadata(metadata),
-    place: relationshipPlaceFromMetadata(metadata),
-    notes: row.notes || undefined,
-    metadata: Object.keys(metadata).length ? metadata : undefined
-  };
-};
-
-const ARCHIVE_PAGE_SIZE = 1000;
-
-const parseRpcJsonPage = (data: unknown): any[] => {
-  if (Array.isArray(data)) return data;
-  if (typeof data === 'string') {
-    try {
-      const parsed = JSON.parse(data);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-};
-
-const fetchArchiveRpcPages = async (
-  rpcName: 'load_tree_archive_persons_page' | 'load_tree_archive_relationships_page',
-  treeId: string,
-  pageSize = ARCHIVE_PAGE_SIZE
-): Promise<any[]> => {
-  const rows: any[] = [];
-  let offset = 0;
-  while (true) {
-    const { data, error } = await supabase.rpc(rpcName, {
-      target_tree_id: treeId,
-      page_limit: pageSize,
-      page_offset: offset,
-    });
-    if (error) throw new Error(error.message);
-    const chunk = parseRpcJsonPage(data);
-    if (!chunk.length) break;
-    rows.push(...chunk);
-    if (chunk.length < pageSize) break;
-    offset += pageSize;
-  }
-  return rows;
-};
-
-const chunkedInsert = async <T>(table: string, rows: T[], chunkSize = 500) => {
-  if (!rows.length) return;
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    const slice = rows.slice(i, i + chunkSize);
-    const { error } = await supabase.from(table).insert(slice as any);
-    if (error) throw new Error(error.message);
-  }
-};
+export * from './archive/trees';
+export * from './archive/collaborators';
+export * from './archive/aiUsage';
+export * from './archive/publicResolve';
+export type { ImportActor } from './archive/shared';
 
 interface NameLookupRow {
   id: string;
@@ -677,320 +603,7 @@ const buildDnaMatchPayload = async (targetPersonId: string, dnaTests: DNATest[])
   return payloadItems;
 };
 
-const toDbPerson = (person: Person, treeId: string, userId?: string | null) => {
-  const metadata: Record<string, any> = person.metadata ? { ...person.metadata } : {};
-  if (person.alternateNames?.length) {
-    metadata.alternateNames = person.alternateNames;
-  }
-  const encodePlace = (key: string, value?: string | StructuredPlace) => {
-    if (!value) return null;
-    if (typeof value === 'string') {
-      return value;
-    }
-    metadata[`structured_${key}`] = value;
-    return value.fullText || null;
-  };
-  return {
-    id: randomId(),
-    tree_id: treeId,
-    created_by: userId ?? null,
-    first_name: person.firstName || '',
-    middle_name: null,
-    last_name: person.lastName || '',
-    maiden_name: person.maidenName || null,
-    gender: person.gender || 'O',
-    birth_date_text: person.birthDate || null,
-    birth_place_text: encodePlace('birth_place', person.birthPlace) || null,
-    death_date_text: person.deathDate || null,
-    death_place_text: encodePlace('death_place', person.deathPlace) || null,
-    burial_date_text: person.burialDate || null,
-    burial_place_text: encodePlace('burial_place', person.burialPlace) || null,
-    residence_at_death_text: normalizePlace(person.residenceAtDeath) || null,
-    photo_url: person.photoUrl || null,
-    bio: person.bio || null,
-    occupations: person.occupations || [],
-    is_dna_match: person.isDNAMatch || false,
-    dna_match_info: person.dnaMatchInfo || null,
-    is_living: typeof person.isLiving === 'boolean' ? person.isLiving : null,
-    is_private: !!person.isPrivate,
-    tags: [],
-    user_role: person.userRole || null,
-    metadata
-  };
-};
 
-const mapDbPerson = (
-  row: any,
-  notesByPerson: Record<string, Note[]>,
-  sourcesByPerson: Record<string, Source[]>,
-  eventsByPerson: Record<string, PersonEvent[]>,
-  citationsByPerson: Record<string, Citation[]>
-) : Person => {
-  const metadata = row.metadata || {};
-  const structuredBirth = metadata.structured_birth_place;
-  const structuredDeath = metadata.structured_death_place;
-  const structuredBurial = metadata.structured_burial_place;
-  const structuredResidence = metadata.structured_residence_at_death;
-  return {
-    id: row.id,
-    treeId: row.tree_id,
-    firstName: row.first_name,
-    lastName: row.last_name,
-    maidenName: row.maiden_name || undefined,
-    gender: row.gender || 'O',
-    birthDate: row.birth_date_text || undefined,
-    birthPlace: structuredBirth || row.birth_place_text || undefined,
-    deathDate: row.death_date_text || undefined,
-    deathPlace: structuredDeath || row.death_place_text || undefined,
-    burialDate: row.burial_date_text || undefined,
-    burialPlace: structuredBurial || row.burial_place_text || undefined,
-    deathCause: row.death_cause || undefined,
-    normalizedDeathCause:
-      typeof metadata.normalized_death_cause === 'string' ? metadata.normalized_death_cause : undefined,
-    deathCauseCategory: row.death_cause_category || undefined,
-    residenceAtDeath: structuredResidence || row.residence_at_death_text || undefined,
-    photoUrl: row.photo_url || undefined,
-    bio: row.bio || undefined,
-    occupations: row.occupations || [],
-    generation: row.generation || undefined,
-    updatedAt: row.updated_at,
-    // Apply common-sense living/deceased inference so every client surface (profile, search,
-    // pedigree) agrees: a recorded death/burial or an implausibly old birth year => deceased.
-    isLiving: inferLivingStatus({
-      birthDate: row.birth_date_text || undefined,
-      deathDate: row.death_date_text || undefined,
-      burialDate: row.burial_date_text || undefined,
-      isLiving: row.is_living === null ? undefined : (row.is_living ?? undefined),
-    }),
-    isPrivate: !!row.is_private,
-    isDNAMatch: row.is_dna_match,
-    dnaMatchInfo: row.dna_match_info || undefined,
-    addedByUserId: row.created_by || undefined,
-    notes: notesByPerson[row.id] || [],
-    sources: sourcesByPerson[row.id] || [],
-    citations: citationsByPerson[row.id] || [],
-    events: eventsByPerson[row.id] || [],
-    mediaIds: [],
-    alternateNames: metadata.alternateNames || [],
-    metadata
-  } as Person;
-};
-
-const mapDbTree = (row: any): FamilyTreeType => {
-  const metadata = row.metadata || undefined;
-  return {
-    id: row.id,
-    name: row.name,
-    slug: row.slug ?? null,
-    description: row.description,
-    ownerId: row.owner_id ?? null,
-    isPublic: !!row.is_public,
-    themeColor: row.theme_color ?? undefined,
-    metadata,
-    defaultProbandId: metadata?.defaultProbandId ?? null,
-    defaultProbandLabel: metadata?.defaultProbandLabel ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    lastModified: row.updated_at
-  };
-};
-
-const mapBasicPeople = (rows: any[] = []) => {
-  const noteMap: Record<string, Note[]> = {};
-  const sourceMap: Record<string, Source[]> = {};
-  const eventMap: Record<string, PersonEvent[]> = {};
-  const citationMap: Record<string, Citation[]> = {};
-  return rows.map((row) => mapDbPerson(row, noteMap, sourceMap, eventMap, citationMap));
-};
-
-const legacyHaplogroupTarget = (
-  legacy: string | undefined,
-  testType: string
-): { y?: string; mt?: string } => {
-  if (!legacy) return {};
-  if (testType === 'Y-DNA') return { y: legacy };
-  if (testType === 'mtDNA') return { mt: legacy };
-  // Y-SNP names use a letter, hyphen, then subgroup (e.g. I-M6155).
-  if (/^[A-Z]-/.test(legacy)) return { y: legacy };
-  return { mt: legacy };
-};
-
-const mapDbDnaTest = (row: any): DNATest => {
-  const metadata = (row.metadata || {}) as Record<string, any>;
-  const sharedPersonId =
-    typeof row.shared_person_id === 'string'
-      ? row.shared_person_id
-      : metadata.sharedPersonId || metadata.shared_person_id || undefined;
-  const sharedMatchPersonId =
-    typeof row.shared_match_person_id === 'string'
-      ? row.shared_match_person_id
-      : metadata.sharedMatchPersonId || metadata.shared_match_person_id || undefined;
-  const legacyHaplogroup =
-    (typeof row.haplogroup === 'string' && row.haplogroup) ||
-    (typeof metadata.haplogroup === 'string' && metadata.haplogroup) ||
-    undefined;
-  const legacyTarget = legacyHaplogroupTarget(legacyHaplogroup, row.test_type);
-  return {
-    id: row.id,
-    type: row.test_type as DNATestType,
-    vendor: row.vendor as DNAVendor,
-    testDate:
-      row.test_date ||
-      metadata.testDate ||
-      undefined,
-    matchDate:
-      row.match_date ||
-      metadata.matchDate ||
-      undefined,
-    isPrivate: !!row.is_private,
-    yHaplogroup: metadata.yHaplogroup || legacyTarget.y || undefined,
-    mtDnaHaplogroup: metadata.mtDnaHaplogroup || legacyTarget.mt || undefined,
-    mitotree: metadata.mitotree || undefined,
-    notes: row.notes || undefined,
-    consentGivenAt: row.consent_given_at || undefined,
-    consentScope: row.consent_scope || undefined,
-    encryptedRawPayload:
-      typeof metadata.encryptedRawPayload === 'string' ? metadata.encryptedRawPayload : undefined,
-    rawMarkerIndexStats: metadata.rawMarkerIndexStats || undefined,
-    hasEncryptedRaw: typeof metadata.encryptedRawPayload === 'string',
-    testNumber: metadata.testNumber || undefined,
-    isConfirmed: typeof metadata.isConfirmed === 'boolean' ? metadata.isConfirmed : undefined,
-    hvr1: metadata.hvr1 || undefined,
-    hvr2: metadata.hvr2 || undefined,
-    extraMutations: metadata.extraMutations || undefined,
-    codingRegion: metadata.codingRegion || undefined,
-    mostDistantAncestorId: metadata.mostDistantAncestorId || undefined,
-    rawDataSummary: metadata.rawDataSummary || undefined,
-    rawDataPreview: metadata.encryptedRawPayload ? undefined : metadata.rawDataPreview || undefined,
-    sharedPersonId,
-    sharedMatchName: metadata.sharedMatchName || undefined,
-    sharedMatchPersonId,
-    sharedSegmentSummary: metadata.sharedSegmentSummary || undefined,
-    sharedSegmentsPreview: metadata.sharedSegmentsPreview || undefined,
-    sharedPathPersonIds: metadata.sharedPathPersonIds || undefined,
-    sharedPathRelationshipIds: metadata.sharedPathRelationshipIds || undefined,
-  };
-};
-
-export const ensureTrees = async (): Promise<FamilyTreeType[]> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
-  }
-  const { data, error } = await supabase.rpc('admin_list_trees_with_counts');
-  if (error) throw new Error(error.message);
-  if (!data?.length) {
-    return [];
-  }
-  return data.map((row: any) => mapDbTree(row));
-};
-
-export const fetchTreeStatistics = async (treeId: string): Promise<SupabaseTreeStatistics> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase credentials are missing.');
-  }
-  const { data, error } = await supabase.rpc('tree_statistics', { target_tree_id: treeId });
-  if (error) throw new Error(error.message);
-  if (!data) {
-    throw new Error('Statistics not available for this tree.');
-  }
-  const parsed = data as SupabaseTreeStatistics;
-  if (!Array.isArray(parsed.centuryStats)) {
-    parsed.centuryStats = [];
-  }
-  return parsed;
-};
-
-export const createFamilyTree = async (
-  payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string },
-  actor?: ImportActor | null
-) => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured. Cannot create tree.');
-  }
-  const metadata: Record<string, string> = {};
-  if (payload.ownerName) metadata.owner_name = payload.ownerName;
-  if (payload.ownerEmail) metadata.owner_email = payload.ownerEmail;
-  const normalizedActor = normalizeActor(actor);
-  const { data, error } = await supabase.rpc('admin_create_tree', {
-    payload_name: payload.name,
-    payload_description: payload.description || null,
-    payload_metadata: metadata,
-    payload_actor_id: normalizedActor.id,
-    payload_actor_name: normalizedActor.name
-  });
-  if (error) throw new Error(error.message);
-  return mapDbTree(data);
-};
-
-export const listFamilyTreesWithCounts = async (): Promise<FamilyTreeSummary[]> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase credentials are missing.');
-  }
-  const { data, error } = await supabase.rpc('admin_list_trees_with_counts');
-  if (error) throw new Error(error.message);
-  return (data || []).map((row: any) => ({
-    ...mapDbTree(row),
-    personCount: Number(row.person_count || 0),
-    relationshipCount: Number(row.relationship_count || 0),
-    myRole: (row.my_role as TreeAccessRole | 'owner' | null) ?? null,
-  }));
-};
-
-export const deleteFamilyTreeRecord = async (treeId: string, actor?: ImportActor | null) => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured. Cannot delete tree.');
-  }
-  const normalizedActor = normalizeActor(actor);
-  const { error } = await supabase.rpc('admin_delete_tree', {
-    target_tree_id: treeId,
-    payload_actor_id: normalizedActor.id,
-    payload_actor_name: normalizedActor.name
-  });
-  if (error) throw new Error(error.message);
-};
-
-export const updateTreeSettings = async (
-  treeId: string,
-  payload: {
-    name?: string;
-    isPublic?: boolean;
-    probandId?: string | null;
-    probandLabel?: string | null;
-    description?: string;
-    ownerName?: string;
-    ownerEmail?: string;
-  },
-  actor?: ImportActor | null
-): Promise<FamilyTreeType> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured. Cannot update tree.');
-  }
-  const normalizedActor = normalizeActor(actor);
-  const { data, error } = await supabase.rpc('admin_update_tree_settings', {
-    target_tree_id: treeId,
-    payload_is_public: typeof payload.isPublic === 'boolean' ? payload.isPublic : null,
-    payload_proband_id: payload.probandId ?? null,
-    payload_proband_label: payload.probandLabel ?? null,
-    payload_description: payload.description !== undefined ? payload.description : null,
-    payload_owner_name: payload.ownerName !== undefined ? payload.ownerName : null,
-    payload_owner_email: payload.ownerEmail !== undefined ? payload.ownerEmail : null,
-    payload_name: payload.name !== undefined ? payload.name : null,
-    payload_actor_id: normalizedActor.id,
-    payload_actor_name: normalizedActor.name,
-  });
-  if (error) throw new Error(error.message);
-  return mapDbTree(data);
-};
-
-export const nukeSupabaseDatabase = async (confirmText = 'NUKE') => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured.');
-  }
-  const { error } = await supabase.rpc('admin_nuke_database', {
-    confirm_text: confirmText
-  });
-  if (error) throw new Error(error.message);
-};
 
 export const loadArchiveData = async (treeId: string) => {
   if (!isSupabaseConfigured()) {
@@ -3145,43 +2758,6 @@ export const fetchFamilyLayoutAudits = async (treeId: string, limit = 10, offset
   return { audits, total: count || 0 };
 };
 
-export interface AiUsageTotals {
-  calls: number;
-  ok: number;
-  errors: number;
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-  cost_estimate: number;
-}
-
-export interface AiUsageBucket {
-  purpose?: string;
-  tree_id?: string | null;
-  tree_name?: string | null;
-  calls: number;
-  total_tokens: number;
-  cost_estimate: number;
-}
-
-export interface AiUsageSummary {
-  days: number;
-  since: string;
-  totals: AiUsageTotals;
-  byPurpose: AiUsageBucket[];
-  byTree: AiUsageBucket[];
-}
-
-// Rolling AI spend (roadmap N): calls + tokens + estimated cost, broken down by purpose and tree.
-// Backed by the admin_get_ai_usage_summary RPC over the ai_usage_logs table written by the proxy.
-export const fetchAiUsageSummary = async (days = 30): Promise<AiUsageSummary> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase credentials are missing.');
-  }
-  const { data, error } = await supabase.rpc('admin_get_ai_usage_summary', { payload_days: days });
-  if (error) throw new Error(error.message);
-  return data as AiUsageSummary;
-};
 
 export const createPlaceholderParent = async ({
   treeId,
@@ -3987,16 +3563,6 @@ export const linkInferredFamilyUnion = async ({
   }
 };
 
-interface ImportActor {
-  id?: string | null;
-  name?: string | null;
-}
-
-const recordAuditLogs = async (entries: Array<{ tree_id: string; actor_id: string | null; actor_name: string; action: string; entity_type: string; entity_id: string; details?: Record<string, unknown> }>) => {
-  if (!entries.length || !isSupabaseConfigured()) return;
-  await chunkedInsert('audit_logs', entries);
-};
-
 export const importGedcomToSupabase = async (
   treeId: string,
   data: { people: Person[]; relationships: Relationship[] },
@@ -4207,130 +3773,5 @@ export const importGedcomToSupabase = async (
 
   return { probandId: mappedProbandId };
 };
-export interface SupabaseTreeStatistics {
-  totalIndividuals: number;
-  maleCount: number;
-  femaleCount: number;
-  unknownGenderCount: number;
-  livingCount: number;
-  deceasedCount: number;
-  marriages: number;
-  averageLifespan: number | null;
-  averageAgeOver16: number | null;
-  oldestPerson: {
-    id: string;
-    treeId: string;
-    firstName: string;
-    lastName: string;
-    year?: number | null;
-  } | null;
-  mostChildren: {
-    id: string;
-    treeId: string;
-    firstName: string;
-    lastName: string;
-    count?: number | null;
-  } | null;
-  mostMarriages: {
-    id: string;
-    treeId: string;
-    firstName: string;
-    lastName: string;
-    count?: number | null;
-  } | null;
-  centuryStats: Array<{ label: string; startYear: number; people: number; averageAge: number | null }>;
-}
 
-const mapDbCollaborator = (row: any): TreeCollaborator => ({
-  id: row.id,
-  treeId: row.tree_id ?? row.treeId,
-  profileId: row.profile_id ?? row.profileId ?? null,
-  invitationEmail: row.invitation_email ?? row.invitationEmail ?? null,
-  role: row.role,
-  status: row.status,
-  displayName: row.display_name ?? row.displayName ?? null,
-  email: row.email ?? null,
-  invitedAt: row.invited_at ?? row.invitedAt,
-  respondedAt: row.responded_at ?? row.respondedAt ?? null,
-});
 
-export const listTreeCollaborators = async (treeId: string): Promise<TreeCollaborator[]> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase credentials are missing.');
-  }
-  const { data, error } = await supabase.rpc('list_tree_collaborators', { target_tree_id: treeId });
-  if (error) throw new Error(error.message);
-  return (data || []).map(mapDbCollaborator);
-};
-
-export const inviteTreeCollaborator = async (
-  treeId: string,
-  email: string,
-  role: 'editor' = 'editor'
-): Promise<TreeCollaborator> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured.');
-  }
-  const { data, error } = await supabase.rpc('invite_tree_collaborator', {
-    target_tree_id: treeId,
-    payload_email: email,
-    payload_role: role,
-  });
-  if (error) throw new Error(error.message);
-  return mapDbCollaborator(data);
-};
-
-export const updateTreeCollaborator = async (
-  collaboratorId: string,
-  payload: { role?: 'editor'; status?: 'invited' | 'active' | 'revoked' }
-): Promise<TreeCollaborator> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured.');
-  }
-  const { data, error } = await supabase.rpc('update_tree_collaborator', {
-    target_collaborator_id: collaboratorId,
-    payload_role: payload.role ?? null,
-    payload_status: payload.status ?? null,
-  });
-  if (error) throw new Error(error.message);
-  return mapDbCollaborator(data);
-};
-
-export const removeTreeCollaborator = async (collaboratorId: string): Promise<void> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured.');
-  }
-  const { error } = await supabase.rpc('remove_tree_collaborator', {
-    target_collaborator_id: collaboratorId,
-  });
-  if (error) throw new Error(error.message);
-};
-
-export const claimTreeOwnership = async (treeId: string): Promise<FamilyTreeType> => {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured.');
-  }
-  const { data, error } = await supabase.rpc('admin_claim_tree_ownership', { target_tree_id: treeId });
-  if (error) throw new Error(error.message);
-  return mapDbTree(data);
-};
-
-export const resolvePublicTreeIdClient = async (segment: string): Promise<string | null> => {
-  if (!isSupabaseConfigured()) return null;
-  const { data, error } = await supabase.rpc('resolve_public_tree_id', { segment });
-  if (error) throw new Error(error.message);
-  return typeof data === 'string' ? data : null;
-};
-
-export const resolvePublicPersonIdClient = async (
-  treeId: string,
-  idPrefix: string
-): Promise<string | null> => {
-  if (!isSupabaseConfigured()) return null;
-  const { data, error } = await supabase.rpc('resolve_public_person_id', {
-    target_tree_id: treeId,
-    id_prefix: idPrefix,
-  });
-  if (error) throw new Error(error.message);
-  return typeof data === 'string' ? data : null;
-};

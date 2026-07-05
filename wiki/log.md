@@ -15,6 +15,14 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — Y1 archive.ts decomposition (slice 1)
+
+**Y:** Extracted row→model mappers to `lib/archiveDbMappers.ts` (5 unit tests). Split tree CRUD,
+collaborators, AI usage rollup, and public ID resolution into `services/archive/*` with unchanged
+`services/archive.ts` barrel exports. Remaining monolith: DNA, persons, relationships, GEDCOM import.
+
+---
+
 ## 2026-07-05 — X E2E smoke pack (Playwright)
 
 **X:** `@playwright/test` with local SPA smoke (app shell, login modal, book viewer) and deployed
