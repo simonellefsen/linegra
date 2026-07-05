@@ -118,6 +118,7 @@ const SharedKitOwnerField: React.FC<{
     suggestedName;
   const storedOwnerIsTester =
     !kitOwnerPersonId || autosomalTesters.some((row) => row.id === kitOwnerPersonId);
+  const testerOptions = autosomalTesters.filter((row) => row.id !== personId);
 
   return (
     <div className="space-y-1">
@@ -133,15 +134,18 @@ const SharedKitOwnerField: React.FC<{
           className="max-w-full rounded-lg border border-white/20 bg-slate-900/80 px-2 py-1 text-xs font-semibold text-white outline-none focus:border-blue-300"
         >
           <option value="" className="text-slate-900">
-            {kitOwnerDisplayName !== 'Unknown' ? kitOwnerDisplayName : 'Select autosomal tester…'}
+            Select autosomal tester…
           </option>
-          {autosomalTesters
-            .filter((row) => row.id !== personId)
-            .map((row) => (
-              <option key={row.id} value={row.id} className="text-slate-900">
-                {nameForTreePerson(autosomalTesters, row.id) || row.id}
-              </option>
-            ))}
+          {kitOwnerPersonId && !storedOwnerIsTester && (
+            <option value={kitOwnerPersonId} className="text-slate-900">
+              {kitOwnerDisplayName !== 'Unknown' ? kitOwnerDisplayName : kitOwnerPersonId}
+            </option>
+          )}
+          {testerOptions.map((row) => (
+            <option key={row.id} value={row.id} className="text-slate-900">
+              {nameForTreePerson(autosomalTesters, row.id) || row.id}
+            </option>
+          ))}
         </select>
         {kitOwnerPersonId && kitOwnerPersonId !== personId && onOpenPersonId && (
           <button
