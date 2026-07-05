@@ -26,7 +26,7 @@ import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
 import { inferLivingStatus } from '../lib/lifespan';
-import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent, createPlaceholderSpouse, createPlaceholderChild, linkExistingSpouse, linkExistingChild, linkInferredFamilyUnion, syncParentUnionsForPerson } from '../services/archive';
+import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent, createPlaceholderSpouse, createPlaceholderChild, linkExistingSpouse, linkExistingChild, linkInferredFamilyUnion, syncParentUnionsForPerson, syncSpouseChildLinksForPerson } from '../services/archive';
 import { findCoparentSuggestions } from '../lib/familyUnionInference';
 import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause, transcribeRecordImage } from '../services/ai';
 
@@ -106,6 +106,7 @@ const buildSnapshotFromPerson = (target: Person) =>
     firstName: target.firstName,
     lastName: target.lastName,
     maidenName: target.maidenName || '',
+    gender: target.gender || 'O',
     birthDate: target.birthDate || '',
     birthPlace: serializePlaceValue(target.birthPlace || ''),
     deathDate: target.deathDate || '',
@@ -160,6 +161,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
   const [firstName, setFirstName] = useState(person.firstName);
   const [lastName, setLastName] = useState(person.lastName);
   const [maidenName, setMaidenName] = useState(person.maidenName || '');
+  const [gender, setGender] = useState<Person['gender']>(person.gender || 'O');
   const [birthDate, setBirthDate] = useState(person.birthDate || '');
   const [birthPlace, setBirthPlace] = useState<string | StructuredPlace>(person.birthPlace || '');
   const [deathDate, setDeathDate] = useState(person.deathDate || '');
@@ -211,6 +213,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     setFirstName(person.firstName);
     setLastName(person.lastName);
     setMaidenName(person.maidenName || '');
+    setGender(person.gender || 'O');
     setBirthDate(person.birthDate || '');
     setBirthPlace(person.birthPlace || '');
     setDeathDate(person.deathDate || '');
@@ -257,6 +260,11 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         if (canEditTree) {
           try {
             await syncParentUnionsForPerson({
+              treeId: person.treeId,
+              personId: person.id,
+              actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+            });
+            await syncSpouseChildLinksForPerson({
               treeId: person.treeId,
               personId: person.id,
               actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
@@ -714,6 +722,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       first_name: firstName || person.firstName,
       last_name: lastName || person.lastName,
       maiden_name: maidenName || null,
+      gender,
       birth_date_text: birthDate || null,
       birth_place_text: resolvePlaceText(birthPlace),
       death_date_text: deathDate || null,
@@ -877,6 +886,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         firstName,
         lastName,
         maidenName,
+        gender,
         birthDate,
         birthPlace: serializePlaceValue(birthPlace),
         deathDate,
@@ -900,6 +910,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
       firstName,
       lastName,
       maidenName,
+      gender,
       birthDate,
       birthPlace,
       deathDate,
@@ -926,6 +937,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     setFirstName(person.firstName);
     setLastName(person.lastName);
     setMaidenName(person.maidenName || '');
+    setGender(person.gender || 'O');
     setBirthDate(person.birthDate || '');
     setBirthPlace(person.birthPlace || '');
     setDeathDate(person.deathDate || '');
@@ -1383,6 +1395,8 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             firstName={firstName}
             lastName={lastName}
             maidenName={maidenName}
+            gender={gender}
+            onGenderChange={setGender}
             onFirstNameChange={setFirstName}
             onLastNameChange={setLastName}
             onMaidenNameChange={setMaidenName}

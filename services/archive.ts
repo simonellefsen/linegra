@@ -3639,6 +3639,12 @@ export const linkExistingSpouse = async ({
   }
   const existingRelationshipId = await findExistingUnionRelationshipId(treeId, personId, spouseId);
   if (existingRelationshipId) {
+    await linkSharedChildrenBetweenParents({
+      treeId,
+      parentA: personId,
+      parentB: spouseId,
+      actor,
+    });
     return { relationshipId: existingRelationshipId, alreadyLinked: true };
   }
   const normalizedActor = normalizeActor(actor);
@@ -3654,6 +3660,12 @@ export const linkExistingSpouse = async ({
     metadata: { createdVia: 'manual_spouse_link', createdBy: normalizedActor.name },
   } as any);
   if (relError) throw new Error(relError.message);
+  await linkSharedChildrenBetweenParents({
+    treeId,
+    parentA: personId,
+    parentB: spouseId,
+    actor,
+  });
   return { relationshipId, alreadyLinked: false };
 };
 
@@ -3707,6 +3719,69 @@ const listChildIdsForParent = async (treeId: string, parentId: string): Promise<
     .in('type', parentTypes);
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => String(row.related_id)).filter(Boolean);
+};
+
+const listSpouseIdsForPerson = async (treeId: string, personId: string): Promise<string[]> => {
+  const { data, error } = await supabase
+    .from('relationships')
+    .select('person_id, related_id')
+    .eq('tree_id', treeId)
+    .in('type', ['marriage', 'partner'])
+    .or(`person_id.eq.${personId},related_id.eq.${personId}`);
+  if (error) throw new Error(error.message);
+  const spouseIds = new Set<string>();
+  (data ?? []).forEach((row: { person_id?: string; related_id?: string }) => {
+    if (row.person_id === personId && row.related_id) spouseIds.add(row.related_id);
+    else if (row.related_id === personId && row.person_id) spouseIds.add(row.person_id);
+  });
+  return Array.from(spouseIds);
+};
+
+const linkSharedChildrenBetweenParents = async ({
+  treeId,
+  parentA,
+  parentB,
+  actor,
+}: {
+  treeId: string;
+  parentA: string;
+  parentB: string;
+  actor?: ImportActor | null;
+}) => {
+  if (parentA === parentB) return;
+  const childIds = [
+    ...new Set([
+      ...(await listChildIdsForParent(treeId, parentA)),
+      ...(await listChildIdsForParent(treeId, parentB)),
+    ]),
+  ];
+  for (const childId of childIds) {
+    for (const parentId of [parentA, parentB]) {
+      try {
+        await linkExistingChild({ treeId, parentId, childId, actor });
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('already linked')) continue;
+        throw err;
+      }
+    }
+  }
+};
+
+/** When spouses share children in the tree, ensure both are linked as parents (idempotent). */
+export const syncSpouseChildLinksForPerson = async ({
+  treeId,
+  personId,
+  actor,
+}: {
+  treeId: string;
+  personId: string;
+  actor?: ImportActor | null;
+}): Promise<void> => {
+  if (!isSupabaseConfigured()) return;
+  const spouseIds = await listSpouseIdsForPerson(treeId, personId);
+  for (const spouseId of spouseIds) {
+    await linkSharedChildrenBetweenParents({ treeId, parentA: personId, parentB: spouseId, actor });
+  }
 };
 
 /** Ensure father–mother pairs who share a child also have a spousal union (idempotent). */

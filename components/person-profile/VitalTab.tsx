@@ -20,13 +20,15 @@ import DetailEdit from './DetailEdit';
 import { FluentDateInput } from '../FluentDate';
 import { PlaceInput } from '../PlaceInput';
 import { ALT_NAME_TYPES, DEATH_CATEGORIES, EVENT_TYPES } from './constants';
-import { AlternateName, DeathCauseCategory, PersonEvent, StructuredPlace } from '../../types';
+import { AlternateName, DeathCauseCategory, Person, PersonEvent, StructuredPlace } from '../../types';
 
 interface VitalTabProps {
   canEdit: boolean;
   firstName: string;
   lastName: string;
   maidenName: string;
+  gender: Person['gender'];
+  onGenderChange: (value: Person['gender']) => void;
   onFirstNameChange: (value: string) => void;
   onLastNameChange: (value: string) => void;
   onMaidenNameChange: (value: string) => void;
@@ -98,6 +100,8 @@ const VitalTab: React.FC<VitalTabProps> = ({
   firstName,
   lastName,
   maidenName,
+  gender,
+  onGenderChange,
   onFirstNameChange,
   onLastNameChange,
   onMaidenNameChange,
@@ -163,6 +167,33 @@ const VitalTab: React.FC<VitalTabProps> = ({
           <DetailEdit label="Surname" value={lastName} onChange={onLastNameChange} disabled={readOnly} />
         </div>
         <DetailEdit label="Maiden Name" value={maidenName} onChange={onMaidenNameChange} placeholder="née..." disabled={readOnly} />
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Sex</p>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { value: 'M' as const, label: 'Male' },
+              { value: 'F' as const, label: 'Female' },
+              { value: 'O' as const, label: 'Unknown' },
+            ]).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                disabled={readOnly}
+                onClick={() => onGenderChange(option.value)}
+                className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] border transition-all ${
+                  gender === option.value
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                } disabled:opacity-50`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-slate-400 ml-1">
+            Used for pedigree father/mother placement and default avatars.
+          </p>
+        </div>
 
         {altNames.length > 0 && (
           <div className="space-y-4 pt-2">
