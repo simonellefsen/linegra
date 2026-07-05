@@ -1,6 +1,6 @@
 // Shared loader for public person crawl payloads (API + middleware).
 
-import type { Relationship } from '../types';
+import type { Person, Relationship } from '../types';
 import { bucketPublicCrawlRelationships } from './publicCrawlRelations';
 import { isPersonPubliclyCrawlable } from './publicCrawlPrivacy';
 import { createServerSupabase } from './supabaseServer';
@@ -103,6 +103,7 @@ export const loadPublicPersonCrawlPayload = async (
         firstName: String(record.first_name ?? record.firstName ?? ''),
         lastName: String(record.last_name ?? record.lastName ?? ''),
         title: record.title != null ? String(record.title) : undefined,
+        gender: record.gender as Person['gender'] | undefined,
         isPrivate: Boolean(record.is_private ?? record.isPrivate),
         isLiving: record.is_living as boolean | undefined,
         birthDate: (record.birth_date_text ?? record.birthDate) as string | null | undefined,

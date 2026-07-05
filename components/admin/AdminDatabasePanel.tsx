@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, PlugZap, Activity } from 'lucide-react';
 import { FamilyLayoutAudit } from '../../types';
 import {
@@ -55,42 +55,29 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!supabaseActive) return;
-    let cancelled = false;
+  const refreshAiTelemetry = useCallback(async () => {
+    if (!supabaseActive) return null;
     setUsageLoading(true);
     setUsageError(null);
-    fetchAiUsageSummary(usageDays)
-      .then((summary) => {
-        if (!cancelled) setUsage(summary);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setUsageError(error instanceof Error ? error.message : 'Failed to load AI usage.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setUsageLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const [summary, budget] = await Promise.all([
+        fetchAiUsageSummary(usageDays),
+        fetchAdminAiBudgetStatus(),
+      ]);
+      setUsage(summary);
+      setBudgetStatus(budget);
+      return summary;
+    } catch (error) {
+      setUsageError(error instanceof Error ? error.message : 'Failed to load AI usage.');
+      return null;
+    } finally {
+      setUsageLoading(false);
+    }
   }, [supabaseActive, usageDays]);
 
   useEffect(() => {
-    if (!supabaseActive) return;
-    let cancelled = false;
-    fetchAdminAiBudgetStatus()
-      .then((status) => {
-        if (!cancelled) setBudgetStatus(status);
-      })
-      .catch(() => {
-        if (!cancelled) setBudgetStatus(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [supabaseActive, usageDays]);
+    void refreshAiTelemetry();
+  }, [refreshAiTelemetry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,7 +163,13 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
         model: model.trim() || DEFAULT_OPENROUTER_MODEL,
         baseUrl: baseUrl.trim() || DEFAULT_OPENROUTER_BASE_URL,
       });
-      setTestMessage('OpenRouter connection verified.');
+      const summary = await refreshAiTelemetry();
+      const testBucket = summary?.byPurpose.find((bucket) => bucket.purpose === 'test');
+      setTestMessage(
+        testBucket
+          ? `OpenRouter connection verified. Logged ${testBucket.calls} test call(s) — see AI Usage below.`
+          : 'OpenRouter connection verified. AI Usage refreshed; the test row may take a moment to appear.'
+      );
     } catch (error) {
       setTestMessage(
         error instanceof Error
@@ -353,15 +346,25 @@ const AdminDatabasePanel: React.FC<AdminDatabasePanelProps> = ({
               <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">AI Usage</p>
               <h4 className="text-lg font-serif font-bold text-slate-900">OpenRouter Spend</h4>
             </div>
-            <select
-              value={usageDays}
-              onChange={(event) => setUsageDays(Number(event.target.value))}
-              className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none"
-            >
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={usageDays}
+                onChange={(event) => setUsageDays(Number(event.target.value))}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none"
+              >
+                <option value={7}>Last 7 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => void refreshAiTelemetry()}
+                disabled={usageLoading || !supabaseActive}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 disabled:opacity-50"
+              >
+                {usageLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
           </div>
           <p className="text-sm text-slate-500 max-w-3xl">
             Calls are relayed through the server-side ai-proxy (roadmap N); each call logs its model, tokens, and an
