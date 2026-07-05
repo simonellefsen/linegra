@@ -13,7 +13,6 @@ const sha = process.env.VERCEL_DEPLOY_SHA ?? process.env.GITHUB_SHA;
 const token = process.env.GITHUB_TOKEN;
 const deployRef = process.env.GITHUB_DEPLOY_REF;
 const deployEnv = process.env.VERCEL_DEPLOY_ENV ?? 'Preview';
-const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
 const maxTimeoutMs = Number(process.env.VERCEL_RESOLVE_TIMEOUT_MS ?? 300_000);
 const pollMs = Number(process.env.VERCEL_RESOLVE_POLL_MS ?? 10_000);
 
@@ -75,17 +74,6 @@ const resolvePreviewUrl = async () => {
   return null;
 };
 
-const probePreview = async (url) => {
-  const headers = bypassSecret
-    ? {
-        'x-vercel-protection-bypass': bypassSecret,
-        'x-vercel-set-bypass-cookie': 'true',
-      }
-    : {};
-  const response = await fetch(url, { headers, redirect: 'follow' });
-  return response.status;
-};
-
 const writeOutput = async (url) => {
   const outputPath = process.env.GITHUB_OUTPUT;
   if (outputPath) {
@@ -101,16 +89,10 @@ while (Date.now() < deadline) {
   const url = await resolvePreviewUrl();
 
   if (url) {
-    const status = await probePreview(url);
-    if (status >= 200 && status < 400) {
-      await writeOutput(url);
-      process.exit(0);
-    }
-    console.log(
-      `[vercel-preview] ${url} returned HTTP ${status}${
-        bypassSecret ? '' : ' (set VERCEL_AUTOMATION_BYPASS_SECRET for protected previews)'
-      }; retrying…`
-    );
+    // Trust GitHub's successful Vercel deployment status. HTTP probing with
+    // x-vercel-set-bypass-cookie causes redirect loops in Node fetch.
+    await writeOutput(url);
+    process.exit(0);
   } else {
     console.log(
       `[vercel-preview] No successful ${deployEnv} deployment for ${sha.slice(0, 7)} yet${
