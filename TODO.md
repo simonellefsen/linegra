@@ -67,9 +67,11 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **X — E2E smoke pack** (5 flows): Playwright `e2e/local.spec.ts` (app shell, login modal,
       book viewer) + `e2e/deployed.spec.ts` (public APIs, tree shells, optional auth/profile via
       `E2E_TEST_EMAIL` / `E2E_PROFILE_PATH`). Run: `npm run test:e2e`.
-- [ ] **Y1 — Split `services/archive.ts`** (4,102 lines) by domain behind a barrel export;
-      move pure mappers to `lib/` with tests.
-- [ ] **Y2 — Extract App.tsx route/state clusters** into hooks (1,923 lines).
+- [x] **Y1 — Split `services/archive.ts`** by domain behind a barrel export; move pure mappers to
+      `lib/` with tests. *(2026-07-05: full split — `services/archive/` modules + 12-line barrel;
+      `lib/archiveDbMappers.ts`.)*
+- [x] **Y2 — Extract App.tsx route/state clusters** into hooks (`useAppAuth`, `useAppTreeBootstrap`,
+      `useAppPublicRoutes`, `usePersonProfileSelection`).
 
 ## Bot & LLM agent navigation (traversal audit)
 

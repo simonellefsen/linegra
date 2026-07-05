@@ -1,10 +1,9 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { isSupabaseConfigured } from './lib/supabase';
-import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership, createStandalonePerson, createPlaceholderParent, resolvePublicPersonIdClient, resolvePublicTreeIdClient } from './services/archive';
-import { canWriteTreeRole, clearAuthCallbackFromUrl, getInitialSessionUser, isAuthCallbackUrl, listMyPendingCollaboratorInvites, signOut, subscribeToAuthChanges } from './services/auth';
-import { buildPersonUrl, buildTreeUrl, canonicalizeLegacyPublicUrl, parsePublicRouteFromLocation } from './lib/publicRoutes';
-import { Person, User, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole, TreeLayoutType } from './types';
+import { ensureTrees, loadPedigreeScope, importGedcomToSupabase, createFamilyTree, listFamilyTreesWithCounts, deleteFamilyTreeRecord, nukeSupabaseDatabase, persistFamilyLayout, fetchFamilyLayoutAudits, fetchPersonDetails, searchPersonsInTree, fetchWhatsNewPeople, fetchThisMonthHighlights, fetchMostWantedPeople, fetchRandomMediaPeople, fetchTreeStatistics, updateTreeSettings, fetchDnaMatchCm, claimTreeOwnership, createStandalonePerson, createPlaceholderParent } from './services/archive';
+import { canWriteTreeRole } from './services/auth';
+import { Person, FamilyTree as FamilyTreeType, Relationship, FamilyTreeSummary, FamilyLayoutState, FamilyLayoutAudit, TreeAccessRole, TreeLayoutType } from './types';
 import { computePedigreeScope } from './lib/pedigreeScope';
 import { isParentChildEdge } from './lib/parentChildLinks';
 import {
@@ -48,6 +47,10 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import ErrorBoundary from './components/ErrorBoundary';
+import { useAppAuth } from './hooks/useAppAuth';
+import { useAppPublicRoutes } from './hooks/useAppPublicRoutes';
+import { useAppTreeBootstrap } from './hooks/useAppTreeBootstrap';
+import { usePersonProfileSelection } from './hooks/usePersonProfileSelection';
 
 const AdminDnaPanel = lazy(() => import('./components/AdminDnaPanel'));
 const AdminDatabasePanel = lazy(() => import('./components/admin/AdminDatabasePanel'));
@@ -71,33 +74,38 @@ const App: React.FC = () => {
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'tree' | 'records' | 'settings' | 'profile'>('home');
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const supabaseActive = isSupabaseConfigured();
   const buildStamp = __BUILD_STAMP__;
 
-  // Tree State
-  const [trees, setTrees] = useState<FamilyTreeType[]>([]);
-  const [activeTree, setActiveTree] = useState<FamilyTreeType | null>(null);
+  const { trees, setTrees, activeTree, setActiveTree, loading, configError } =
+    useAppTreeBootstrap(supabaseActive);
+
+  const [adminTrees, setAdminTrees] = useState<FamilyTreeSummary[]>([]);
+
+  const {
+    showAuthModal,
+    setShowAuthModal,
+    currentUser,
+    authReady,
+    authSuccessMessage,
+    setAuthSuccessMessage,
+    pendingInviteCount,
+    refreshPendingInvites,
+    handleLogout: authLogout,
+  } = useAppAuth();
+
   const [allPeople, setAllPeople] = useState<Person[]>([]);
   const [allRelationships, setAllRelationships] = useState<Relationship[]>([]);
   const [dnaMatchCmById, setDnaMatchCmById] = useState<Map<string, number>>(new Map());
   const [showTreeSelector, setShowTreeSelector] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [configError, setConfigError] = useState<string | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
 
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [authSuccessMessage, setAuthSuccessMessage] = useState<string | null>(null);
-  const [pendingInviteCount, setPendingInviteCount] = useState(0);
-  const emailCallbackPending = useRef(false);
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
   const [adminSection, setAdminSection] = useState<AdminSection>('gedcom');
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [adminTrees, setAdminTrees] = useState<FamilyTreeSummary[]>([]);
   const [adminTreesLoading, setAdminTreesLoading] = useState(false);
   const [updatingTreeId, setUpdatingTreeId] = useState<string | null>(null);
   const [creatingTree, setCreatingTree] = useState(false);
@@ -270,52 +278,9 @@ const App: React.FC = () => {
     [supabaseActive]
   );
 
-  const showEmailConfirmedNotice = useCallback((user: User) => {
-    setAuthSuccessMessage(`Email confirmed — welcome, ${user.name}! You are signed in.`);
-    clearAuthCallbackFromUrl();
-  }, []);
-
   useEffect(() => {
-    let cancelled = false;
-    emailCallbackPending.current = isAuthCallbackUrl();
-    void (async () => {
-      try {
-        const user = await getInitialSessionUser();
-        if (!cancelled) {
-          setCurrentUser(user);
-          if (user && emailCallbackPending.current) {
-            emailCallbackPending.current = false;
-            showEmailConfirmedNotice(user);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to restore auth session', err);
-      } finally {
-        if (!cancelled) setAuthReady(true);
-      }
-    })();
-    const { data } = subscribeToAuthChanges((user) => {
-      setCurrentUser(user);
-      if (user && emailCallbackPending.current) {
-        emailCallbackPending.current = false;
-        showEmailConfirmedNotice(user);
-      }
-    });
-    return () => {
-      cancelled = true;
-      data.subscription.unsubscribe();
-    };
-  }, [showEmailConfirmedNotice]);
-
-  useEffect(() => {
-    if (!authSuccessMessage) return;
-    const timer = window.setTimeout(() => setAuthSuccessMessage(null), 10000);
-    return () => window.clearTimeout(timer);
-  }, [authSuccessMessage]);
-
-useEffect(() => {
-  setMobileNavOpen(false);
-}, [activeTab]);
+    setMobileNavOpen(false);
+  }, [activeTab]);
 
   useEffect(() => {
     setTreeViewReady(false);
@@ -394,46 +359,9 @@ useEffect(() => {
 
   useEffect(() => {
     if (!supabaseActive) {
-      setTrees([]);
-      setActiveTree(null);
       setAllPeople([]);
       setAllRelationships([]);
-      setConfigError('Supabase credentials are missing. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY (formerly SUPABASE_ANON_KEY) in your .env.local before running Linegra.');
-      setLoading(false);
-      return;
     }
-
-    (async () => {
-      try {
-        const dbTrees = await ensureTrees();
-        const ordered = [...dbTrees].sort((a, b) => a.name.localeCompare(b.name));
-        setTrees(ordered);
-        if (ordered.length) {
-          let selected = ordered[0];
-          if (typeof window !== 'undefined') {
-            const route = parsePublicRouteFromLocation(window.location);
-            const treeIdFromUrl =
-              route.kind === 'tree' || route.kind === 'person'
-                ? route.treeId
-                : new URL(window.location.href).searchParams.get('tree');
-            const matchedTree = treeIdFromUrl ? ordered.find((tree) => tree.id === treeIdFromUrl) : null;
-            if (matchedTree) {
-              selected = matchedTree;
-            }
-          }
-          setActiveTree(selected);
-        } else {
-          setActiveTree(null);
-        }
-        setConfigError(null);
-      } catch (err) {
-        console.error('Failed to load tree list', err);
-        const message = err instanceof Error ? err.message : 'Failed to load data from Supabase.';
-        setConfigError(message);
-      } finally {
-        setLoading(false);
-      }
-    })();
   }, [supabaseActive]);
 
   const fetchAdminTreeStats = useCallback(async () => {
@@ -455,24 +383,6 @@ useEffect(() => {
   useEffect(() => {
     fetchAdminTreeStats();
   }, [fetchAdminTreeStats]);
-
-  const refreshPendingInvites = useCallback(async () => {
-    if (!currentUser) {
-      setPendingInviteCount(0);
-      return;
-    }
-    try {
-      const invites = await listMyPendingCollaboratorInvites();
-      setPendingInviteCount(invites.length);
-    } catch (err) {
-      console.error('Failed to load pending collaborator invites', err);
-      setPendingInviteCount(0);
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
-    void refreshPendingInvites();
-  }, [refreshPendingInvites]);
 
   const handleCollaboratorInvitesAccepted = useCallback(
     async (acceptedCount: number) => {
@@ -497,7 +407,7 @@ useEffect(() => {
         console.error('Failed to refresh trees after accepting invites', err);
       }
     },
-    [activeTree, fetchAdminTreeStats, refreshPendingInvites]
+    [activeTree, fetchAdminTreeStats, refreshPendingInvites, setActiveTree, setAuthSuccessMessage, setTrees]
   );
 
   useEffect(() => {
@@ -524,6 +434,30 @@ useEffect(() => {
       (p) => p.treeId === activeTreeId && (canViewPrivate || !p.isPrivate)
     );
   }, [allPeople, activeTreeId, canViewPrivate]);
+
+  useAppPublicRoutes({
+    pendingPersonId,
+    setPendingPersonId,
+    trees,
+    activeTreeId,
+    activeTab,
+    selectedPerson,
+    treePeople,
+    setActiveTree,
+    setSelectedPerson,
+    setPedigreeFocusId,
+    setTreeViewReady,
+    handleEnsurePersonDetails,
+  });
+
+  const { handlePersonSelect, handlePersonPatched } = usePersonProfileSelection({
+    canViewPrivate,
+    handleEnsurePersonDetails,
+    setPedigreeFocusId,
+    setPendingPersonId,
+    setSelectedPerson,
+    setAllPeople,
+  });
 
   const handlePersistFamilyLayout = useCallback(async (personId: string, layout: FamilyLayoutState) => {
     try {
@@ -819,23 +753,6 @@ useEffect(() => {
     fetchSearchPage(searchPage + 1, true);
   }, [fetchSearchPage, searchLoading, searchPage]);
 
-  const handlePersonSelect = useCallback(
-    (person: Person | null) => {
-      if (person && person.isPrivate && !canViewPrivate) {
-        return;
-      }
-      setSelectedPerson(person);
-      setPendingPersonId(person ? person.id : null);
-      if (person) {
-        setPedigreeFocusId(person.id);
-      }
-      if (person && !person.detailsLoaded) {
-        handleEnsurePersonDetails(person.id);
-      }
-    },
-    [handleEnsurePersonDetails, canViewPrivate]
-  );
-
   const handleAddParentFromPedigree = useCallback(
     async (childId: string, parentType: 'father' | 'mother') => {
       if (!activeTree || !activeTreeId || !canWriteActiveTree) return;
@@ -916,13 +833,6 @@ useEffect(() => {
     loadPedigreeGraph,
   ]);
 
-  const handlePersonPatched = useCallback((updated: Person) => {
-    setSelectedPerson((prev) => (prev?.id === updated.id ? updated : prev));
-    setAllPeople((prev) =>
-      prev.length ? prev.map((p) => (p.id === updated.id ? updated : p)) : prev
-    );
-  }, []);
-
   const handleClaimTreeOwnership = useCallback(
     async (treeId: string) => {
       if (!currentUser?.isSuperAdmin) return;
@@ -955,135 +865,16 @@ useEffect(() => {
     descendantDepth,
   ]);
 
-  const handleAuthenticated = () => {
+  const handleLogout = useCallback(async () => {
+    await authLogout();
+    setAdminTrees([]);
+  }, [authLogout]);
+
+  const handleAuthenticated = useCallback(() => {
     setShowAuthModal(false);
     void fetchAdminTreeStats();
     void refreshPendingInvites();
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut();
-    } catch (err) {
-      console.error('Sign out failed', err);
-    }
-    setCurrentUser(null);
-    setAdminTrees([]);
-    setPendingInviteCount(0);
-  };
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const canonical = canonicalizeLegacyPublicUrl();
-    if (canonical) {
-      window.history.replaceState({}, '', canonical);
-    }
-    const route = parsePublicRouteFromLocation(window.location);
-    if (route.kind === 'person' && route.personId) {
-      setPendingPersonId(route.personId);
-      return;
-    }
-    if (route.kind === 'person' && route.personIdPrefix) {
-      let cancelled = false;
-      (async () => {
-        try {
-          const treeId =
-            route.treeId ??
-            (route.treeSlug ? await resolvePublicTreeIdClient(route.treeSlug) : null) ??
-            null;
-          if (!treeId || cancelled) return;
-          const personId = await resolvePublicPersonIdClient(treeId, route.personIdPrefix!);
-          if (!personId || cancelled) return;
-          setPendingPersonId(personId);
-        } catch (err) {
-          console.error('Failed to resolve public person route', err);
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (route.kind === 'tree' && route.treeSlug && !route.treeId) {
-      const tree = trees.find((entry) => entry.slug === route.treeSlug);
-      if (tree) setActiveTree(tree);
-    }
-    const personId = new URL(window.location.href).searchParams.get('person');
-    if (personId) {
-      setPendingPersonId(personId);
-    }
-  }, [trees]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (parsePublicRouteFromLocation(window.location).kind === 'book') return;
-    if (activeTab === 'records' || activeTab === 'profile') return;
-    const selectedPersonId = selectedPerson?.id ?? null;
-    if (selectedPersonId && activeTreeId) {
-      const activeTreeRef = trees.find((tree) => tree.id === activeTreeId);
-      window.history.replaceState(
-        {},
-        '',
-        buildPersonUrl(
-          { id: activeTreeId, slug: activeTreeRef?.slug },
-          {
-            id: selectedPersonId,
-            firstName: selectedPerson?.firstName,
-            lastName: selectedPerson?.lastName,
-            birthDate: selectedPerson?.birthDate,
-          }
-        )
-      );
-      return;
-    }
-    if (activeTreeId) {
-      const activeTreeRef = trees.find((tree) => tree.id === activeTreeId);
-      window.history.replaceState({}, '', buildTreeUrl({ id: activeTreeId, slug: activeTreeRef?.slug }));
-    }
-  }, [activeTreeId, selectedPerson?.id, selectedPerson, activeTab, trees]);
-
-  useEffect(() => {
-    if (!pendingPersonId) return;
-    // Wait for the tree list before resolving a cross-tree ?person= URL, so we can switch the
-    // active tree to the one the person actually belongs to.
-    if (!trees.length) return;
-    const match = treePeople.find((p) => p.id === pendingPersonId);
-    if (match) {
-      setSelectedPerson(match);
-      setPedigreeFocusId(match.id);
-      if (!match.detailsLoaded) {
-        handleEnsurePersonDetails(match.id);
-      } else {
-        setPendingPersonId(null);
-      }
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const person = await fetchPersonDetails(pendingPersonId);
-        if (cancelled) return;
-        setSelectedPerson(person);
-        setPedigreeFocusId(person.id);
-        setTreeViewReady(true);
-        // A ?person= UUID may belong to a different tree than the ?tree= param selected at
-        // boot. The person's tree wins so the profile and the tree selector stay consistent.
-        if (person.treeId && person.treeId !== activeTreeId) {
-          const targetTree = trees.find((tree) => tree.id === person.treeId);
-          if (targetTree) {
-            setActiveTree(targetTree);
-          }
-        }
-        setPendingPersonId(null);
-      } catch (err) {
-        console.error('Failed to load person from URL', err);
-        setPendingPersonId(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [pendingPersonId, treePeople, handleEnsurePersonDetails, activeTreeId, trees]);
-
+  }, [fetchAdminTreeStats, refreshPendingInvites, setShowAuthModal]);
 
   const handleAdminCreateTree = useCallback(
     async (payload: { name: string; description?: string; ownerName?: string; ownerEmail?: string }) => {
@@ -1106,7 +897,7 @@ useEffect(() => {
         setCreatingTree(false);
       }
     },
-    [supabaseActive, currentUser, fetchAdminTreeStats]
+    [supabaseActive, currentUser, fetchAdminTreeStats, setActiveTree, setTrees]
   );
 
   const handleAdminDeleteTree = useCallback(
@@ -1149,7 +940,7 @@ useEffect(() => {
         setDeletingTreeId(null);
       }
     },
-    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats, trees]
+    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats, trees, setActiveTree, setTrees]
   );
 
   const handleAdminUpdateTreeSettings = useCallback(
@@ -1173,7 +964,7 @@ useEffect(() => {
         setUpdatingTreeId(null);
       }
     },
-    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats]
+    [supabaseActive, currentUser, activeTree, fetchAdminTreeStats, setActiveTree, setTrees]
   );
 
   const handleAdminSearchTreePersons = useCallback(
@@ -1298,7 +1089,7 @@ useEffect(() => {
     } finally {
       setNukeInProgress(false);
     }
-  }, [supabaseActive, nukeConfirmText, fetchAdminTreeStats]);
+  }, [supabaseActive, nukeConfirmText, fetchAdminTreeStats, setActiveTree, setTrees]);
 
   useEffect(() => {
     if (!showNukeModal) {
