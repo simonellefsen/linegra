@@ -4,12 +4,13 @@
  * Avoids unauthenticated HTTP probes that return 401 under Vercel Deployment Protection.
  *
  * Env: GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_TOKEN
- * Optional: VERCEL_DEPLOY_ENV (default Preview), VERCEL_AUTOMATION_BYPASS_SECRET
+ * Optional: GITHUB_DEPLOY_REF, VERCEL_DEPLOY_ENV, VERCEL_AUTOMATION_BYPASS_SECRET
  * Writes: url=… to GITHUB_OUTPUT when set
  */
 const repository = process.env.GITHUB_REPOSITORY;
 const sha = process.env.GITHUB_SHA;
 const token = process.env.GITHUB_TOKEN;
+const deployRef = process.env.GITHUB_DEPLOY_REF;
 const deployEnv = process.env.VERCEL_DEPLOY_ENV ?? 'Preview';
 const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
 const maxTimeoutMs = Number(process.env.VERCEL_RESOLVE_TIMEOUT_MS ?? 300_000);
@@ -42,6 +43,37 @@ const ghApi = async (path) => {
   return response.json();
 };
 
+const matchesDeployEnv = (environment) =>
+  environment?.toLowerCase() === deployEnv.toLowerCase();
+
+const pickSuccessUrl = (statuses) => {
+  const success = statuses.find((status) => status.state === 'success');
+  const rawUrl = success?.environment_url || success?.target_url;
+  return rawUrl ? rawUrl.replace(/\/$/, '') : null;
+};
+
+const listDeployments = async () => {
+  const bySha = await ghApi(`repos/${repository}/deployments?sha=${sha}&per_page=20`);
+  if (bySha.length > 0) return bySha;
+  if (!deployRef) return [];
+  return ghApi(`repos/${repository}/deployments?ref=${encodeURIComponent(deployRef)}&per_page=20`);
+};
+
+const resolvePreviewUrl = async () => {
+  const deployments = await listDeployments();
+  const candidates = deployments.filter((dep) => matchesDeployEnv(dep.environment));
+
+  for (const deployment of candidates) {
+    const statuses = await ghApi(
+      `repos/${repository}/deployments/${deployment.id}/statuses?per_page=20`
+    );
+    const url = pickSuccessUrl(statuses);
+    if (url) return url;
+  }
+
+  return null;
+};
+
 const probePreview = async (url) => {
   const headers = bypassSecret
     ? {
@@ -65,33 +97,27 @@ const writeOutput = async (url) => {
 const deadline = Date.now() + maxTimeoutMs;
 
 while (Date.now() < deadline) {
-  const deployments = await ghApi(`repos/${repository}/deployments?sha=${sha}&per_page=20`);
-  const candidates = deployments.filter((dep) => dep.environment === deployEnv);
+  const url = await resolvePreviewUrl();
 
-  for (const deployment of candidates) {
-    const statuses = await ghApi(`repos/${repository}/deployments/${deployment.id}/statuses?per_page=1`);
-    const latest = statuses[0];
-    if (latest?.state !== 'success') continue;
-
-    const rawUrl = latest.environment_url || latest.target_url;
-    if (!rawUrl) continue;
-
-    const url = rawUrl.replace(/\/$/, '');
+  if (url) {
     const status = await probePreview(url);
-
     if (status >= 200 && status < 400) {
       await writeOutput(url);
       process.exit(0);
     }
-
     console.log(
       `[vercel-preview] ${url} returned HTTP ${status}${
         bypassSecret ? '' : ' (set VERCEL_AUTOMATION_BYPASS_SECRET for protected previews)'
       }; retrying…`
     );
+  } else {
+    console.log(
+      `[vercel-preview] No successful ${deployEnv} deployment for ${sha.slice(0, 7)} yet${
+        deployRef ? ` (ref ${deployRef})` : ''
+      }…`
+    );
   }
 
-  console.log(`[vercel-preview] Waiting for ${deployEnv} deployment on ${sha.slice(0, 7)}…`);
   await sleep(pollMs);
 }
 

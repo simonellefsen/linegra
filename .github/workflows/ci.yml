@@ -30,6 +30,7 @@ jobs:
       GITHUB_REPOSITORY: ${{ github.repository }}
       GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_DEPLOY_REF: ${{ github.event.pull_request.head.ref && format('refs/heads/{0}', github.event.pull_request.head.ref) || github.ref }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
