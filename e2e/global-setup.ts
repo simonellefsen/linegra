@@ -33,12 +33,17 @@ async function globalSetup(_config: FullConfig): Promise<void> {
 
   const response = await fetch(`${baseUrl}/api/e2e/redeem`, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...vercelProtectionBypassHeaders(),
     },
   });
+
+  if (response.status >= 300 && response.status < 400) {
+    throw new Error(`E2E redeem was redirected (${response.status}); check VERCEL_AUTOMATION_BYPASS_SECRET.`);
+  }
 
   if (!response.ok) {
     const body = await response.text();

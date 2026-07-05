@@ -39,21 +39,22 @@ if (!supabaseUrl) {
 }
 
 const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
-const bypassHeaders = bypassSecret
-  ? {
-      'x-vercel-protection-bypass': bypassSecret,
-      'x-vercel-set-bypass-cookie': 'true',
-    }
-  : {};
+const bypassHeaders = bypassSecret ? { 'x-vercel-protection-bypass': bypassSecret } : {};
 
 const response = await fetch(`${baseUrl}/api/e2e/redeem`, {
   method: 'POST',
+  redirect: 'manual',
   headers: {
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
     ...bypassHeaders,
   },
 });
+
+if (response.status >= 300 && response.status < 400) {
+  console.error(`[e2e-bootstrap] Redeem was redirected (${response.status}); check bypass secret.`);
+  process.exit(1);
+}
 
 if (!response.ok) {
   const body = await response.text();
