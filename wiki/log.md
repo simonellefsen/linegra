@@ -15,6 +15,16 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — Family union UX + K3 unknown-match cards (K8d)
+
+**Family tab:** Single **Add union** + **Link existing person** actions; new spouse placeholders default
+to the opposite sex of the focus profile (`lib/personGender.ts`).
+
+**K8d:** Unknown-match cards show ranked suggestions once (top row highlighted); create-placeholder
+rationale removed from the list; **Not in my tree** dismiss persists per focus person on `dna_tests.metadata`.
+
+---
+
 ## 2026-07-05 — OpenRouter live + public crawl smoke (V4, W3)
 
 **V4:** Admin **Test Connection** verified against live ai-proxy + stored key. Next: confirm **AI Usage**

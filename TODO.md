@@ -29,7 +29,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       Unknown Matches;** Jon's unknown card lacks the expected "Link to" button despite an
       exact-name person in tree. Dedupe unknowns against linked matches; stop hiding in-tree
       counterparts before link UI.
-- [ ] **K8d — K3 card UX:** de-duplicate "Top suggestion" vs list; fallback as button-only; add
+- [x] **K8d — K3 card UX:** de-duplicate "Top suggestion" vs list; fallback as button-only; add
       Dismiss/"not in my tree"; consider batch actions.
 - [ ] **K8e — Lineage cards:** dedupe the double path pill; generation-breadcrumb formatting with
       bolded MRCA; "View in tree" action.

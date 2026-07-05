@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, Dna, Layers, Loader2, Search, Sparkles, UserPlus, Link2 } from 'lucide-react';
+import { Activity, Dna, Layers, Loader2, Search, Sparkles, UserPlus, Link2, X } from 'lucide-react';
 import { DNAAutosomalCandidate, DNASharedMatchRecord, DnaLineageResolution, Person, Relationship, UnlinkedDnaMatchRecord } from '../types';
 import { clusterSharedSegments, segmentsFromPreview, summarizeClusterIcw } from '../lib/dnaClustering';
 import DnaSegmentPainterView from './dna/DnaSegmentPainterView';
@@ -16,6 +16,7 @@ import {
 import { suggestUnknownMatchPlacements } from '../lib/dnaMatchPlacement';
 import {
   createDnaMatchPlaceholderPerson,
+  dismissUnlinkedDnaMatchForFocus,
   linkUnlinkedDnaTestToPerson,
   listAutosomalPeopleInTree,
   listAutosomalRawKitsForTree,
@@ -78,6 +79,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   const [unlinkedMatches, setUnlinkedMatches] = useState<UnlinkedDnaMatchRecord[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [placingMatchId, setPlacingMatchId] = useState<string | null>(null);
+  const [dismissingMatchId, setDismissingMatchId] = useState<string | null>(null);
   const [rawKits, setRawKits] = useState<Awaited<ReturnType<typeof listAutosomalRawKitsForTree>>>([]);
   const [kitCompareA, setKitCompareA] = useState('');
   const [kitCompareB, setKitCompareB] = useState('');
@@ -307,6 +309,23 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
       setError(err instanceof Error ? err.message : 'Could not link DNA test to person.');
     } finally {
       setPlacingMatchId(null);
+    }
+  };
+
+  const handleDismissUnlinkedMatch = async (match: UnlinkedDnaMatchRecord) => {
+    if (!selectedPersonId || dismissingMatchId || placingMatchId) return;
+    setDismissingMatchId(match.id);
+    setError(null);
+    try {
+      await dismissUnlinkedDnaMatchForFocus({
+        dnaTestId: match.dnaTestId,
+        focusPersonId: selectedPersonId,
+      });
+      setUnlinkedMatches((current) => current.filter((item) => item.id !== match.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not dismiss unknown match.');
+    } finally {
+      setDismissingMatchId(null);
     }
   };
 
@@ -811,13 +830,15 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
           <div className="space-y-4">
             {unlinkedMatches.map((match) => {
               const suggestions = placementByUnlinkedId.get(match.id) || [];
-              const topSuggestion = suggestions[0];
+              const displaySuggestions = suggestions.filter((item) => item.kind !== 'unplaced');
               const linkSuggestion = suggestions.find((item) => item.kind === 'link_existing');
               const linkTargetPersonId =
                 linkSuggestion?.anchorPersonId || match.suggestedNameMatchPersonId || null;
               const linkTargetPersonName =
                 linkSuggestion?.anchorPersonName || match.suggestedNameMatchPersonName || null;
               const isPlacing = placingMatchId === match.id;
+              const isDismissing = dismissingMatchId === match.id;
+              const isBusy = isPlacing || isDismissing;
               return (
                 <div
                   key={match.id}
@@ -835,7 +856,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                       {linkTargetPersonId && linkTargetPersonName && (
                         <button
                           type="button"
-                          disabled={isPlacing}
+                          disabled={isBusy}
                           onClick={() => handleLinkUnlinkedToPerson(match, linkTargetPersonId)}
                           className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
                         >
@@ -845,28 +866,44 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                       )}
                       <button
                         type="button"
-                        disabled={isPlacing}
+                        disabled={isBusy}
                         onClick={() => handleCreateDnaMatchPerson(match)}
                         className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1.5"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
                         {isPlacing ? 'Placing…' : 'Create match person'}
                       </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => handleDismissUnlinkedMatch(match)}
+                        className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-slate-300 text-slate-600 hover:bg-white disabled:opacity-50 flex items-center gap-1.5"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        {isDismissing ? 'Dismissing…' : 'Not in my tree'}
+                      </button>
                     </div>
                   </div>
-                  {topSuggestion && (
-                    <p className="text-xs text-slate-700">
-                      <span className="font-semibold">Top suggestion:</span> {topSuggestion.rationale}
-                    </p>
-                  )}
-                  {suggestions.length > 1 && (
-                    <ul className="text-xs text-slate-600 space-y-1">
-                      {suggestions.slice(0, 4).map((suggestion, index) => (
-                        <li key={`${match.id}-suggestion-${index}`}>
+                  {displaySuggestions.length > 0 && (
+                    <ul className="text-xs text-slate-600 space-y-2">
+                      {displaySuggestions.slice(0, 4).map((suggestion, index) => (
+                        <li
+                          key={`${match.id}-suggestion-${index}`}
+                          className={
+                            index === 0
+                              ? 'rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2 text-slate-800'
+                              : 'px-1'
+                          }
+                        >
+                          {index === 0 && (
+                            <span className="block text-[10px] font-black uppercase tracking-[0.15em] text-blue-700 mb-1">
+                              Top suggestion
+                            </span>
+                          )}
                           {suggestion.anchorPersonName ? (
                             <button
                               type="button"
-                              className="underline decoration-dotted underline-offset-2 hover:text-blue-700"
+                              className="font-semibold underline decoration-dotted underline-offset-2 hover:text-blue-700"
                               onClick={() =>
                                 suggestion.anchorPersonId && onOpenPerson?.(suggestion.anchorPersonId)
                               }
@@ -874,7 +911,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                               {suggestion.anchorPersonName}
                             </button>
                           ) : (
-                            <span>{suggestion.relationshipLabel}</span>
+                            <span className="font-semibold">{suggestion.relationshipLabel}</span>
                           )}
                           {' — '}
                           {suggestion.rationale}

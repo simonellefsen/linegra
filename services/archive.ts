@@ -19,6 +19,7 @@ import {
 import { inferDefaultProbandId } from '../lib/gedcomFidelity';
 import { inferParentPairsForUnion, inferParentRelationshipType } from '../lib/parentChildLinks';
 import { inferSpouseDefaultGender } from '../lib/personGender';
+import { isK3DismissedForFocus, withK3DismissedForFocus } from '../lib/dnaK3Dismiss';
 import { normalizeNameMatchScore, scoreNameMatch } from '../lib/dnaNameMatch';
 import { FamilyTree as FamilyTreeType, FamilyTreeSummary, Person, Relationship, RelationshipType, Source, Note, PersonEvent, Citation, FamilyLayoutState, FamilyLayoutAudit, StructuredPlace, RelationshipConfidence, RelationshipStatus, DNATest, DNATestType, DNAVendor, DNAAutosomalCandidate, DNASharedMatchRecord, DNASharedSegmentRowPreview, DnaLineageResolution, UnlinkedDnaMatchRecord, AutosomalIndexStats, TreeCollaborator, TreeAccessRole } from '../types';
 
@@ -2190,6 +2191,7 @@ export const listUnlinkedSharedMatchesForAutosomalPerson = async (
 
     if (linkedDnaTestIds.has(testId)) return;
     if (counterpartPersonId && linkedCounterpartIds.has(counterpartPersonId)) return;
+    if (isK3DismissedForFocus(metadata, focusPersonId)) return;
 
     const matchName = resolveUnknownMatchName(focusPersonId, summary, nameRows);
     const nameSuggestion = findBestNameMatch(matchName, nameRows, focusPersonId);
@@ -2355,6 +2357,36 @@ export const linkUnlinkedDnaTestToPerson = async ({
     longestSegment,
   });
   return { personId: targetPersonId };
+};
+
+export const dismissUnlinkedDnaMatchForFocus = async ({
+  dnaTestId,
+  focusPersonId,
+}: {
+  dnaTestId: string;
+  focusPersonId: string;
+}): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  const { data: testRow, error: fetchError } = await supabase
+    .from('dna_tests')
+    .select('metadata')
+    .eq('id', dnaTestId)
+    .maybeSingle();
+  if (fetchError) throw new Error(fetchError.message);
+  if (!testRow) throw new Error('DNA test not found.');
+
+  const metadata = asRecord(testRow.metadata);
+  if (isK3DismissedForFocus(metadata, focusPersonId)) return;
+
+  const { error: updateError } = await supabase
+    .from('dna_tests')
+    .update({
+      metadata: withK3DismissedForFocus(metadata, focusPersonId),
+    })
+    .eq('id', dnaTestId);
+  if (updateError) throw new Error(updateError.message);
 };
 
 export const createDnaMatchPlaceholderPerson = async ({
