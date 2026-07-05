@@ -594,6 +594,46 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
   dates but the bucketing `PersonRow` drops them; thread them through and render
   "Jens Jensen (1832–1901)" in anchor text/titles and md/JSON. Pairs with U13 (union grouping
   gives children-per-spouse + marriage facts).
+#### U18. Traffic panel v2 (screenshot review 2026-07-05)
+
+The panel works end-to-end (bot + visitor split, geo, drill-down) — these are correctness fixes
+and the metrics that make it *actionable* rather than a hit counter.
+
+*Quick fixes (display correctness):*
+- **U18a — City names render URL-encoded** ("Los%20Angeles, CA"): Vercel URI-encodes
+  `x-vercel-ip-city`; `decodeURIComponent` in [../lib/requestGeo.ts](../lib/requestGeo.ts).
+- **U18b — Raw ISO region codes** ("Copenhagen, 84"): map ISO-3166-2 codes to names (DK-84 →
+  Capital Region) or omit numeric-only regions.
+- **U18c — "LLM agents 0 / GPTBot, ClaudeBot, Perplexity"** reads as if those three visited;
+  re-copy as "watching for: …" or hide the example list when the count is 0.
+- **U18d — Count consistency:** "Countries 2" while the list shows three buckets (incl. Unknown)
+  — either count Unknown or visually separate it.
+- **U18e — INVESTIGATE: duplicate events.** Recent-visitors shows identical-timestamp pairs
+  (12:27:56 ×2, 09:08:37 ×2, 06:51:15 ×2). Telemetry records from 4 call sites (middleware + 3
+  edge routes) — check middleware re-invocation on rewrites/prefetch and client double-fire;
+  dedupe at ingestion (idempotency key: minute-bucket + route + resource + UA hash) or filter in
+  stats RPC.
+
+*Actionability:*
+- **U18f — Resolve resource UUIDs to names.** "0fd167f2-…" tells the admin nothing; join to
+  persons/trees and render "Pernille Gether Gamby (person)" linking to the public page
+  (admin-only panel, so names are fine).
+- **U18g — Self-traffic exclusion.** The admin's own browsing inflates visitor counts; tag hits
+  from signed-in sessions (or a device cookie) and default the panel to "exclude my traffic."
+- **U18h — Chart scaling.** A single hit renders as a full-width bar; use a fixed axis over the
+  whole window with zero-days shown, and overlay bot vs visitor series for trend comparison.
+- **U18i — Format breakdown per agent** (html / md / json / xml): measures whether LLM agents
+  actually use the U7/U8 alternates — feedback loop for the whole U track.
+- **U18j — Crawl coverage.** Join sitemap entries against crawl events: "Googlebot has fetched
+  38% of public person pages; 214 never crawled." Per-tree coverage % + a never-crawled list —
+  turns the panel into an SEO instrument.
+- **U18k — First-seen + deltas.** Callout when a new agent appears ("ClaudeBot first visit
+  2026-07-08") and week-over-week change chips on the stat cards.
+- **U18l — Referrer capture for human visits.** Store the `Referer` header bucket (google / bing
+  / chatgpt.com / perplexity.ai / direct) — no IP, consistent with the privacy stance. "Humans
+  referred by AI assistants" is the metric that shows the LLM-discoverability work paying off.
+- CSV export of any drill-down view (small).
+
 #### U16. Proposed URL scheme v2 — slugs, indexes, family pages (proposed 2026-07-05)
 
 Replace UUID-only public paths with semantic, id-anchored slugs. **Why:** UUID paths give search
@@ -735,6 +775,8 @@ viewer, public routes. Regressions there surface only when a human clicks. Optio
 manual verification (see N Phase 1 log entry). Start with a 5-flow smoke pack against a seeded
 test tree: anonymous public-tree browse, auth sign-in, pedigree focus + person profile open,
 `/book/:id` public viewer, `?format=md` + JSON public APIs. Pairs with W3.
+**Done (2026-07-05):** `@playwright/test` with `e2e/local.spec.ts` + `e2e/deployed.spec.ts`; CI
+`e2e-smoke` job; optional auth/profile via `E2E_TEST_EMAIL` / `E2E_PROFILE_PATH`.
 
 ### Y. Service-layer decomposition (code health) — NEW 2026-07-04
 [../services/archive.ts](../services/archive.ts) is **4,102 lines** (trees, persons, relationships,

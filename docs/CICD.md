@@ -29,6 +29,28 @@ npm run build
 Vercel deploy. Run `npm test` (or `npm run test:watch`) directly while iterating; tests live
 next to the code they cover as `lib/*.test.ts`.
 
+## E2E smoke (roadmap X)
+
+Playwright smoke pack for browser flows Vitest cannot cover:
+
+```bash
+npx playwright install chromium   # once per machine
+npm run test:e2e:local            # built SPA on :4173
+npm run test:e2e:deployed         # public APIs on E2E_BASE_URL (default https://linegra.app)
+npm run test:e2e                  # both projects
+```
+
+Optional secrets for authenticated flows (GitHub Actions repository secrets):
+
+| Variable | Purpose |
+|----------|---------|
+| `E2E_TEST_EMAIL` | Supabase test account email |
+| `E2E_TEST_PASSWORD` | Supabase test account password |
+| `E2E_PROFILE_PATH` | Public person URL path, e.g. `/tree/{slug}/person/{slug}` |
+| `E2E_BASE_URL` | Override deployed target (default `https://linegra.app`) |
+
+CI runs `e2e-smoke` after the unit `build` job (local + deployed read-only checks).
+
 ## Require CI on `main` (roadmap W2) — **active**
 
 Ruleset **Require CI on main** is enforced on the default branch (`build` must be green).
