@@ -783,10 +783,9 @@ test tree: anonymous public-tree browse, auth sign-in, pedigree focus + person p
 DNA, layout persistence, crawl stats, AI usage — one file); [../App.tsx](../App.tsx) is 1,923 and
 [../components/PersonProfile.tsx](../components/PersonProfile.tsx) 1,561. This is the main drag on
 navigation, review, and test isolation.
-- **Y1.** Split `services/archive.ts` by domain (`services/trees.ts`, `persons.ts`,
-  `relationships.ts`, `dna.ts`, `traffic.ts`…) behind an unchanged barrel export so call sites
-  don't churn. Pure row→model mappers (`mapDbRelationship`, person/place mappers) move to `lib/`
-  where roadmap **C** already wants them unit-tested.
+- **Y1 — DONE 2026-07-05.** Split `services/archive.ts` into `services/archive/*` (persons,
+  relationships, dna, layout, familyLinks, gedcom, trees, collaborators, aiUsage, publicResolve,
+  shared) behind a 12-line barrel; mappers in `lib/archiveDbMappers.ts` + tests.
 - **Y2.** Extract App.tsx route/state clusters (public-route resolution, tree-selection, profile
   modal wiring) into hooks. No behavior change; measure by file line counts + unchanged tests.
 - Do opportunistically alongside feature work, not as a big-bang rewrite.

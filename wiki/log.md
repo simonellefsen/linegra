@@ -15,6 +15,14 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — Y1 archive.ts decomposition (complete)
+
+**Y:** `services/archive.ts` is now a 12-line barrel re-exporting `services/archive/*`
+(persons, relationships, dna, layout, familyLinks, gedcom, trees, collaborators, aiUsage,
+publicResolve, shared). Row→model mappers live in `lib/archiveDbMappers.ts` (5 tests).
+
+---
+
 ## 2026-07-05 — Y1 archive.ts decomposition (slice 1)
 
 **Y:** Extracted row→model mappers to `lib/archiveDbMappers.ts` (5 unit tests). Split tree CRUD,
