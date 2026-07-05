@@ -1063,16 +1063,17 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
     setEvents((prev) => prev.filter((event) => event.id !== id));
   };
 
-  const handleAddDNATest = () => {
+  const handleAddDNATest = (options?: { type?: DNATest['type'] }): string => {
     const newTest: DNATest = {
       id: generateUuid(),
-      type: 'Autosomal',
+      type: options?.type ?? 'Autosomal',
       vendor: 'AncestryDNA',
       isPrivate: false,
       testDate: new Date().getFullYear().toString()
     };
-    setDnaTests([...dnaTests, newTest]);
+    setDnaTests((prev) => [...prev, newTest]);
     setActiveSection('dna');
+    return newTest.id;
   };
 
   const handleRequestAddParent = useCallback(

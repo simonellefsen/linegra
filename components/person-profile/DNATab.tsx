@@ -24,7 +24,7 @@ interface DNATabProps {
   personNameCandidates: string[];
   dnaTests: DNATest[];
   canAccessDNA: boolean;
-  onAddTest: () => void;
+  onAddTest: (options?: { type?: DNATest['type'] }) => string;
   onUpdateTest: (id: string, updates: Partial<DNATest>) => void;
   onRemoveTest: (id: string) => void;
 }
@@ -147,6 +147,11 @@ const DNATabInner: React.FC<DNATabProps> = ({
     setImportTargetId(testId);
     setImportMode(mode);
     fileInputRef.current?.click();
+  };
+
+  const handleAddSharedMatch = () => {
+    const newTestId = onAddTest({ type: 'Shared Autosomal' });
+    handleOpenImport(newTestId, 'shared_segments');
   };
 
   const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,7 +286,7 @@ const DNATabInner: React.FC<DNATabProps> = ({
       />
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">Genetic Archive</p>
-        <button onClick={onAddTest} className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5">
+        <button onClick={() => onAddTest()} className="text-[9px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5">
           <Dna className="w-4 h-4" /> Log Result
         </button>
       </div>
@@ -419,7 +424,7 @@ const DNATabInner: React.FC<DNATabProps> = ({
                     className="px-4 py-2 rounded-2xl border border-white/20 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 hover:bg-white/10"
                   >
                     <Upload className="w-4 h-4" />
-                    Import Shared DNA CSV
+                    {test.sharedSegmentSummary ? 'Replace this match CSV' : 'Import Shared DNA CSV'}
                   </button>
                   {test.sharedSegmentSummary && (
                     <div className="p-4 bg-white/5 border border-white/10 rounded-3xl text-xs text-white/80 space-y-1">
@@ -452,6 +457,16 @@ const DNATabInner: React.FC<DNATabProps> = ({
               </div>
             </div>
           ))}
+          {canAccessDNA && (
+            <button
+              type="button"
+              onClick={handleAddSharedMatch}
+              className="w-full px-6 py-4 rounded-[32px] border-2 border-dashed border-slate-300 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center justify-center gap-2 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-colors"
+            >
+              <Upload className="w-4 h-4" />
+              Add shared match
+            </button>
+          )}
           {dnaTests.length === 0 && <p className="text-center py-20 text-xs text-slate-400 italic">No genetic records logged in this archive.</p>}
         </div>
       )}
