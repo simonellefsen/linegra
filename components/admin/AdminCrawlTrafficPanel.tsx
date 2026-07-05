@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { labelCountryCode, labelCrawlerAgent } from '../../lib/crawlTrafficStats';
+import { formatGeoLocation } from '../../lib/requestGeo';
 import { fetchAdminCrawlTrafficStats, type CrawlTrafficStats } from '../../services/crawlTraffic';
 
 interface AdminCrawlTrafficPanelProps {
@@ -147,9 +148,13 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabas
                   <p className="text-3xl font-serif font-bold text-slate-900 mt-1">{stats.bot.totals.hits}</p>
                 </div>
                 <div className="rounded-2xl border border-white bg-white px-4 py-4">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">LLM agents</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">LLM agent hits</p>
                   <p className="text-3xl font-serif font-bold text-violet-700 mt-1">{stats.bot.totals.llmHits}</p>
-                  <p className="text-xs text-slate-500 mt-1">GPTBot, ClaudeBot, Perplexity</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {stats.bot.totals.llmHits > 0
+                      ? 'GPTBot, ClaudeBot, PerplexityBot'
+                      : 'Watching for GPTBot, ClaudeBot, PerplexityBot'}
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-white bg-white px-4 py-4">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Agent types</p>
@@ -427,7 +432,7 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({ supabas
                               {labelCountryCode(row.countryCode)}
                             </td>
                             <td className="px-4 py-2 text-slate-600">
-                              {[row.city, row.region].filter(Boolean).join(', ') || '—'}
+                              {formatGeoLocation(row.countryCode, row.city, row.region) || '—'}
                             </td>
                             <td className="px-4 py-2 text-slate-600">{row.route}</td>
                             <td className="px-4 py-2 font-mono text-xs text-slate-500 max-w-[12rem] truncate">

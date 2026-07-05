@@ -17,6 +17,28 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       Admin **AI Usage** auto-refreshes after test + manual Refresh; see `docs/AI_SETUP.md`
       for the full verification checklist (one in-app generation still worth a manual spot-check).
 
+## Traffic panel (screenshot review 2026-07-05 — roadmap U18)
+
+- [x] **U18a — BUG: URL-encoded city names** ("Los%20Angeles, CA") — Vercel URI-encodes
+      `x-vercel-ip-city`; decode in `lib/requestGeo.ts`.
+- [x] **U18b — Raw ISO region codes** ("Copenhagen, 84") — map ISO-3166-2 to names or drop
+      numeric-only regions.
+- [x] **U18c — Misleading copy:** "LLM agents 0" above "GPTBot, ClaudeBot, Perplexity" reads as
+      if they visited; re-copy as "watching for …" or hide when 0.
+- [x] **U18d — Count consistency:** "Countries 2" vs three listed buckets (incl. Unknown).
+- [ ] **U18e — INVESTIGATE: duplicate events** (identical-timestamp visitor rows ×2) — check
+      middleware re-invocation + client double-fire; dedupe at ingestion.
+- [ ] **U18f — Resolve resource UUIDs** to person/tree names with links (admin-only).
+- [ ] **U18g — Self-traffic exclusion** (tag signed-in admin hits; default-on filter).
+- [ ] **U18h — Chart scaling:** fixed axis over the full window incl. zero days; bot + visitor
+      series overlaid.
+- [ ] **U18i — Format breakdown per agent** (html/md/json/xml) — measures U7/U8 adoption.
+- [ ] **U18j — Crawl coverage:** % of sitemap URLs actually fetched per bot/tree + never-crawled
+      list.
+- [ ] **U18k — First-seen callouts + week-over-week deltas** on stat cards.
+- [ ] **U18l — Referrer buckets for human visits** (google / AI assistants / direct — header
+      only, no IP).
+
 ## DNA analysis (roadmap K9 — new feature)
 
 - [x] **K9 — Candidate-branch hypothesis for unplaced matches.** Join cM→generation-band

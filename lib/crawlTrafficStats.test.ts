@@ -47,6 +47,24 @@ describe('crawlTrafficStats', () => {
     expect(stats.visitor.byCountry[0]?.countryCode).toBe('NO');
   });
 
+  it('aligns unique country count with by-country buckets including Unknown', () => {
+    const stats = mapCrawlTrafficStats({
+      days: 7,
+      visitor: {
+        totals: { hits: 5, unique_countries: 2, unique_routes: 1 },
+        by_country: [
+          { country_code: 'NO', hits: 2 },
+          { country_code: 'US', hits: 2 },
+          { country_code: '??', hits: 1 },
+        ],
+        by_route: [],
+        by_day: [],
+        recent: [],
+      },
+    });
+    expect(stats.visitor.totals.uniqueCountries).toBe(3);
+  });
+
   it('labels known crawler buckets', () => {
     expect(labelCrawlerAgent('gptbot')).toContain('GPTBot');
     expect(labelCrawlerAgent('claudebot')).toContain('ClaudeBot');

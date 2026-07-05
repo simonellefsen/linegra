@@ -15,6 +15,23 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — U18a–d traffic panel display fixes
+
+**U18:** Decode URL-encoded Vercel city names; map DK numeric subdivisions (or drop unmapped);
+"Watching for …" LLM copy when count is 0; align country stat card with by-country buckets
+(incl. Unknown). `lib/requestGeo.ts`, `lib/crawlTrafficStats.ts`,
+`AdminCrawlTrafficPanel.tsx`.
+
+---
+
+## 2026-07-05 — Multiple shared autosomal DNA imports (PR #18)
+
+**DNA:** **Add shared match** on the profile DNA tab creates a new Shared Autosomal test and
+opens the CSV picker; per-card import labeled **Replace this match CSV** when data exists.
+`DNATab.tsx`, `PersonProfile.tsx`.
+
+---
+
 ## 2026-07-05 — Y2 App.tsx hooks (route, tree bootstrap, profile)
 
 **Y:** `useAppAuth`, `useAppTreeBootstrap`, `useAppPublicRoutes`, `usePersonProfileSelection` —

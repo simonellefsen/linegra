@@ -171,14 +171,19 @@ const mapVisitorSection = (section: unknown): VisitorTrafficStats => {
     string,
     unknown
   >;
+  const byCountry = asRows(data.by_country, mapVisitorCountry);
+  const rpcUniqueCountries = Number(totals.unique_countries ?? 0);
+  // RPC excludes the Unknown (??) bucket from distinct count; align with the visible list.
+  const uniqueCountries =
+    byCountry.length > 0 ? byCountry.length : rpcUniqueCountries;
 
   return {
     totals: {
       hits: Number(totals.hits ?? 0),
-      uniqueCountries: Number(totals.unique_countries ?? 0),
+      uniqueCountries,
       uniqueRoutes: Number(totals.unique_routes ?? 0),
     },
-    byCountry: asRows(data.by_country, mapVisitorCountry),
+    byCountry,
     byRoute: asRows(data.by_route, mapRoute),
     byDay: asRows(data.by_day, mapDay),
     recent: asRows(data.recent, mapVisitorRecent),

@@ -601,13 +601,13 @@ and the metrics that make it *actionable* rather than a hit counter.
 
 *Quick fixes (display correctness):*
 - **U18a — City names render URL-encoded** ("Los%20Angeles, CA"): Vercel URI-encodes
-  `x-vercel-ip-city`; `decodeURIComponent` in [../lib/requestGeo.ts](../lib/requestGeo.ts).
+  `x-vercel-ip-city`; `decodeURIComponent` in [../lib/requestGeo.ts](../lib/requestGeo.ts). **DONE 2026-07-05.**
 - **U18b — Raw ISO region codes** ("Copenhagen, 84"): map ISO-3166-2 codes to names (DK-84 →
-  Capital Region) or omit numeric-only regions.
+  Capital Region) or omit numeric-only regions. **DONE 2026-07-05.**
 - **U18c — "LLM agents 0 / GPTBot, ClaudeBot, Perplexity"** reads as if those three visited;
-  re-copy as "watching for: …" or hide the example list when the count is 0.
+  re-copy as "watching for: …" or hide the example list when the count is 0. **DONE 2026-07-05.**
 - **U18d — Count consistency:** "Countries 2" while the list shows three buckets (incl. Unknown)
-  — either count Unknown or visually separate it.
+  — either count Unknown or visually separate it. **DONE 2026-07-05** (stat card matches list length).
 - **U18e — INVESTIGATE: duplicate events.** Recent-visitors shows identical-timestamp pairs
   (12:27:56 ×2, 09:08:37 ×2, 06:51:15 ×2). Telemetry records from 4 call sites (middleware + 3
   edge routes) — check middleware re-invocation on rewrites/prefetch and client double-fire;
