@@ -15,6 +15,15 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — K11 slice 1: shared-match owner selection + FK trust
+
+**K11:** Shared-segment CSV import now requires confirming the kit owner (`SharedSegmentImportModal`);
+load-time trusts `dna_tests.person_id` before fuzzy CSV names; shared match list keeps unlinked
+counterparts visible (`isCounterpartLinked`); admin K3 adds re-link owner repair
+(`relinkSharedAutosomalTestOwner`). `lib/dnaSharedImportOwner.ts`.
+
+---
+
 ## 2026-07-05 — U18j–l crawl coverage, WoW deltas, referrer buckets
 
 **U18 (complete):** Traffic panel now joins sitemap person URLs vs bot fetches (`admin_get_crawl_coverage_stats`),

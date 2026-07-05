@@ -12,6 +12,10 @@ import { parseMatchDisplayName } from '../../lib/dnaMatchPlacement';
 import { isK3DismissedForFocus, withK3DismissedForFocus } from '../../lib/dnaK3Dismiss';
 import { normalizeNameMatchScore, scoreNameMatch } from '../../lib/dnaNameMatch';
 import {
+  inferCounterpartDisplayName,
+  sharedTestAppliesToFocusPerson,
+} from '../../lib/dnaSharedImportOwner';
+import {
   AutosomalIndexStats,
   DNAAutosomalCandidate,
   DnaLineageResolution,
@@ -290,8 +294,12 @@ const focusIsSharedMatchParty = (
   summary: SharedSegmentSummaryLike,
   nameRows: NameLookupRow[],
   sharedPersonId: string | null,
-  sharedMatchPersonId: string | null
+  sharedMatchPersonId: string | null,
+  ownerPersonId: string | null = null
 ) => {
+  if (sharedTestAppliesToFocusPerson(focusPersonId, ownerPersonId, sharedPersonId, sharedMatchPersonId)) {
+    return true;
+  }
   const personNameId = resolvePersonIdByName(summary.personName, nameRows);
   const matchNameId = resolvePersonIdByName(summary.matchName, nameRows);
   if (personNameId && matchNameId) {
@@ -780,7 +788,8 @@ export const listSharedMatchesForAutosomalPerson = async (
         summary,
         nameRows,
         sharedPersonId,
-        sharedMatchPersonId
+        sharedMatchPersonId,
+        ownerPersonId
       )
     ) {
       return;
@@ -821,15 +830,19 @@ export const listSharedMatchesForAutosomalPerson = async (
         focusFullName
       );
     }
-    if (!counterpartPersonId) return;
-    if (!counterpartPersonId || counterpartPersonId === focusPersonId) return;
-    const pairKey = [focusPersonId, counterpartPersonId].sort().join(':');
-    if (existingPairs.has(pairKey)) return;
+    if (counterpartPersonId === focusPersonId) return;
+    const pairKey = counterpartPersonId
+      ? [focusPersonId, counterpartPersonId].sort().join(':')
+      : `test:${testId}`;
+    if (counterpartPersonId && existingPairs.has(pairKey)) return;
 
-    const path = findRelationshipPath(focusPersonId, counterpartPersonId, typedRelationships);
+    const path = counterpartPersonId
+      ? findRelationshipPath(focusPersonId, counterpartPersonId, typedRelationships)
+      : null;
     const pathPersonIds = path?.pathPersonIds || [];
     const pathRelationshipIds = path?.pathRelationshipIds || [];
-    const pathFound = pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
+    const pathFound =
+      !!counterpartPersonId && pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
     const predictionLabel = relationshipPredictionLabel(summary.totalCentimorgans, summary.segmentCount);
     const pathFitsPrediction = computePathFitsPrediction(
       pathFound,
@@ -839,13 +852,15 @@ export const listSharedMatchesForAutosomalPerson = async (
       summary.totalCentimorgans
     );
 
-    const counterpartNameFromPeople = personById.has(counterpartPersonId)
-      ? toDisplayName(personById.get(counterpartPersonId))
-      : null;
+    const counterpartNameFromPeople =
+      counterpartPersonId && personById.has(counterpartPersonId)
+        ? toDisplayName(personById.get(counterpartPersonId))
+        : null;
     const counterpartNameFromRpc = rpcCounterpartRow ? toDisplayName(rpcCounterpartRow) : null;
     const counterpartPersonName =
       counterpartNameFromPeople ||
       counterpartNameFromRpc ||
+      inferCounterpartDisplayName(focusPersonId, ownerPersonId, summary, focusFullName) ||
       summary.matchName ||
       'Unknown';
 
@@ -857,6 +872,7 @@ export const listSharedMatchesForAutosomalPerson = async (
       ownerPersonName: toDisplayName(ownerPersonRow),
       counterpartPersonId,
       counterpartPersonName,
+      isCounterpartLinked: !!counterpartPersonId,
       sharedCM: summary.totalCentimorgans,
       segments: summary.segmentCount,
       longestSegment: summary.largestSegmentCentimorgans,
@@ -1026,7 +1042,8 @@ export const listUnlinkedSharedMatchesForAutosomalPerson = async (
         summary,
         nameRows,
         sharedPersonId,
-        sharedMatchPersonId
+        sharedMatchPersonId,
+        ownerPersonId
       )
     ) {
       return;
@@ -1068,6 +1085,7 @@ export const listUnlinkedSharedMatchesForAutosomalPerson = async (
     }
 
     if (linkedDnaTestIds.has(testId)) return;
+    if (ownerPersonId === focusPersonId) return;
     if (counterpartPersonId && linkedCounterpartIds.has(counterpartPersonId)) return;
     if (isK3DismissedForFocus(metadata, focusPersonId)) return;
 
@@ -1874,4 +1892,40 @@ export const resolveFamilyKitLineage = async (
     pathLabel,
     predictionLabel,
   };
+};
+
+/** Re-link an imported shared-segment test to the confirmed kit owner (K11 backfill). */
+export const relinkSharedAutosomalTestOwner = async (
+  dnaTestId: string,
+  ownerPersonId: string
+): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  if (!UUID_REGEX.test(dnaTestId) || !UUID_REGEX.test(ownerPersonId)) {
+    throw new Error('Invalid DNA test or owner id.');
+  }
+  const { data: testRow, error: readError } = await supabase
+    .from('dna_tests')
+    .select('id, test_type, metadata, shared_person_id')
+    .eq('id', dnaTestId)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!testRow || testRow.test_type !== 'Shared Autosomal') {
+    throw new Error('Shared autosomal test not found.');
+  }
+  const metadata = asRecord(testRow.metadata);
+  const { error: updateError } = await supabase
+    .from('dna_tests')
+    .update({
+      person_id: ownerPersonId,
+      shared_person_id: ownerPersonId,
+      metadata: {
+        ...metadata,
+        sharedPersonId: ownerPersonId,
+        shared_person_id: ownerPersonId,
+      },
+    })
+    .eq('id', dnaTestId);
+  if (updateError) throw new Error(updateError.message);
 };

@@ -16,17 +16,23 @@ import {
   MAX_INLINE_ENCRYPTED_RAW_BYTES,
 } from '../../lib/dnaRawEncryption';
 import DnaRawConsentModal from '../dna/DnaRawConsentModal';
+import SharedSegmentImportModal from '../dna/SharedSegmentImportModal';
 import HaplogroupMigrationCard from '../dna/HaplogroupMigrationCard';
 import { purgeDnaRawData } from '../../services/archive';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase';
+import type { DNASharedSegmentRowPreview, DNASharedSegmentSummary } from '../../types';
+import type { SharedImportNameRow } from '../../lib/dnaSharedImportOwner';
 
 interface DNATabProps {
   personId: string;
+  treeId?: string | null;
   personNameCandidates: string[];
   dnaTests: DNATest[];
   canAccessDNA: boolean;
   onAddTest: (options?: { type?: DNATest['type'] }) => string;
   onUpdateTest: (id: string, updates: Partial<DNATest>) => void;
   onRemoveTest: (id: string) => void;
+  onAddMarriedNameAlias?: (fullName: string) => void;
 }
 
 // Resolved-lineage status shown on the profile DNA tab. Mirrors the admin DNA panel's
@@ -70,26 +76,37 @@ const SharedLineageStatusBadge: React.FC<{
   );
 };
 
-const DNATab: React.FC<DNATabProps> = ({ personId, personNameCandidates, dnaTests, canAccessDNA, onAddTest, onUpdateTest, onRemoveTest }) => (
+const DNATab: React.FC<DNATabProps> = ({
+  personId,
+  treeId,
+  dnaTests,
+  canAccessDNA,
+  onAddTest,
+  onUpdateTest,
+  onRemoveTest,
+  onAddMarriedNameAlias,
+}) => (
   <DNATabInner
     personId={personId}
-    personNameCandidates={personNameCandidates}
+    treeId={treeId}
     dnaTests={dnaTests}
     canAccessDNA={canAccessDNA}
     onAddTest={onAddTest}
     onUpdateTest={onUpdateTest}
     onRemoveTest={onRemoveTest}
+    onAddMarriedNameAlias={onAddMarriedNameAlias}
   />
 );
 
-const DNATabInner: React.FC<DNATabProps> = ({
+const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
   personId,
-  personNameCandidates,
+  treeId,
   dnaTests,
   canAccessDNA,
   onAddTest,
   onUpdateTest,
-  onRemoveTest
+  onRemoveTest,
+  onAddMarriedNameAlias,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importTargetId, setImportTargetId] = useState<string | null>(null);
@@ -102,28 +119,39 @@ const DNATabInner: React.FC<DNATabProps> = ({
   } | null>(null);
   const [consentOpen, setConsentOpen] = useState(false);
   const [purgingTestId, setPurgingTestId] = useState<string | null>(null);
+  const [treePeople, setTreePeople] = useState<SharedImportNameRow[]>([]);
+  const [loadingTreePeople, setLoadingTreePeople] = useState(false);
+  const [pendingSharedImport, setPendingSharedImport] = useState<{
+    testId: string;
+    summary: DNASharedSegmentSummary;
+    preview: DNASharedSegmentRowPreview[];
+  } | null>(null);
 
-  const normalizeName = (value: string) =>
-    value
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-zA-Z0-9\s-]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-
-  const nameLooksLikeProfile = (candidate: string) => {
-    const normalizedCandidate = normalizeName(candidate);
-    if (!normalizedCandidate) return false;
-    return personNameCandidates.some((name) => {
-      const normalizedProfileName = normalizeName(name);
-      return !!normalizedProfileName && (
-        normalizedCandidate === normalizedProfileName ||
-        normalizedCandidate.includes(normalizedProfileName) ||
-        normalizedProfileName.includes(normalizedCandidate)
-      );
-    });
-  };
+  useEffect(() => {
+    if (!treeId || !isSupabaseConfigured()) {
+      setTreePeople([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingTreePeople(true);
+    void (async () => {
+      const { data, error } = await supabase
+        .from('persons')
+        .select('id, first_name, last_name, maiden_name')
+        .eq('tree_id', treeId)
+        .order('last_name');
+      if (cancelled) return;
+      if (error) {
+        setTreePeople([]);
+      } else {
+        setTreePeople((data || []) as SharedImportNameRow[]);
+      }
+      setLoadingTreePeople(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [treeId]);
 
   useEffect(() => {
     const handleResolved = (event: Event) => {
@@ -169,20 +197,7 @@ const DNATabInner: React.FC<DNATabProps> = ({
         return;
       }
       const { summary, preview } = parseSharedSegmentsCsv(text, file.name);
-      const summaryPersonMatchesProfile = nameLooksLikeProfile(summary.personName);
-      const summaryMatchMatchesProfile = nameLooksLikeProfile(summary.matchName);
-      const sharedPersonId =
-        summaryPersonMatchesProfile && !summaryMatchMatchesProfile ? personId : undefined;
-      const sharedMatchPersonId =
-        summaryMatchMatchesProfile && !summaryPersonMatchesProfile ? personId : undefined;
-      onUpdateTest(targetId, {
-        type: 'Shared Autosomal',
-        sharedPersonId,
-        sharedMatchName: summary.matchName,
-        sharedMatchPersonId,
-        sharedSegmentSummary: summary,
-        sharedSegmentsPreview: preview
-      });
+      setPendingSharedImport({ testId: targetId, summary, preview });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not parse DNA CSV file.';
       setImportError(message);
@@ -263,6 +278,30 @@ const DNATabInner: React.FC<DNATabProps> = ({
 
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+  const finalizeSharedImport = (payload: {
+    ownerPersonId: string;
+    counterpartPersonId?: string | null;
+    saveMarriedNameAlias?: boolean;
+    marriedNameAlias?: string;
+  }) => {
+    if (!pendingSharedImport) return;
+    const { testId, summary, preview } = pendingSharedImport;
+    onUpdateTest(testId, {
+      type: 'Shared Autosomal',
+      sharedPersonId: payload.ownerPersonId,
+      sharedMatchName: summary.matchName,
+      sharedMatchPersonId: payload.counterpartPersonId || undefined,
+      sharedSegmentSummary: summary,
+      sharedSegmentsPreview: preview,
+    });
+    if (payload.saveMarriedNameAlias && payload.marriedNameAlias && onAddMarriedNameAlias) {
+      onAddMarriedNameAlias(payload.marriedNameAlias);
+    }
+    setPendingSharedImport(null);
+    setImportTargetId(null);
+    setImportMode(null);
+  };
+
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <DnaRawConsentModal
@@ -277,6 +316,23 @@ const DNATabInner: React.FC<DNATabProps> = ({
         }}
         onConfirm={finalizeAutosomalImport}
       />
+      {pendingSharedImport && (
+        <SharedSegmentImportModal
+          open
+          summary={pendingSharedImport.summary}
+          preview={pendingSharedImport.preview}
+          treePeople={treePeople}
+          defaultOwnerPersonId={personId}
+          lockOwnerPersonId={personId}
+          loadingPeople={loadingTreePeople}
+          onClose={() => {
+            setPendingSharedImport(null);
+            setImportTargetId(null);
+            setImportMode(null);
+          }}
+          onConfirm={finalizeSharedImport}
+        />
+      )}
       <input
         ref={fileInputRef}
         type="file"

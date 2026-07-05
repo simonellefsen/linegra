@@ -154,8 +154,9 @@ export interface DNASharedMatchRecord {
   dnaTestId?: string;
   ownerPersonId: string;
   ownerPersonName: string;
-  counterpartPersonId: string;
+  counterpartPersonId: string | null;
   counterpartPersonName: string;
+  isCounterpartLinked?: boolean;
   sharedCM: number | null;
   segments: number | null;
   longestSegment: number | null;

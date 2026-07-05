@@ -47,13 +47,10 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       via `relationshipCalculator.computeRelationship` (grandparent / 1C1R + MRCA + expected cM
       range); flag K6 raw-kit comparison when both have SNP data. **High priority.**
 - [ ] **K11 — BUG: shared matches drop unless counterpart is a tree person + married/maiden name
-      mismatch.** Only Ulla shows for Helle though ~7 CSVs imported. (a) `loadDnaSharedMatches`
-      drops any match whose counterpart doesn't resolve to a tree person (`if (!counterpartPersonId)
-      return;`) → unify into one list with linked/unlinked status. (b) CSVs name her "Helle Due"
-      (married) vs tree "Helle Andersen" (birth); name-based association is brittle — trust
-      `dna_tests.person_id` FK + counterpart UUID first, store DNA-kit name as married-name alias,
-      confirm owner/counterpart at import. Verify whether Ruben/Eva/Laurie are in K3 or absent
-      entirely. **High priority — imported data disappearing from view.**
+      mismatch.** Only Ulla shows for Helle though ~7 CSVs imported. **In progress (slice 1):**
+      owner confirmation at shared CSV import, FK-trust at load, unified list shows unlinked
+      counterparts, re-link owner repair in admin K3. Remaining: batch import owner-once, married
+      alias in name matching at load.
 - [x] **K9 — Candidate-branch hypothesis for unplaced matches.** Join cM→generation-band
       prediction + cluster exclusion + per-line DNA coverage gaps into a ranked "this match most
       likely connects via ancestor couple X" suggestion with research to-dos. Pedigree UI: amber
