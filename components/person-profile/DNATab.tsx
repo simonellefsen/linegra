@@ -18,9 +18,9 @@ import {
 import DnaRawConsentModal from '../dna/DnaRawConsentModal';
 import SharedSegmentImportModal from '../dna/SharedSegmentImportModal';
 import HaplogroupMigrationCard from '../dna/HaplogroupMigrationCard';
-import { purgeDnaRawData } from '../../services/archive';
+import { purgeDnaRawData, updateSharedAutosomalKitOwner } from '../../services/archive';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase';
-import { mapDbRowToNameLookup, rankPersonNameMatches } from '../../lib/dnaPersonNameVariants';
+import { mapDbRowToNameLookup } from '../../lib/dnaPersonNameVariants';
 import type { DNASharedSegmentRowPreview, DNASharedSegmentSummary } from '../../types';
 import type { SharedImportNameRow } from '../../lib/dnaSharedImportOwner';
 import type { SharedSegmentImportConfirmPayload } from '../dna/SharedSegmentImportModal';
@@ -80,6 +80,92 @@ const SharedLineageStatusBadge: React.FC<{
   );
 };
 
+const nameForTreePerson = (people: SharedImportNameRow[], id: string) => {
+  const row = people.find((entry) => entry.id === id);
+  if (!row) return null;
+  return [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || null;
+};
+
+const SharedKitOwnerField: React.FC<{
+  test: DNATest;
+  personId: string;
+  treePeople: SharedImportNameRow[];
+  kitOwnerPersonId?: string;
+  kitOwnerDisplayName: string;
+  suggestedKitOwnerPersonId: string | null;
+  loadingPeople: boolean;
+  savingKitOwner: boolean;
+  onOpenPersonId?: (personId: string) => void;
+  onKitOwnerChange: (test: DNATest, ownerPersonId: string) => void;
+}> = ({
+  test,
+  personId,
+  treePeople,
+  kitOwnerPersonId,
+  kitOwnerDisplayName,
+  suggestedKitOwnerPersonId,
+  loadingPeople,
+  savingKitOwner,
+  onOpenPersonId,
+  onKitOwnerChange,
+}) => {
+  const suggestedName = suggestedKitOwnerPersonId
+    ? nameForTreePerson(treePeople, suggestedKitOwnerPersonId)
+    : null;
+  const showSuggestion =
+    suggestedKitOwnerPersonId &&
+    suggestedKitOwnerPersonId !== kitOwnerPersonId &&
+    suggestedName;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <span>Kit owner:</span>
+        <select
+          value={kitOwnerPersonId || ''}
+          disabled={loadingPeople || savingKitOwner}
+          onChange={(e) => {
+            const nextOwnerId = e.target.value;
+            if (nextOwnerId) onKitOwnerChange(test, nextOwnerId);
+          }}
+          className="max-w-full rounded-lg border border-white/20 bg-slate-900/80 px-2 py-1 text-xs font-semibold text-white outline-none focus:border-blue-300"
+        >
+          <option value="" className="text-slate-900">
+            {kitOwnerDisplayName !== 'Unknown' ? kitOwnerDisplayName : 'Select kit owner…'}
+          </option>
+          {treePeople
+            .filter((row) => row.id !== personId)
+            .map((row) => (
+              <option key={row.id} value={row.id} className="text-slate-900">
+                {nameForTreePerson(treePeople, row.id) || row.id}
+              </option>
+            ))}
+        </select>
+        {kitOwnerPersonId && kitOwnerPersonId !== personId && onOpenPersonId && (
+          <button
+            type="button"
+            onClick={() => onOpenPersonId(kitOwnerPersonId)}
+            className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-200 underline decoration-dotted underline-offset-2 hover:text-blue-100"
+          >
+            Open profile
+          </button>
+        )}
+        {savingKitOwner && <span className="text-white/50">Saving…</span>}
+      </div>
+      {showSuggestion && (
+        <button
+          type="button"
+          disabled={savingKitOwner}
+          onClick={() => onKitOwnerChange(test, suggestedKitOwnerPersonId)}
+          className="text-[10px] text-amber-200 underline decoration-dotted underline-offset-2 hover:text-amber-100"
+        >
+          Use suggested kit owner: {suggestedName}
+        </button>
+      )}
+    </div>
+  );
+};
+
 const SharedAutosomalPartyLine: React.FC<{
   label: string;
   name: string;
@@ -127,18 +213,6 @@ const DNATab: React.FC<DNATabProps> = ({
   />
 );
 
-const nameForTreePerson = (people: SharedImportNameRow[], id: string) => {
-  const row = people.find((entry) => entry.id === id);
-  if (!row) return null;
-  return [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || null;
-};
-
-const resolveNameToTreePersonId = (
-  people: SharedImportNameRow[],
-  name: string,
-  excludePersonId?: string
-) => rankPersonNameMatches(name, people, excludePersonId)[0]?.id ?? null;
-
 const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
   personId,
   treeId,
@@ -175,6 +249,7 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
       preview: DNASharedSegmentRowPreview[];
     }>
   | null>(null);
+  const [savingKitOwnerTestId, setSavingKitOwnerTestId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!treeId || !isSupabaseConfigured()) {
@@ -389,6 +464,21 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
     setImportMode(null);
   };
 
+  const handleKitOwnerChange = async (test: DNATest, ownerPersonId: string) => {
+    if (!ownerPersonId || ownerPersonId === personId) return;
+    onUpdateTest(test.id, { sharedPersonId: ownerPersonId });
+    if (!UUID_REGEX.test(test.id)) return;
+    setSavingKitOwnerTestId(test.id);
+    setImportError(null);
+    try {
+      await updateSharedAutosomalKitOwner(test.id, ownerPersonId);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Could not update kit owner.');
+    } finally {
+      setSavingKitOwnerTestId(null);
+    }
+  };
+
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <DnaRawConsentModal
@@ -600,20 +690,20 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
                         {test.sharedSegmentSummary.fileName}
                       </p>
                       {(() => {
-                        const parties = resolveSharedAutosomalParties(
-                          personId,
-                          test,
-                          (id) => nameForTreePerson(treePeople, id),
-                          (name, excludeId) => resolveNameToTreePersonId(treePeople, name, excludeId)
-                        );
+                        const parties = resolveSharedAutosomalParties(personId, test, treePeople);
                         return (
                           <>
-                            <SharedAutosomalPartyLine
-                              label="Kit owner"
-                              name={parties.kitOwner.displayName}
-                              personId={parties.kitOwner.personId}
-                              currentPersonId={personId}
+                            <SharedKitOwnerField
+                              test={test}
+                              personId={personId}
+                              treePeople={treePeople}
+                              kitOwnerPersonId={parties.kitOwner.personId}
+                              kitOwnerDisplayName={parties.kitOwner.displayName}
+                              suggestedKitOwnerPersonId={parties.suggestedKitOwnerPersonId}
+                              loadingPeople={loadingTreePeople}
+                              savingKitOwner={savingKitOwnerTestId === test.id}
                               onOpenPersonId={onOpenPersonId}
+                              onKitOwnerChange={handleKitOwnerChange}
                             />
                             <SharedAutosomalPartyLine
                               label="Match"

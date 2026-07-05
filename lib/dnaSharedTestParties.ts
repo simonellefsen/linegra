@@ -1,4 +1,10 @@
 import { scoreNameMatch } from './dnaNameMatch';
+import { applyFileNameComparisonNames } from './dnaRawParser';
+import {
+  suggestKitOwnerPersonId,
+  type SharedImportNameRow,
+  type SharedSegmentSummaryNames,
+} from './dnaSharedImportOwner';
 import type { DNATest } from '../types';
 
 export interface SharedAutosomalParty {
@@ -10,16 +16,23 @@ export interface SharedAutosomalParty {
 export interface SharedAutosomalPartyView {
   kitOwner: SharedAutosomalParty;
   match: SharedAutosomalParty;
+  suggestedKitOwnerPersonId: string | null;
 }
+
+const displayNameForRow = (row: SharedImportNameRow) =>
+  [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
 
 const displayNameForId = (
   personId: string | undefined,
   fallback: string | undefined,
-  nameForPersonId?: (id: string) => string | null
+  treePeople: SharedImportNameRow[]
 ): string => {
-  if (personId && nameForPersonId) {
-    const resolved = nameForPersonId(personId)?.trim();
-    if (resolved) return resolved;
+  if (personId) {
+    const row = treePeople.find((entry) => entry.id === personId);
+    if (row) {
+      const resolved = displayNameForRow(row);
+      if (resolved) return resolved;
+    }
   }
   return fallback?.trim() || 'Unknown';
 };
@@ -27,14 +40,63 @@ const displayNameForId = (
 const viewerMatchesName = (
   viewingPersonId: string,
   rawName: string | undefined,
-  nameForPersonId?: (id: string) => string | null,
-  resolveNameToPersonId?: (name: string, excludePersonId?: string) => string | null
+  treePeople: SharedImportNameRow[]
 ): boolean => {
   if (!rawName?.trim()) return false;
-  const viewerName = nameForPersonId?.(viewingPersonId)?.trim();
-  if (viewerName && scoreNameMatch(viewerName, rawName) >= 60) return true;
-  const resolvedId = resolveNameToPersonId?.(rawName, viewingPersonId);
-  return resolvedId === viewingPersonId;
+  const viewerRow = treePeople.find((entry) => entry.id === viewingPersonId);
+  if (!viewerRow) return false;
+  const viewerNames = [displayNameForRow(viewerRow)];
+  return viewerNames.some((name) => name && scoreNameMatch(name, rawName) >= 60);
+};
+
+export const suggestSharedAutosomalKitOwnerId = (
+  viewingPersonId: string,
+  test: Pick<DNATest, 'sharedMatchPersonId' | 'sharedSegmentSummary'>,
+  treePeople: SharedImportNameRow[]
+): string | null => {
+  const summary = test.sharedSegmentSummary;
+  if (!summary) return null;
+  const excluded = new Set(
+    [viewingPersonId, test.sharedMatchPersonId].filter(
+      (id): id is string => typeof id === 'string' && !!id
+    )
+  );
+  const candidates = treePeople.filter((row) => !excluded.has(row.id));
+  const names: SharedSegmentSummaryNames = {
+    personName: summary.personName,
+    matchName: summary.matchName,
+    fileName: summary.fileName,
+  };
+  return suggestKitOwnerPersonId(names, candidates);
+};
+
+const tokenizeDisplayName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-zA-Z0-9æøåÆØÅ\s-]/g, ' ')
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+const storedOwnerMatchesCsv = (
+  ownerPersonId: string | undefined,
+  csvOwnerName: string | undefined,
+  treePeople: SharedImportNameRow[]
+): boolean => {
+  if (!ownerPersonId || !csvOwnerName?.trim()) return false;
+  const row = treePeople.find((entry) => entry.id === ownerPersonId);
+  if (!row) return false;
+  const display = displayNameForRow(row);
+  if (!display) return false;
+  const score = scoreNameMatch(display, csvOwnerName);
+  if (score >= 1000) return true;
+  const csvTokens = tokenizeDisplayName(csvOwnerName);
+  const displayTokens = tokenizeDisplayName(display);
+  if (!csvTokens.length || !displayTokens.length) return false;
+  const firstNameAligned = csvTokens[0] === displayTokens[0];
+  return firstNameAligned && scoreNameMatch(display, csvOwnerName) >= 60;
 };
 
 /**
@@ -47,53 +109,80 @@ export const resolveSharedAutosomalParties = (
     DNATest,
     'sharedPersonId' | 'sharedMatchPersonId' | 'sharedMatchName' | 'sharedSegmentSummary'
   >,
-  nameForPersonId?: (id: string) => string | null,
-  resolveNameToPersonId?: (name: string, excludePersonId?: string) => string | null
+  treePeople: SharedImportNameRow[]
 ): SharedAutosomalPartyView => {
   const summary = test.sharedSegmentSummary;
-  const personName = summary?.personName;
-  const matchName = test.sharedMatchName || summary?.matchName;
+  const isFtdnaComparison = summary?.importFormat === 'FTDNA_COMPARISON_SEGMENTS';
+  const normalizedNames = summary?.fileName
+    ? applyFileNameComparisonNames(
+        summary.fileName,
+        summary.personName,
+        summary.matchName,
+        isFtdnaComparison
+      )
+    : { personName: summary?.personName, matchName: summary?.matchName };
+  const personName = normalizedNames.personName;
+  const matchName = test.sharedMatchName || normalizedNames.matchName;
+  const suggestedKitOwnerPersonId = suggestSharedAutosomalKitOwnerId(viewingPersonId, test, treePeople);
 
   const viewerIsKitOwner =
-    test.sharedPersonId === viewingPersonId ||
-    viewerMatchesName(viewingPersonId, personName, nameForPersonId, resolveNameToPersonId);
+    test.sharedPersonId === viewingPersonId || viewerMatchesName(viewingPersonId, personName, treePeople);
   const viewerIsMatch =
-    test.sharedMatchPersonId === viewingPersonId ||
-    viewerMatchesName(viewingPersonId, matchName, nameForPersonId, resolveNameToPersonId);
+    test.sharedMatchPersonId === viewingPersonId || viewerMatchesName(viewingPersonId, matchName, treePeople);
 
   let kitOwnerId = test.sharedPersonId;
   let matchPersonId = test.sharedMatchPersonId;
 
+  if (kitOwnerId === viewingPersonId && viewerIsMatch) {
+    kitOwnerId = undefined;
+  }
+  if (
+    kitOwnerId &&
+    viewerIsMatch &&
+    personName &&
+    !storedOwnerMatchesCsv(kitOwnerId, personName, treePeople)
+  ) {
+    kitOwnerId = undefined;
+  }
+
+  if (!kitOwnerId) {
+    kitOwnerId = suggestedKitOwnerPersonId ?? undefined;
+  }
+
   if (!kitOwnerId) {
     if (viewerIsMatch && personName) {
-      kitOwnerId = resolveNameToPersonId?.(personName, viewingPersonId) ?? undefined;
+      kitOwnerId =
+        treePeople.find(
+          (row) =>
+            row.id !== viewingPersonId && scoreNameMatch(displayNameForRow(row), personName) >= 60
+        )?.id ?? undefined;
     } else if (viewerIsKitOwner) {
       kitOwnerId = viewingPersonId;
-    } else if (personName) {
-      kitOwnerId = resolveNameToPersonId?.(personName, viewingPersonId) ?? undefined;
     }
   }
 
   if (!matchPersonId) {
     if (viewerIsKitOwner && matchName) {
-      matchPersonId = resolveNameToPersonId?.(matchName, viewingPersonId) ?? undefined;
+      matchPersonId =
+        treePeople.find(
+          (row) =>
+            row.id !== viewingPersonId && scoreNameMatch(displayNameForRow(row), matchName) >= 60
+        )?.id ?? undefined;
     } else if (viewerIsMatch) {
       matchPersonId = viewingPersonId;
-    } else if (matchName) {
-      matchPersonId = resolveNameToPersonId?.(matchName, viewingPersonId) ?? undefined;
     }
   }
 
   const kitOwner: SharedAutosomalParty = {
     role: 'kit_owner',
     personId: kitOwnerId,
-    displayName: displayNameForId(kitOwnerId, personName, nameForPersonId),
+    displayName: displayNameForId(kitOwnerId, personName, treePeople),
   };
   const match: SharedAutosomalParty = {
     role: 'match',
     personId: matchPersonId,
-    displayName: displayNameForId(matchPersonId, matchName, nameForPersonId),
+    displayName: displayNameForId(matchPersonId, matchName, treePeople),
   };
 
-  return { kitOwner, match };
+  return { kitOwner, match, suggestedKitOwnerPersonId };
 };

@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { deriveMatchConfidence, relationshipPredictionLabel, supportsRelationshipHops } from '../../lib/dnaClassification';
-import { extractComparisonNamesFromFileName } from '../../lib/dnaRawParser';
+import { applyFileNameComparisonNames, extractComparisonNamesFromFileName } from '../../lib/dnaRawParser';
 import {
   DNA_BLOOD_PATH_RELATIONSHIP_TYPES,
   buildChildToParentsMap,
@@ -16,7 +16,7 @@ import {
   mapDbRowToNameLookup,
 } from '../../lib/dnaPersonNameVariants';
 import {
-  inferCounterpartDisplayName,
+  resolveSharedMatchCounterpartLabel,
   sharedTestAppliesToFocusPerson,
 } from '../../lib/dnaSharedImportOwner';
 import {
@@ -211,37 +211,7 @@ const summaryFromDnaTestMetadata = (metadata: Record<string, unknown>): SharedSe
       : undefined;
   const isFtdnaComparison = importFormat === 'FTDNA_COMPARISON_SEGMENTS';
   const resolvedNames = fileName
-    ? (() => {
-        const fromFile = extractComparisonNamesFromFileName(fileName);
-        if (!fromFile) return { personName, matchName };
-        const [firstName, secondName] = fromFile;
-        let nextPersonName = personName;
-        let nextMatchName = matchName;
-        if (!nextPersonName || nextPersonName === 'Unknown') {
-          if (isFtdnaComparison && nextMatchName && nextMatchName !== 'Unknown') {
-            const normalize = (value: string) =>
-              value
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .replace(/[^a-zA-Z0-9\s-]/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-                .toLowerCase();
-            const matchNorm = normalize(nextMatchName);
-            const secondNorm = normalize(secondName);
-            nextPersonName =
-              matchNorm === secondNorm || matchNorm.includes(secondNorm) || secondNorm.includes(matchNorm)
-                ? firstName
-                : secondName;
-          } else {
-            nextPersonName = firstName;
-          }
-        }
-        if (!nextMatchName || nextMatchName === 'Unknown') {
-          nextMatchName = secondName;
-        }
-        return { personName: nextPersonName, matchName: nextMatchName };
-      })()
+    ? applyFileNameComparisonNames(fileName, personName, matchName, isFtdnaComparison)
     : { personName, matchName };
   return {
     source: typeof summaryRaw.source === 'string' ? summaryRaw.source : undefined,
@@ -745,13 +715,6 @@ export const listSharedMatchesForAutosomalPerson = async (
       typeof testRow.counterpart_person_id === 'string' && UUID_REGEX.test(testRow.counterpart_person_id)
         ? testRow.counterpart_person_id
         : null;
-    const rpcCounterpartRow =
-      rpcCounterpartId && (testRow.counterpart_first_name || testRow.counterpart_last_name)
-        ? ({
-            first_name: testRow.counterpart_first_name || '',
-            last_name: testRow.counterpart_last_name || '',
-          } as any)
-        : null;
     let counterpartPersonId: string | null = null;
     const summary = summaryFromDnaTestMetadata(metadata);
     if (!summary) return;
@@ -808,6 +771,15 @@ export const listSharedMatchesForAutosomalPerson = async (
         focusFullName
       );
     }
+    if (
+      ownerPersonId &&
+      ownerPersonId !== focusPersonId &&
+      summary &&
+      (scoreNameMatch(focusFullName, summary.personName) >= 60 ||
+        scoreNameMatch(focusFullName, summary.matchName) >= 60)
+    ) {
+      counterpartPersonId = ownerPersonId;
+    }
     if (counterpartPersonId === focusPersonId) return;
     const pairKey = counterpartPersonId
       ? [focusPersonId, counterpartPersonId].sort().join(':')
@@ -830,17 +802,17 @@ export const listSharedMatchesForAutosomalPerson = async (
       summary.totalCentimorgans
     );
 
-    const counterpartNameFromPeople =
+    const counterpartPersonName = resolveSharedMatchCounterpartLabel(
+      focusFullName,
+      ownerPersonId,
+      ownerPersonRow,
+      counterpartPersonId,
       counterpartPersonId && personById.has(counterpartPersonId)
-        ? toDisplayName(personById.get(counterpartPersonId))
-        : null;
-    const counterpartNameFromRpc = rpcCounterpartRow ? toDisplayName(rpcCounterpartRow) : null;
-    const counterpartPersonName =
-      counterpartNameFromPeople ||
-      counterpartNameFromRpc ||
-      inferCounterpartDisplayName(focusPersonId, ownerPersonId, summary, focusFullName) ||
-      summary.matchName ||
-      'Unknown';
+        ? personById.get(counterpartPersonId)!
+        : null,
+      summary,
+      rpcCounterpartId
+    );
     const nameSuggestion = !counterpartPersonId
       ? findBestNameMatch(counterpartPersonName, nameRows, focusPersonId)
       : null;
@@ -1903,6 +1875,41 @@ export const relinkSharedAutosomalTestOwner = async (
     .from('dna_tests')
     .update({
       person_id: ownerPersonId,
+      shared_person_id: ownerPersonId,
+      metadata: {
+        ...metadata,
+        sharedPersonId: ownerPersonId,
+        shared_person_id: ownerPersonId,
+      },
+    })
+    .eq('id', dnaTestId);
+  if (updateError) throw new Error(updateError.message);
+};
+
+/** Update kit owner on a shared-segment test without moving the test row to another profile. */
+export const updateSharedAutosomalKitOwner = async (
+  dnaTestId: string,
+  ownerPersonId: string
+): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase credentials are missing.');
+  }
+  if (!UUID_REGEX.test(dnaTestId) || !UUID_REGEX.test(ownerPersonId)) {
+    throw new Error('Invalid DNA test or owner id.');
+  }
+  const { data: testRow, error: readError } = await supabase
+    .from('dna_tests')
+    .select('id, test_type, metadata, person_id')
+    .eq('id', dnaTestId)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!testRow || testRow.test_type !== 'Shared Autosomal') {
+    throw new Error('Shared autosomal test not found.');
+  }
+  const metadata = asRecord(testRow.metadata);
+  const { error: updateError } = await supabase
+    .from('dna_tests')
+    .update({
       shared_person_id: ownerPersonId,
       metadata: {
         ...metadata,

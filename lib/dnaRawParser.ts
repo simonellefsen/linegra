@@ -86,7 +86,10 @@ const namesLookSimilar = (left: string, right: string) => {
   return a === b || a.includes(b) || b.includes(a);
 };
 
-const applyFileNameComparisonNames = (
+const nameLooksLikeFilenameParty = (name: string, firstName: string, secondName: string) =>
+  namesLookSimilar(name, firstName) || namesLookSimilar(name, secondName);
+
+export const applyFileNameComparisonNames = (
   fileName: string,
   personName: string,
   matchName: string,
@@ -102,7 +105,13 @@ const applyFileNameComparisonNames = (
 
   if (!nextPersonName || nextPersonName === 'Unknown') {
     if (isFtdnaComparison && nextMatchName && nextMatchName !== 'Unknown') {
-      nextPersonName = namesLookSimilar(nextMatchName, secondName) ? firstName : secondName;
+      if (namesLookSimilar(nextMatchName, secondName)) {
+        nextPersonName = firstName;
+      } else if (namesLookSimilar(nextMatchName, firstName)) {
+        nextPersonName = secondName;
+      } else {
+        nextPersonName = firstName;
+      }
     } else {
       nextPersonName = firstName;
     }
@@ -110,6 +119,15 @@ const applyFileNameComparisonNames = (
   if (!nextMatchName || nextMatchName === 'Unknown') {
     nextMatchName = secondName;
   }
+
+  // FTDNA comparison rows often carry a segment label in MATCH NAME, not the other tester.
+  if (!nameLooksLikeFilenameParty(nextMatchName, firstName, secondName)) {
+    nextMatchName = namesLookSimilar(nextPersonName, firstName) ? secondName : firstName;
+  }
+  if (!nameLooksLikeFilenameParty(nextPersonName, firstName, secondName)) {
+    nextPersonName = namesLookSimilar(nextMatchName, firstName) ? secondName : firstName;
+  }
+
   return { personName: nextPersonName, matchName: nextMatchName };
 };
 

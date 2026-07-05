@@ -4,22 +4,16 @@ import { resolveSharedAutosomalParties } from './dnaSharedTestParties';
 const HELLE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const PERNILLE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const BIRGITTA = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const MARIANNE = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+const treePeople = [
+  { id: HELLE, first_name: 'Helle', last_name: 'Andersen', maiden_name: 'Andersen' },
+  { id: PERNILLE, first_name: 'Pernille', last_name: 'Gether Gamby', maiden_name: null },
+  { id: BIRGITTA, first_name: 'Birgitta', last_name: 'Hallgren', maiden_name: 'Svensson' },
+  { id: MARIANNE, first_name: 'Marianne', last_name: 'Gamby', maiden_name: null },
+];
 
 describe('resolveSharedAutosomalParties', () => {
-  const names = new Map([
-    [HELLE, 'Helle Andersen'],
-    [PERNILLE, 'Pernille Gether Gamby'],
-    [BIRGITTA, 'Birgitta Hallgren'],
-  ]);
-
-  const nameForId = (id: string) => names.get(id) ?? null;
-  const resolveNameToPersonId = (name: string) => {
-    for (const [id, display] of names) {
-      if (display.toLowerCase().includes(name.split(' ')[0]!.toLowerCase())) return id;
-    }
-    return null;
-  };
-
   const helleTest = {
     sharedPersonId: HELLE,
     sharedMatchPersonId: BIRGITTA,
@@ -55,13 +49,8 @@ describe('resolveSharedAutosomalParties', () => {
   };
 
   it('resolves distinct kit owners for multiple tests on the match profile', () => {
-    const helleView = resolveSharedAutosomalParties(BIRGITTA, helleTest, nameForId, resolveNameToPersonId);
-    const pernilleView = resolveSharedAutosomalParties(
-      BIRGITTA,
-      pernilleTest,
-      nameForId,
-      resolveNameToPersonId
-    );
+    const helleView = resolveSharedAutosomalParties(BIRGITTA, helleTest, treePeople);
+    const pernilleView = resolveSharedAutosomalParties(BIRGITTA, pernilleTest, treePeople);
 
     expect(helleView.kitOwner.personId).toBe(HELLE);
     expect(helleView.kitOwner.displayName).toBe('Helle Andersen');
@@ -71,14 +60,38 @@ describe('resolveSharedAutosomalParties', () => {
     expect(pernilleView.match.personId).toBe(BIRGITTA);
   });
 
+  it('replaces a wrong stored kit owner when it does not match the CSV name', () => {
+    const view = resolveSharedAutosomalParties(
+      BIRGITTA,
+      {
+        sharedPersonId: MARIANNE,
+        sharedMatchPersonId: BIRGITTA,
+        sharedSegmentSummary: {
+          personName: 'Pernille Gamby',
+          matchName: 'Birgitta Svensson Hallgren',
+          fileName: 'Shared DNA segments of Pernille Gamby and Birgitta Svensson Hallgren.csv',
+          segmentCount: 2,
+          totalCentimorgans: 36,
+          largestSegmentCentimorgans: 28.6,
+          importedAt: '2026-07-05T00:00:00.000Z',
+          source: 'FTDNA_SHARED_AUTOSOMAL_SEGMENTS_CSV' as const,
+          totalSnps: 0,
+        },
+      },
+      treePeople
+    );
+    expect(view.kitOwner.personId).toBe(PERNILLE);
+    expect(view.kitOwner.displayName).toBe('Pernille Gether Gamby');
+    expect(view.suggestedKitOwnerPersonId).toBe(PERNILLE);
+  });
+
   it('infers kit owner from CSV when only names are stored', () => {
     const view = resolveSharedAutosomalParties(
       BIRGITTA,
       {
         sharedSegmentSummary: helleTest.sharedSegmentSummary,
       },
-      nameForId,
-      resolveNameToPersonId
+      treePeople
     );
     expect(view.kitOwner.displayName).toBe('Helle Andersen');
     expect(view.kitOwner.personId).toBe(HELLE);
