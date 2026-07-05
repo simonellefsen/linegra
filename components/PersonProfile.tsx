@@ -26,7 +26,7 @@ import DNATab from './person-profile/DNATab';
 import NotesTab from './person-profile/NotesTab';
 import { getAvatarForPerson } from '../lib/avatar';
 import { inferLivingStatus } from '../lib/lifespan';
-import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent, createPlaceholderSpouse, createPlaceholderChild, linkExistingSpouse, linkExistingChild, linkInferredFamilyUnion, syncParentUnionsForPerson, syncSpouseChildLinksForPerson } from '../services/archive';
+import { fetchPersonConnections, updatePersonProfile, fetchPersonDetails, updateRelationshipConfidence, updateRelationshipDetails, unlinkRelationship, createPlaceholderParent, createPlaceholderSpouse, createPlaceholderChild, linkExistingSpouse, linkExistingChild, linkInferredFamilyUnion, syncParentUnionsForPerson, syncSpouseChildLinksForPerson, syncUnionParentLinksFromLayout } from '../services/archive';
 import { findCoparentSuggestions } from '../lib/familyUnionInference';
 import { hasOpenRouterConfig, normalizeDeathCause as requestNormalizedDeathCause, transcribeRecordImage } from '../services/ai';
 
@@ -275,6 +275,19 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             });
           } catch (syncErr) {
             console.warn('Spouse child link sync skipped', syncErr);
+          }
+          const familyLayout = person.metadata?.familyLayout as FamilyLayoutState | undefined;
+          if (familyLayout?.assignments && Object.keys(familyLayout.assignments).length > 0) {
+            try {
+              await syncUnionParentLinksFromLayout({
+                treeId: person.treeId,
+                focusPersonId: person.id,
+                layout: familyLayout,
+                actor: currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+              });
+            } catch (syncErr) {
+              console.warn('Union parent link sync skipped', syncErr);
+            }
           }
         }
         const { relationships, people } = await fetchPersonConnections(person.treeId, person.id);

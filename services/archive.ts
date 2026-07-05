@@ -3022,6 +3022,12 @@ export const persistFamilyLayout = async (
     throw new Error('Supabase credentials are missing.');
   }
   const metadata = { ...(existingMetadata || {}), familyLayout: layout };
+  await syncUnionParentLinksFromLayout({
+    treeId,
+    focusPersonId: personId,
+    layout,
+    actor,
+  });
   const { data, error } = await supabase
     .from('persons')
     .update({ metadata })
@@ -3777,6 +3783,93 @@ const listSpouseIdsForPerson = async (treeId: string, personId: string): Promise
     else if (row.related_id === personId && row.person_id) spouseIds.add(row.person_id);
   });
   return Array.from(spouseIds);
+};
+
+const resolveCoparentIdFromUnion = async (
+  treeId: string,
+  focusPersonId: string,
+  unionRelId: string
+): Promise<string | null> => {
+  const { data, error } = await supabase
+    .from('relationships')
+    .select('person_id, related_id, type')
+    .eq('tree_id', treeId)
+    .eq('id', unionRelId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data || (data.type !== 'marriage' && data.type !== 'partner')) return null;
+  if (data.person_id === focusPersonId) return data.related_id ? String(data.related_id) : null;
+  if (data.related_id === focusPersonId) return data.person_id ? String(data.person_id) : null;
+  return null;
+};
+
+const resolveChildIdFromParentRelationship = async (
+  focusPersonId: string,
+  childRelId: string
+): Promise<string | null> => {
+  const { data, error } = await supabase
+    .from('relationships')
+    .select('person_id, related_id')
+    .eq('id', childRelId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  if (data.person_id === focusPersonId) return data.related_id ? String(data.related_id) : null;
+  if (data.related_id === focusPersonId) return data.person_id ? String(data.person_id) : null;
+  return null;
+};
+
+/** Keep parent-child edges aligned with union assignments on the focus profile. */
+export const syncUnionParentLinksFromLayout = async ({
+  treeId,
+  focusPersonId,
+  layout,
+  actor,
+}: {
+  treeId: string;
+  focusPersonId: string;
+  layout: FamilyLayoutState;
+  actor?: ImportActor | null;
+}): Promise<void> => {
+  if (!isSupabaseConfigured()) return;
+  const assignments = layout.assignments ?? {};
+  const assignmentEntries = Object.entries(assignments).filter(
+    ([, unionRelId]) => unionRelId && !String(unionRelId).startsWith('suggested:')
+  );
+  if (!assignmentEntries.length) return;
+
+  const spouseIds = await listSpouseIdsForPerson(treeId, focusPersonId);
+
+  for (const [childRelId, unionRelId] of assignmentEntries) {
+    if (!unionRelId) continue;
+    const childId = await resolveChildIdFromParentRelationship(focusPersonId, childRelId);
+    if (!childId) continue;
+    const coparentId = await resolveCoparentIdFromUnion(treeId, focusPersonId, unionRelId);
+    if (!coparentId) continue;
+
+    const links = await listParentLinksForChild(treeId, childId);
+    for (const spouseId of spouseIds) {
+      if (spouseId === coparentId) continue;
+      if (!links.some((link) => link.parentId === spouseId)) continue;
+      const { error } = await supabase
+        .from('relationships')
+        .delete()
+        .eq('tree_id', treeId)
+        .eq('person_id', spouseId)
+        .eq('related_id', childId)
+        .in('type', [...PARENT_LINK_TYPES_FOR_CHILD]);
+      if (error) throw new Error(error.message);
+    }
+
+    try {
+      await assertNoExistingChildLink(treeId, coparentId, childId);
+      await linkExistingChild({ treeId, parentId: coparentId, childId, actor });
+    } catch (err) {
+      if (!(err instanceof Error && err.message.includes('already linked'))) {
+        throw err;
+      }
+    }
+  }
 };
 
 const linkSharedChildrenBetweenParents = async ({
