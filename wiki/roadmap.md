@@ -609,10 +609,11 @@ and the metrics that make it *actionable* rather than a hit counter.
 - **U18d — Count consistency:** "Countries 2" while the list shows three buckets (incl. Unknown)
   — either count Unknown or visually separate it. **DONE 2026-07-05** (stat card matches list length).
 - **U18e — INVESTIGATE: duplicate events.** Recent-visitors shows identical-timestamp pairs
-  (12:27:56 ×2, 09:08:37 ×2, 06:51:15 ×2). Telemetry records from 4 call sites (middleware + 3
-  edge routes) — check middleware re-invocation on rewrites/prefetch and client double-fire;
-  dedupe at ingestion (idempotency key: minute-bucket + route + resource + UA hash) or filter in
-  stats RPC.
+  (12:27:56 ×2, 09:08:37 ×2, 06:51:15 ×2). Telemetry records from middleware (visitor SPA
+  paths) and Edge API routes (crawler shells). Root cause: middleware can fire twice per
+  navigation (prefetch / edge re-invocation). **DONE 2026-07-05** — minute-bucket dedupe in
+  `record_public_crawl_event` + deduped raw tail in stats RPC; `resource_key` stores slug
+  segments for visitor dedupe identity.
 
 *Actionability:*
 - **U18f — Resolve resource UUIDs to names.** "0fd167f2-…" tells the admin nothing; join to

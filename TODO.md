@@ -26,7 +26,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **U18c — Misleading copy:** "LLM agents 0" above "GPTBot, ClaudeBot, Perplexity" reads as
       if they visited; re-copy as "watching for …" or hide when 0.
 - [x] **U18d — Count consistency:** "Countries 2" vs three listed buckets (incl. Unknown).
-- [ ] **U18e — INVESTIGATE: duplicate events** (identical-timestamp visitor rows ×2) — check
+- [x] **U18e — INVESTIGATE: duplicate events** (identical-timestamp visitor rows ×2) — check
       middleware re-invocation + client double-fire; dedupe at ingestion.
 - [ ] **U18f — Resolve resource UUIDs** to person/tree names with links (admin-only).
 - [ ] **U18g — Self-traffic exclusion** (tag signed-in admin hits; default-on filter).

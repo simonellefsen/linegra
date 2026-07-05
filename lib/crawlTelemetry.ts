@@ -1,6 +1,7 @@
 // Roadmap U10 — persist public crawl / bot traffic from Edge API routes.
 
 import { classifyCrawlerUserAgent } from './crawlerAgents';
+import { normalizeCrawlResourceKey } from './crawlEventDedupe';
 import type { RequestGeo } from './requestGeo';
 import { createServerSupabase } from './supabaseServer';
 
@@ -42,6 +43,7 @@ export const recordPublicCrawlEvent = async (
       payload_route: input.route,
       payload_agent_bucket: agentBucket,
       payload_resource_id: isUuid(input.resourceId) ? input.resourceId : null,
+      payload_resource_key: normalizeCrawlResourceKey(input.resourceId),
       payload_format: input.format ?? null,
       payload_country_code: input.geo?.countryCode ?? null,
       payload_region: input.geo?.region ?? null,

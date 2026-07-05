@@ -15,6 +15,14 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — U18e crawl event dedupe
+
+**U18:** Minute-bucket idempotency in `record_public_crawl_event` (route + resource key + UA);
+`resource_key` column for slug-based visitor paths; stats RPC dedupes raw-tail rows for recent
+visitor/bot tables. `lib/crawlEventDedupe.ts`, migration `20260705253000_crawl_event_dedupe.sql`.
+
+---
+
 ## 2026-07-05 — U18a–d traffic panel display fixes
 
 **U18:** Decode URL-encoded Vercel city names; map DK numeric subdivisions (or drop unmapped);
