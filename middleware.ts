@@ -4,6 +4,7 @@ import { extractRequestGeo } from './lib/requestGeo';
 import { checkPublicRateLimit, clientIpFromRequest } from './lib/publicRateLimit';
 import { isPublicUuid, parsePersonIdPrefix } from './lib/publicSlugs';
 import { resolvePublicPersonId, resolvePublicTreeId } from './lib/publicRouteResolve';
+import { resolvePublicUnionRelationshipId } from './lib/publicCrawlService';
 
 export const config = {
   matcher: [
@@ -19,7 +20,7 @@ export const config = {
 
 const resolveVisitorRoute = (
   pathname: string
-): { route: 'person' | 'tree' | 'book' | 'trees-directory'; resourceId?: string } | null => {
+): { route: 'person' | 'tree' | 'family' | 'book' | 'trees-directory'; resourceId?: string } | null => {
   if (pathname === '/trees' || pathname === '/trees/') {
     return { route: 'trees-directory' };
   }
@@ -27,6 +28,11 @@ const resolveVisitorRoute = (
   const personMatch = pathname.match(/^\/tree\/[^/]+\/person\/([^/]+)\/?$/i);
   if (personMatch?.[1]) {
     return { route: 'person', resourceId: personMatch[1] };
+  }
+
+  const familyMatch = pathname.match(/^\/tree\/[^/]+\/family\/([^/]+)\/?$/i);
+  if (familyMatch?.[1]) {
+    return { route: 'family', resourceId: familyMatch[1] };
   }
 
   const treeMatch = pathname.match(/^\/tree\/([^/]+)\/?$/i);
@@ -59,6 +65,18 @@ const resolveTreeIdForCrawler = async (pathname: string): Promise<string | null>
   if (!match?.[1]) return null;
   if (isPublicUuid(match[1])) return match[1];
   return resolvePublicTreeId(match[1]);
+};
+
+const resolveUnionIdForCrawler = async (pathname: string): Promise<string | null> => {
+  const match = pathname.match(/^\/tree\/([^/]+)\/family\/([^/]+)\/?$/i);
+  if (!match?.[1] || !match[2]) return null;
+  const unionSegment = match[2];
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(unionSegment)) {
+    return unionSegment;
+  }
+  const treeId = await resolveTreeIdForCrawler(pathname);
+  if (!treeId) return null;
+  return resolvePublicUnionRelationshipId(treeId, unionSegment.toLowerCase());
 };
 
 export default async function middleware(
@@ -98,6 +116,15 @@ export default async function middleware(
       const personId = await resolvePersonIdForCrawler(url.pathname);
       if (personId) {
         const apiUrl = new URL(`/api/public/person/${personId}`, url.origin);
+        apiUrl.searchParams.set('format', wantsMarkdown ? 'md' : 'html');
+        return fetch(apiUrl.toString());
+      }
+    }
+
+    if (url.pathname.match(/^\/tree\/[^/]+\/family\/([^/]+)\/?$/i)) {
+      const unionId = await resolveUnionIdForCrawler(url.pathname);
+      if (unionId) {
+        const apiUrl = new URL(`/api/public/family/${unionId}`, url.origin);
         apiUrl.searchParams.set('format', wantsMarkdown ? 'md' : 'html');
         return fetch(apiUrl.toString());
       }

@@ -15,7 +15,13 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
-## 2026-07-05 — K9 candidate-branch hypothesis for unplaced matches
+## 2026-07-05 — U13 family/union public crawl surface
+
+**U13:** `lib/publicCrawlUnions.ts` groups children by co-parent on person shells; spouse lines
+include marriage date/place + link to family page; `/tree/{slug}/family/{id8}` crawler shells via
+`/api/public/family/{unionId}` (HTML/md/JSON + Schema.org `Family` JSON-LD).
+
+---
 
 **K9:** `lib/dnaUncoveredBranches.ts` ranks ancestor couples in the cM generation band with weak/no
 DNA coverage; `uncovered_branch` suggestions in K3 with research to-dos; pedigree amber coverage-gap

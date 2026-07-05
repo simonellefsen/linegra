@@ -4,7 +4,14 @@ import { classifyCrawlerUserAgent } from './crawlerAgents';
 import type { RequestGeo } from './requestGeo';
 import { createServerSupabase } from './supabaseServer';
 
-export type PublicCrawlRoute = 'person' | 'tree' | 'book' | 'sitemap' | 'trees-directory' | 'unknown';
+export type PublicCrawlRoute =
+  | 'person'
+  | 'tree'
+  | 'family'
+  | 'book'
+  | 'sitemap'
+  | 'trees-directory'
+  | 'unknown';
 
 export interface RecordPublicCrawlEventInput {
   route: PublicCrawlRoute;

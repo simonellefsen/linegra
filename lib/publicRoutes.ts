@@ -4,6 +4,7 @@ import { parseBookRouteFromLocation } from './bookShare';
 import {
   buildBookSlugSegment,
   buildPersonSlugSegment,
+  extractId8,
   isPublicUuid,
   parsePersonIdPrefix,
   type PersonSlugInput,
@@ -93,6 +94,12 @@ export const buildPersonUrl = (
   const personId = typeof person === 'string' ? person : person.id;
   return `${base}/tree/${treePath}/person/${personId}`;
 };
+
+export const buildFamilyUrl = (
+  tree: string | PublicTreeRef,
+  unionRelationshipId: string,
+  origin?: string
+): string => `${buildTreeUrl(tree, origin)}/family/${extractId8(unionRelationshipId)}`;
 
 export const buildPublicBookUrl = (
   book: string | { id: string; title?: string | null; slug?: string | null },

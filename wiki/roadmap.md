@@ -563,12 +563,10 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
   (alphabetical order silently drops later surnames; sitemap is the only route to them). Fix:
   `?page=N` on `/tree/:id` + `/api/public/tree/:id`, `<link rel="next/prev">` + visible pagination
   anchors, and person-count/total in JSON.
-- **U13. Families/unions are invisible.** Person shells bucket parents/spouses/children/siblings,
-  but no marriage date/place, and children are one flat list — an agent can't tell which children
-  belong to which union. The union data now exists (`20260704170000_family_union_child_links`,
-  `20260704180000_family_coparent_connections`). Fix: group children by co-parent on person
-  pages/md/JSON ("Children with [spouse]"), add union date/place to the spouse line, and extend
-  JSON-LD `Person` with `spouse`/`children` refs.
+- **U13. Families/unions are invisible.** ~~Person shells bucket parents/spouses/children/siblings,
+  but no marriage date/place, and children are one flat list~~ **Done (2026-07-05):**
+  `lib/publicCrawlUnions.ts` groups children by co-parent; spouse lines carry union date/place +
+  family-page links; `/tree/{slug}/family/{id8}` shells via `/api/public/family/{unionId}`.
 - **U14. Crawler UA gate misses newer agent UAs.** `crawlerAgents.ts` lacks `Claude-Web` /
   `Claude-User` / `Claude-SearchBot`, `Perplexity-User`, `Meta-ExternalAgent` (classify-only),
   `Google-Extended`/`GoogleOther`, `MistralAI-User` — those agents get the blank SPA on canonical
