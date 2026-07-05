@@ -3,12 +3,13 @@
  * Resolve the Vercel preview/production URL from GitHub Deployments API.
  * Avoids unauthenticated HTTP probes that return 401 under Vercel Deployment Protection.
  *
- * Env: GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_TOKEN
+ * Env: GITHUB_REPOSITORY, GITHUB_TOKEN, VERCEL_DEPLOY_SHA (PR head — not GITHUB_SHA)
  * Optional: GITHUB_DEPLOY_REF, VERCEL_DEPLOY_ENV, VERCEL_AUTOMATION_BYPASS_SECRET
  * Writes: url=… to GITHUB_OUTPUT when set
  */
 const repository = process.env.GITHUB_REPOSITORY;
-const sha = process.env.GITHUB_SHA;
+// checkout@v4 overwrites GITHUB_SHA with the PR merge commit; Vercel deploys the head SHA.
+const sha = process.env.VERCEL_DEPLOY_SHA ?? process.env.GITHUB_SHA;
 const token = process.env.GITHUB_TOKEN;
 const deployRef = process.env.GITHUB_DEPLOY_REF;
 const deployEnv = process.env.VERCEL_DEPLOY_ENV ?? 'Preview';
@@ -19,7 +20,7 @@ const pollMs = Number(process.env.VERCEL_RESOLVE_POLL_MS ?? 10_000);
 if (!repository || !sha || !token) {
   const missing = [
     !repository && 'GITHUB_REPOSITORY',
-    !sha && 'GITHUB_SHA',
+    !sha && 'VERCEL_DEPLOY_SHA',
     !token && 'GITHUB_TOKEN',
   ].filter(Boolean);
   console.error(`[vercel-preview] Missing required env: ${missing.join(', ')}`);
