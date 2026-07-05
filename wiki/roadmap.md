@@ -699,10 +699,10 @@ is watching. Zero-new-deps path available: reuse the `public_crawl_events` patte
 There is **no `.github/workflows`**. The build gate (`lint + typecheck + 255 tests`) runs only in
 husky hooks (skippable with `--no-verify`, dev-machine-dependent) and inside the Vercel deploy.
 Notably **Dependabot grouped PRs (added 2026-07-04) currently land with no CI to validate them.**
-- **W1.** A single workflow: `npm ci && npm run lint && npm run typecheck && npm test` on push +
-  PR. Node version pinned to match Vercel. Cache `~/.npm`.
-- **W2.** Make it a required check so Dependabot PRs are auto-validated before merge; then the
-  weekly `npm audit` runbook can lean on green-check merges instead of manual local runs.
+- **W1 — DONE 2026-07-05.** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `npm ci &&
+  npm run lint && npm run typecheck && npm test` on push + PR. Node 22, npm cache.
+- **W2.** Make `build` a required check on `main` (ruleset or branch protection) so Dependabot
+  PRs are auto-validated before merge. Setup: [../docs/CICD.md](../docs/CICD.md#require-ci-on-main-roadmap-w2).
 - **W3 (optional).** Preview-deploy smoke: after Vercel preview, curl `/sitemap.xml`,
   `/api/public/tree/:id` (a known public tree), and `/book/:id` and assert 200 + expected markers —
   cheap protection for the U crawl surfaces, which no unit test covers.
