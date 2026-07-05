@@ -572,9 +572,10 @@ Pairs with **M5** (public books), **A** (auth + public RLS), **P** (relationship
   `Google-Extended`/`GoogleOther`, `MistralAI-User` — those agents get the blank SPA on canonical
   URLs. Broaden the pattern (keep classify buckets in sync) and treat `Accept: text/markdown` on
   `/tree/*` as a shell request regardless of UA.
-- **U15. Format parity + shell completeness (small).** Tree endpoint has no `?format=md` (person
-  does); person shells omit the **sources/citations list** U1 specced; make `llms.txt` dynamic (or
-  append a generated section) listing actual public-tree URLs as concrete entry points.
+- **U15. Format parity + shell completeness (small).** ~~Tree endpoint has no `?format=md` (person
+  does); person shells omit the **sources/citations list** U1 specced~~ **Done (2026-07-05):**
+  person shells list deduped sources with event citations in HTML/md/JSON-LD; `llms.txt` documents
+  family-page alternates.
 - **U17. Person-page relation semantics (the "agent reads a person and understands their family"
   goal — audited 2026-07-05).** Three fixes in [../lib/publicCrawlRelations.ts](../lib/publicCrawlRelations.ts) /
   [../lib/publicCrawlJsonLd.ts](../lib/publicCrawlJsonLd.ts):

@@ -15,7 +15,12 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
-## 2026-07-05 — U13 family/union public crawl surface
+## 2026-07-05 — U15 person source citations on public shells
+
+**U15:** Person crawl payloads load tree-scoped sources + citations; HTML/md/JSON-LD shells expose a
+**Sources** section (`lib/publicCrawlSources.ts`). `llms.txt` documents family-page alternates.
+
+---
 
 **U13:** `lib/publicCrawlUnions.ts` groups children by co-parent on person shells; spouse lines
 include marriage date/place + link to family page; `/tree/{slug}/family/{id8}` crawler shells via

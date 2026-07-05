@@ -1,6 +1,7 @@
 // Roadmap U4 / U17b — Schema.org JSON-LD for public person pages.
 
 import type { PublicCrawlRelationshipGroups } from './publicCrawlRelations';
+import type { PublicCrawlSourceRef } from './publicCrawlSources';
 import type { PublicFamilyCrawlPayload } from './publicCrawlService';
 import { formatPersonDisplayName } from './publicCrawlPrivacy';
 import { buildFamilyUrl, buildPersonUrl, buildTreeUrl, getPublicSiteOrigin } from './publicRoutes';
@@ -21,6 +22,7 @@ export interface PublicPersonJsonLdInput {
     bio?: string | null;
   };
   relationships: PublicCrawlRelationshipGroups;
+  sources?: PublicCrawlSourceRef[];
   origin?: string;
 }
 
@@ -46,6 +48,14 @@ export const buildPersonJsonLd = (input: PublicPersonJsonLdInput): Record<string
     ...(link.unionDate ? { startDate: link.unionDate } : {}),
   }));
   const siblings = input.relationships.siblings.map((link) => toSchemaPerson(treeRef, link, origin));
+  const citations = (input.sources ?? []).map((source) => ({
+    '@type': 'CreativeWork',
+    name: source.title,
+    ...(source.url ? { url: source.url } : {}),
+    ...(source.citationDate ? { datePublished: source.citationDate } : {}),
+    ...(source.repository ? { publisher: { '@type': 'Organization', name: source.repository } } : {}),
+    description: source.summary,
+  }));
 
   return {
     '@context': 'https://schema.org',
@@ -75,6 +85,7 @@ export const buildPersonJsonLd = (input: PublicPersonJsonLdInput): Record<string
     children: children.length === 1 ? children[0] : children.length ? children : undefined,
     spouse: spouses.length === 1 ? spouses[0] : spouses.length ? spouses : undefined,
     sibling: siblings.length === 1 ? siblings[0] : siblings.length ? siblings : undefined,
+    citation: citations.length === 1 ? citations[0] : citations.length ? citations : undefined,
   };
 };
 

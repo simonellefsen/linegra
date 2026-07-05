@@ -1,6 +1,7 @@
 // Roadmap U1/U4/U5 — server-rendered HTML shells for crawlers and agents.
 
 import type { PublicCrawlRelationshipGroups } from './publicCrawlRelations';
+import type { PublicCrawlSourceRef } from './publicCrawlSources';
 import { buildFamilyJsonLd, buildPersonJsonLd, buildWebsiteJsonLd } from './publicCrawlJsonLd';
 import type { PublicFamilyCrawlPayload } from './publicCrawlService';
 import { formatPersonDisplayName } from './publicCrawlPrivacy';
@@ -22,6 +23,7 @@ export interface PublicPersonHtmlInput {
     bio?: string | null;
   };
   relationships: PublicCrawlRelationshipGroups;
+  sources?: PublicCrawlSourceRef[];
   origin?: string;
 }
 
@@ -76,6 +78,21 @@ const renderChildUnionSections = (
       return `<section>${heading}<ul>${items}</ul></section>`;
     })
     .join('');
+};
+
+const renderSourcesSection = (sources: PublicCrawlSourceRef[]) => {
+  if (!sources.length) return '';
+  const items = sources
+    .map((source) => {
+      const title = source.url
+        ? `<a href="${escapeHtml(source.url)}" rel="nofollow">${escapeHtml(source.title)}</a>`
+        : `<strong>${escapeHtml(source.title)}</strong>`;
+      const detail = source.summary.replace(source.title, '').trim();
+      const detailHtml = detail ? ` <span class="rel">${escapeHtml(detail.replace(/^[—·]\s*/, ''))}</span>` : '';
+      return `<li>${title}${detailHtml}</li>`;
+    })
+    .join('');
+  return `<section><h2>Sources</h2><ul>${items}</ul></section>`;
 };
 
 export const renderPublicPersonHtml = (input: PublicPersonHtmlInput): string => {
@@ -150,6 +167,7 @@ export const renderPublicPersonHtml = (input: PublicPersonHtmlInput): string => 
     ${renderLinkList('Spouses & partners', input.relationships.spouses)}
     ${input.relationships.childUnions.length ? renderChildUnionSections(input.relationships.childUnions) : renderLinkList('Children', input.relationships.children)}
     ${renderLinkList('Siblings', input.relationships.siblings)}
+    ${renderSourcesSection(input.sources ?? [])}
   </main>
   <p id="app-boot"><a href="${escapeHtml(canonical)}">Open interactive archive</a> · <a href="${escapeHtml(`${canonical}?format=md`)}">Markdown</a> · <a href="${escapeHtml(`${origin}/api/public/person/${input.person.id}`)}">JSON</a></p>
 </body>

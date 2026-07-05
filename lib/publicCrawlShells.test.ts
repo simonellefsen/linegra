@@ -95,6 +95,35 @@ describe('public crawl shells', () => {
     expect(jsonLd.children).toMatchObject({ name: 'Anne King (1840–1910)' });
   });
 
+  it('renders sources and citations in HTML, Markdown, and JSON-LD', () => {
+    const withSources = {
+      ...shellInput,
+      sources: [
+        {
+          id: 'src-1',
+          title: 'Parish register, Skt. Petri',
+          type: 'Vital Record',
+          repository: 'Rigsarkivet',
+          url: 'https://example.org/register',
+          citations: [{ eventLabel: 'Baptism', page: '42' }],
+          summary:
+            'Parish register, Skt. Petri (Vital Record) — Baptism, p. 42 · Rigsarkivet',
+        },
+      ],
+    };
+    const html = renderPublicPersonHtml(withSources);
+    const markdown = renderPublicPersonMarkdown(withSources);
+    const jsonLd = buildPersonJsonLd(withSources);
+    expect(html).toContain('<h2>Sources</h2>');
+    expect(html).toContain('Parish register, Skt. Petri');
+    expect(markdown).toContain('## Sources');
+    expect(markdown).toContain('Baptism, p. 42');
+    expect(jsonLd.citation).toMatchObject({
+      '@type': 'CreativeWork',
+      name: 'Parish register, Skt. Petri',
+    });
+  });
+
   it('renders family union shells with marriage facts and children', () => {
     const familyInput = {
       treeId: TREE,
