@@ -3,13 +3,19 @@ import { indexParentChildLinks } from './parentChildLinks';
 
 const SPOUSE_TYPES = new Set<Relationship['type']>(['marriage', 'partner']);
 
-const areSpouses = (relationships: Relationship[], parentId: string, childId: string): boolean =>
-  relationships.some(
-    (rel) =>
-      SPOUSE_TYPES.has(rel.type) &&
-      ((rel.personId === parentId && rel.relatedId === childId) ||
-        (rel.personId === childId && rel.relatedId === parentId))
-  );
+const buildSpousePairKeys = (relationships: Relationship[]): Set<string> => {
+  const keys = new Set<string>();
+  relationships.forEach((rel) => {
+    if (!SPOUSE_TYPES.has(rel.type)) return;
+    const left = rel.personId;
+    const right = rel.relatedId;
+    keys.add(left < right ? `${left}:${right}` : `${right}:${left}`);
+  });
+  return keys;
+};
+
+const isSpousePair = (spousePairKeys: Set<string>, aId: string, bId: string): boolean =>
+  spousePairKeys.has(aId < bId ? `${aId}:${bId}` : `${bId}:${aId}`);
 
 export interface PedigreeScopeResult {
   people: Person[];
@@ -43,7 +49,11 @@ export const computePedigreeScope = (
   }
 
   const { parentLinksByChild, childLinksByParent } = indexParentChildLinks(relationships);
-  const hintChildLinksByParent = indexParentChildLinks(relationshipPool).childLinksByParent;
+  const hintChildLinksByParent =
+    relationshipPool === relationships
+      ? childLinksByParent
+      : indexParentChildLinks(relationshipPool).childLinksByParent;
+  const spousePairKeys = buildSpousePairKeys(relationshipPool);
 
   const allowedPersonIds = new Set<string>([focus.id]);
   const allowedRelationshipIds = new Set<string>();
@@ -52,6 +62,7 @@ export const computePedigreeScope = (
   const siblingHints: Record<string, boolean> = {};
   const childHints: Record<string, boolean> = {};
   const descendantHints: Record<string, boolean> = {};
+  const multiChildParents = new Map<string, string[]>();
 
   const ancestorQueue: Array<{ id: string; depth: number }> = [{ id: focus.id, depth: 0 }];
   while (ancestorQueue.length) {
@@ -124,36 +135,33 @@ export const computePedigreeScope = (
 
   hintChildLinksByParent.forEach((links, parentId) => {
     if (!allowedPersonIds.has(parentId)) return;
+    const realChildIds: string[] = [];
+    let hasHiddenChild = false;
     links.forEach((link) => {
-      if (areSpouses(relationshipPool, parentId, link.relatedId)) return;
+      if (isSpousePair(spousePairKeys, parentId, link.relatedId)) return;
+      realChildIds.push(link.relatedId);
       if (!allowedPersonIds.has(link.relatedId)) {
         allowedRelationshipIds.add(link.id);
+        hasHiddenChild = true;
       }
     });
-  });
-
-  hintChildLinksByParent.forEach((links, parentId) => {
-    const realChildren = links.filter(
-      (link) => !areSpouses(relationshipPool, parentId, link.relatedId)
-    );
-    if (!realChildren.length || !allowedPersonIds.has(parentId)) return;
+    if (!realChildIds.length) return;
     childHints[parentId] = true;
-    if (realChildren.some((link) => !allowedPersonIds.has(link.relatedId))) {
-      descendantHints[parentId] = true;
-    }
+    if (hasHiddenChild) descendantHints[parentId] = true;
+    if (realChildIds.length > 1) multiChildParents.set(parentId, realChildIds);
   });
 
-  Array.from(allowedPersonIds).forEach((personId) => {
-    (parentLinksByChild.get(personId) || []).forEach((parentLink) => {
-      const parentId = parentLink.personId;
-      const allSiblings = (hintChildLinksByParent.get(parentId) || []).filter(
-        (link) => !areSpouses(relationshipPool, parentId, link.relatedId)
-      );
-      if (allSiblings.length <= 1) return;
-      if (allSiblings.some((link) => !allowedPersonIds.has(link.relatedId))) {
+  allowedPersonIds.forEach((personId) => {
+    const parentLinks = parentLinksByChild.get(personId);
+    if (!parentLinks?.length) return;
+    for (const parentLink of parentLinks) {
+      const siblingIds = multiChildParents.get(parentLink.personId);
+      if (!siblingIds) continue;
+      if (siblingIds.some((siblingId) => !allowedPersonIds.has(siblingId))) {
         siblingHints[personId] = true;
+        break;
       }
-    });
+    }
   });
 
   const scopedPeople = Array.from(allowedPersonIds)
