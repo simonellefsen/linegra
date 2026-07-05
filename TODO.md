@@ -31,8 +31,8 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       counterparts before link UI.
 - [x] **K8d — K3 card UX:** de-duplicate "Top suggestion" vs list; fallback as button-only; add
       Dismiss/"not in my tree"; consider batch actions.
-- [ ] **K8e — Lineage cards:** dedupe the double path pill; generation-breadcrumb formatting with
-      bolded MRCA; "View in tree" action.
+- [x] **K8e — Lineage cards:** dedupe the double path pill; generation-breadcrumb formatting with
+      bolded MRCA; "View in tree" action (`lib/dnaLineagePathLabel.ts`, `DnaLineagePathBreadcrumb`).
 - [ ] **K8f — Clusters/painter/badges:** MRCA-named clusters; name the unclustered matches;
       painter hover tooltips; tree-badge legend + click-through to DNA panel.
 

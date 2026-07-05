@@ -7,6 +7,7 @@ import {
   findDnaBloodRelationshipPath,
   pathHasCoparentBridge,
 } from '../lib/dnaLineagePath';
+import { buildDnaLineagePathLabel } from '../lib/dnaLineagePathLabel';
 import { parseMatchDisplayName } from '../lib/dnaMatchPlacement';
 import { inferLivingStatus } from '../lib/lifespan';
 import { parseQuay } from '../lib/sourceQuality';
@@ -256,28 +257,6 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
-const traversalLabel = (
-  relationship: RelationshipLookupRow | undefined,
-  fromPersonId: string,
-  toPersonId: string
-) => {
-  if (!relationship?.type) return 'linked to';
-  const forward = relationship.person_id === fromPersonId && relationship.related_id === toPersonId;
-  const reverse = relationship.person_id === toPersonId && relationship.related_id === fromPersonId;
-  if (!forward && !reverse) return 'linked to';
-  const mapForwardParent = ['bio_father', 'bio_mother', 'adoptive_father', 'adoptive_mother', 'guardian', 'step_parent'];
-  if (mapForwardParent.includes(relationship.type)) {
-    return forward ? 'parent of' : 'child of';
-  }
-  if (relationship.type === 'child') {
-    return forward ? 'parent of' : 'child of';
-  }
-  if (relationship.type === 'marriage' || relationship.type === 'partner') {
-    return 'partner of';
-  }
-  return 'linked to';
-};
-
 const buildFullName = (firstName?: string | null, lastName?: string | null) =>
   `${firstName || ''} ${lastName || ''}`.trim();
 
@@ -296,26 +275,6 @@ const rawAutosomalImportedAtFromMetadata = (metadata: Record<string, unknown>): 
 };
 
 const familyKitPredictionLabel = (relationLabel: string) => `In-tree family kit (${relationLabel})`;
-
-const buildDnaLineagePathLabel = (
-  pathPersonIds: string[],
-  pathRelationshipIds: string[],
-  typedRows: RelationshipLookupRow[],
-  pathNames: Map<string, string>
-) => {
-  if (!pathPersonIds.length) return 'No lineage path found';
-  const relationshipById = new Map<string, RelationshipLookupRow>();
-  typedRows.forEach((row) => relationshipById.set(row.id, row));
-  return pathPersonIds
-    .map((personId, index) => {
-      const name = pathNames.get(personId) || personId;
-      if (index === pathPersonIds.length - 1) return name;
-      const nextPersonId = pathPersonIds[index + 1];
-      const relationshipId = pathRelationshipIds[index];
-      return `${name} -> ${traversalLabel(relationshipById.get(relationshipId), personId, nextPersonId)}`;
-    })
-    .join(' ');
-};
 
 const summaryFromDnaTestMetadata = (metadata: Record<string, unknown>): SharedSegmentSummaryLike | null => {
   const summaryRaw = asRecord(metadata.sharedSegmentSummary ?? metadata.shared_segment_summary);
@@ -2720,20 +2679,7 @@ export const resolveSharedMatchLineage = async (
     (personRows || []).forEach((row: any) => pathNames.set(row.id, toDisplayName(row)));
   }
 
-  const relationshipById = new Map<string, RelationshipLookupRow>();
-  typedRows.forEach((row) => relationshipById.set(row.id, row));
-  const pathLabel = pathPersonIds.length
-    ? pathPersonIds
-        .map((personId, index) => {
-          const name = pathNames.get(personId) || personId;
-          if (index === pathPersonIds.length - 1) return name;
-          const nextPersonId = pathPersonIds[index + 1];
-          const relationshipId = pathRelationshipIds[index];
-          const relationship = relationshipById.get(relationshipId);
-          return `${name} -> ${traversalLabel(relationship, personId, nextPersonId)}`;
-        })
-        .join(' ')
-    : 'No lineage path found';
+  const pathLabel = buildDnaLineagePathLabel(pathPersonIds, pathRelationshipIds, typedRows, pathNames);
 
   return {
     matchId: dnaMatchId,
