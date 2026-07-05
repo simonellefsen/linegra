@@ -1,6 +1,8 @@
 // Roadmap U10 — persist public crawl / bot traffic from Edge API routes.
 
 import { classifyCrawlerUserAgent } from './crawlerAgents';
+import { normalizeCrawlResourceKey } from './crawlEventDedupe';
+import { normalizeCrawlViewerUserId } from './crawlViewerCookie';
 import type { RequestGeo } from './requestGeo';
 import { createServerSupabase } from './supabaseServer';
 
@@ -19,6 +21,8 @@ export interface RecordPublicCrawlEventInput {
   resourceId?: string | null;
   format?: string | null;
   geo?: RequestGeo;
+  viewerUserId?: string | null;
+  referrerBucket?: string | null;
 }
 
 const isUuid = (value: string | null | undefined): value is string =>
@@ -42,11 +46,14 @@ export const recordPublicCrawlEvent = async (
       payload_route: input.route,
       payload_agent_bucket: agentBucket,
       payload_resource_id: isUuid(input.resourceId) ? input.resourceId : null,
+      payload_resource_key: normalizeCrawlResourceKey(input.resourceId),
       payload_format: input.format ?? null,
       payload_country_code: input.geo?.countryCode ?? null,
       payload_region: input.geo?.region ?? null,
       payload_city: input.geo?.city ?? null,
       payload_user_agent: truncateUserAgent(input.userAgent),
+      payload_viewer_user_id: normalizeCrawlViewerUserId(input.viewerUserId),
+      payload_referrer_bucket: input.referrerBucket ?? null,
     });
     if (error) {
       console.warn('record_public_crawl_event failed', error.message);

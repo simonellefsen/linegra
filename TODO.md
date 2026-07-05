@@ -17,8 +17,43 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       Admin **AI Usage** auto-refreshes after test + manual Refresh; see `docs/AI_SETUP.md`
       for the full verification checklist (one in-app generation still worth a manual spot-check).
 
-## DNA analysis (roadmap K9 — new feature)
+## Traffic panel (screenshot review 2026-07-05 — roadmap U18)
 
+- [x] **U18a — BUG: URL-encoded city names** ("Los%20Angeles, CA") — Vercel URI-encodes
+      `x-vercel-ip-city`; decode in `lib/requestGeo.ts`.
+- [x] **U18b — Raw ISO region codes** ("Copenhagen, 84") — map ISO-3166-2 to names or drop
+      numeric-only regions.
+- [x] **U18c — Misleading copy:** "LLM agents 0" above "GPTBot, ClaudeBot, Perplexity" reads as
+      if they visited; re-copy as "watching for …" or hide when 0.
+- [x] **U18d — Count consistency:** "Countries 2" vs three listed buckets (incl. Unknown).
+- [x] **U18e — INVESTIGATE: duplicate events** (identical-timestamp visitor rows ×2) — check
+      middleware re-invocation + client double-fire; dedupe at ingestion.
+- [x] **U18f — Resolve resource UUIDs** to person/tree names with links (admin-only).
+- [x] **U18g — Self-traffic exclusion** (tag signed-in admin hits; default-on filter).
+- [x] **U18h — Chart scaling:** fixed axis over the full window incl. zero days; bot + visitor
+      series overlaid.
+- [x] **U18i — Format breakdown per agent** (html/md/json/xml) — measures U7/U8 adoption.
+- [x] **U18j — Crawl coverage:** % of sitemap URLs actually fetched per bot/tree + never-crawled
+      list.
+- [x] **U18k — First-seen callouts + week-over-week deltas** on stat cards.
+- [x] **U18l — Referrer buckets for human visits** (google / AI assistants / direct — header
+      only, no IP).
+
+## DNA analysis (roadmap K9/K10)
+
+- [ ] **K10 — BUG: family kits are 1-hop only.** `list_family_autosomal_kits` joins only direct
+      parent↔child edges, so a tested grandmother (Helle Andersen, 2 hops from Pernille), sibling,
+      or cousin never appears on the DNA panel. Enumerate all in-tree autosomal kits and label each
+      via `relationshipCalculator.computeRelationship` (grandparent / 1C1R + MRCA + expected cM
+      range); flag K6 raw-kit comparison when both have SNP data. **High priority.**
+- [ ] **K11 — BUG: shared matches drop unless counterpart is a tree person + married/maiden name
+      mismatch.** Only Ulla shows for Helle though ~7 CSVs imported. (a) `loadDnaSharedMatches`
+      drops any match whose counterpart doesn't resolve to a tree person (`if (!counterpartPersonId)
+      return;`) → unify into one list with linked/unlinked status. (b) CSVs name her "Helle Due"
+      (married) vs tree "Helle Andersen" (birth); name-based association is brittle — trust
+      `dna_tests.person_id` FK + counterpart UUID first, store DNA-kit name as married-name alias,
+      confirm owner/counterpart at import. Verify whether Ruben/Eva/Laurie are in K3 or absent
+      entirely. **High priority — imported data disappearing from view.**
 - [x] **K9 — Candidate-branch hypothesis for unplaced matches.** Join cM→generation-band
       prediction + cluster exclusion + per-line DNA coverage gaps into a ranked "this match most
       likely connects via ancestor couple X" suggestion with research to-dos. Pedigree UI: amber

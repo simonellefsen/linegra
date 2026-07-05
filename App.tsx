@@ -1708,7 +1708,10 @@ const App: React.FC = () => {
                 )}
                 {adminSection === 'traffic' && currentUser?.isSuperAdmin && (
                   <ErrorBoundary title="Crawl traffic panel failed to load">
-                  <AdminCrawlTrafficPanel supabaseActive={supabaseActive} />
+                  <AdminCrawlTrafficPanel
+                    supabaseActive={supabaseActive}
+                    currentUserId={currentUser?.id}
+                  />
                   </ErrorBoundary>
                 )}
                 {adminSection === 'errors' && currentUser?.isSuperAdmin && (

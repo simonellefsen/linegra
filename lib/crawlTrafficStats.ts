@@ -1,5 +1,8 @@
 // Map admin_get_crawl_traffic_stats RPC payload for the Traffic panel.
 
+import { REFERRER_BUCKET_LABELS, type ReferrerBucket } from './crawlReferrer';
+import type { WeekOverWeekDelta } from './crawlTrafficWow';
+
 export interface CrawlTrafficAgentRow {
   agentBucket: string;
   hits: number;
@@ -21,12 +24,19 @@ export interface CrawlTrafficRecentRow {
   route: string;
   agentBucket: string;
   resourceId?: string | null;
+  resourceKey?: string | null;
   responseFormat?: string | null;
   userAgent?: string | null;
 }
 
 export interface VisitorCountryRow {
   countryCode: string;
+  hits: number;
+  lastSeen?: string;
+}
+
+export interface VisitorReferrerRow {
+  referrerBucket: ReferrerBucket;
   hits: number;
   lastSeen?: string;
 }
@@ -38,6 +48,14 @@ export interface VisitorRecentRow {
   region?: string | null;
   city?: string | null;
   resourceId?: string | null;
+  resourceKey?: string | null;
+  referrerBucket?: ReferrerBucket | null;
+}
+
+export interface CrawlTrafficAgentFormatRow {
+  agentBucket: string;
+  format: string;
+  hits: number;
 }
 
 export interface BotTrafficStats {
@@ -47,9 +65,21 @@ export interface BotTrafficStats {
     llmHits: number;
   };
   byAgent: CrawlTrafficAgentRow[];
+  byAgentFormat: CrawlTrafficAgentFormatRow[];
   byRoute: CrawlTrafficRouteRow[];
   byDay: CrawlTrafficDayRow[];
   recent: CrawlTrafficRecentRow[];
+}
+
+export interface CrawlTrafficDeltas {
+  bot: WeekOverWeekDelta;
+  visitor: WeekOverWeekDelta;
+  llm: WeekOverWeekDelta;
+}
+
+export interface CrawlTrafficFirstSeenAgent {
+  agentBucket: string;
+  firstSeenAt: string;
 }
 
 export interface VisitorTrafficStats {
@@ -59,6 +89,7 @@ export interface VisitorTrafficStats {
     uniqueRoutes: number;
   };
   byCountry: VisitorCountryRow[];
+  byReferrer: VisitorReferrerRow[];
   byRoute: CrawlTrafficRouteRow[];
   byDay: CrawlTrafficDayRow[];
   recent: VisitorRecentRow[];
@@ -68,6 +99,9 @@ export interface CrawlTrafficStats {
   days: number;
   rawRetentionDays: number;
   agentFilter?: string | null;
+  excludeViewerUserId?: string | null;
+  deltas: CrawlTrafficDeltas;
+  firstSeenAgents: CrawlTrafficFirstSeenAgent[];
   bot: BotTrafficStats;
   visitor: VisitorTrafficStats;
 }
@@ -102,6 +136,31 @@ export const labelCountryCode = (countryCode: string | null | undefined): string
   return countryDisplay?.of(code) ?? code;
 };
 
+export const labelReferrerBucket = (bucket: string | null | undefined): string => {
+  const key = bucket?.trim() as ReferrerBucket | undefined;
+  if (!key) return 'Unknown';
+  return REFERRER_BUCKET_LABELS[key] ?? key;
+};
+
+const mapWowDelta = (row: unknown): WeekOverWeekDelta => {
+  const data = (row && typeof row === 'object' ? row : {}) as Record<string, unknown>;
+  return {
+    currentWeek: Number(data.current_week ?? 0),
+    priorWeek: Number(data.prior_week ?? 0),
+  };
+};
+
+const mapFirstSeenAgent = (row: Record<string, unknown>): CrawlTrafficFirstSeenAgent => ({
+  agentBucket: String(row.agent_bucket ?? 'unknown'),
+  firstSeenAt: String(row.first_seen_at ?? ''),
+});
+
+const mapAgentFormat = (row: Record<string, unknown>): CrawlTrafficAgentFormatRow => ({
+  agentBucket: String(row.agent_bucket ?? 'unknown'),
+  format: String(row.response_format ?? 'other'),
+  hits: Number(row.hits ?? 0),
+});
+
 const mapAgent = (row: Record<string, unknown>): CrawlTrafficAgentRow => ({
   agentBucket: String(row.agent_bucket ?? 'unknown'),
   hits: Number(row.hits ?? 0),
@@ -123,12 +182,19 @@ const mapBotRecent = (row: Record<string, unknown>): CrawlTrafficRecentRow => ({
   route: String(row.route ?? 'unknown'),
   agentBucket: String(row.agent_bucket ?? 'unknown'),
   resourceId: typeof row.resource_id === 'string' ? row.resource_id : null,
+  resourceKey: typeof row.resource_key === 'string' ? row.resource_key : null,
   responseFormat: typeof row.response_format === 'string' ? row.response_format : null,
   userAgent: typeof row.user_agent === 'string' ? row.user_agent : null,
 });
 
 const mapVisitorCountry = (row: Record<string, unknown>): VisitorCountryRow => ({
   countryCode: String(row.country_code ?? '??'),
+  hits: Number(row.hits ?? 0),
+  lastSeen: typeof row.last_seen === 'string' ? row.last_seen : undefined,
+});
+
+const mapVisitorReferrer = (row: Record<string, unknown>): VisitorReferrerRow => ({
+  referrerBucket: String(row.referrer_bucket ?? 'other') as ReferrerBucket,
   hits: Number(row.hits ?? 0),
   lastSeen: typeof row.last_seen === 'string' ? row.last_seen : undefined,
 });
@@ -140,6 +206,11 @@ const mapVisitorRecent = (row: Record<string, unknown>): VisitorRecentRow => ({
   region: typeof row.region === 'string' ? row.region : null,
   city: typeof row.city === 'string' ? row.city : null,
   resourceId: typeof row.resource_id === 'string' ? row.resource_id : null,
+  resourceKey: typeof row.resource_key === 'string' ? row.resource_key : null,
+  referrerBucket:
+    typeof row.referrer_bucket === 'string'
+      ? (row.referrer_bucket as ReferrerBucket)
+      : null,
 });
 
 const asRows = <T>(value: unknown, mapper: (row: Record<string, unknown>) => T): T[] =>
@@ -159,6 +230,7 @@ const mapBotSection = (section: unknown): BotTrafficStats => {
       llmHits: Number(totals.llm_hits ?? 0),
     },
     byAgent: asRows(data.by_agent, mapAgent),
+    byAgentFormat: asRows(data.by_agent_format, mapAgentFormat),
     byRoute: asRows(data.by_route, mapRoute),
     byDay: asRows(data.by_day, mapDay),
     recent: asRows(data.recent, mapBotRecent),
@@ -171,17 +243,32 @@ const mapVisitorSection = (section: unknown): VisitorTrafficStats => {
     string,
     unknown
   >;
+  const byCountry = asRows(data.by_country, mapVisitorCountry);
+  const rpcUniqueCountries = Number(totals.unique_countries ?? 0);
+  // RPC excludes the Unknown (??) bucket from distinct count; align with the visible list.
+  const uniqueCountries =
+    byCountry.length > 0 ? byCountry.length : rpcUniqueCountries;
 
   return {
     totals: {
       hits: Number(totals.hits ?? 0),
-      uniqueCountries: Number(totals.unique_countries ?? 0),
+      uniqueCountries,
       uniqueRoutes: Number(totals.unique_routes ?? 0),
     },
-    byCountry: asRows(data.by_country, mapVisitorCountry),
+    byCountry,
+    byReferrer: asRows(data.by_referrer, mapVisitorReferrer),
     byRoute: asRows(data.by_route, mapRoute),
     byDay: asRows(data.by_day, mapDay),
     recent: asRows(data.recent, mapVisitorRecent),
+  };
+};
+
+const mapDeltas = (section: unknown): CrawlTrafficDeltas => {
+  const data = (section && typeof section === 'object' ? section : {}) as Record<string, unknown>;
+  return {
+    bot: mapWowDelta(data.bot),
+    visitor: mapWowDelta(data.visitor),
+    llm: mapWowDelta(data.llm),
   };
 };
 
@@ -195,6 +282,7 @@ export const mapCrawlTrafficStats = (payload: unknown): CrawlTrafficStats => {
       ? {
           totals: data.totals,
           by_agent: data.by_agent,
+          by_agent_format: data.by_agent_format,
           by_route: data.by_route,
           by_day: data.by_day,
           recent: data.recent,
@@ -205,6 +293,10 @@ export const mapCrawlTrafficStats = (payload: unknown): CrawlTrafficStats => {
     days: Number(data.days ?? 30),
     rawRetentionDays: Number(data.raw_retention_days ?? 14),
     agentFilter: typeof data.agent_filter === 'string' ? data.agent_filter : null,
+    excludeViewerUserId:
+      typeof data.exclude_viewer_user_id === 'string' ? data.exclude_viewer_user_id : null,
+    deltas: mapDeltas(data.deltas),
+    firstSeenAgents: asRows(data.first_seen_agents, mapFirstSeenAgent),
     bot: mapBotSection(botPayload),
     visitor: mapVisitorSection(data.visitor),
   };

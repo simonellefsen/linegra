@@ -26,6 +26,7 @@ describe('crawlTrafficStats', () => {
       visitor: {
         totals: { hits: 3, unique_countries: 2, unique_routes: 2 },
         by_country: [{ country_code: 'NO', hits: 2, last_seen: '2026-07-04T09:00:00Z' }],
+        by_referrer: [{ referrer_bucket: 'google', hits: +2 }],
         by_route: [{ route: 'tree', hits: 2 }],
         by_day: [{ day: '2026-07-04', hits: 3 }],
         recent: [
@@ -34,10 +35,17 @@ describe('crawlTrafficStats', () => {
             route: 'tree',
             country_code: 'NO',
             city: 'Oslo',
+            referrer_bucket: 'google',
             resource_id: '22222222-2222-4222-8222-222222222222',
           },
         ],
       },
+      deltas: {
+        bot: { current_week: 5, prior_week: 4 },
+        visitor: { current_week: 2, prior_week: 1 },
+        llm: { current_week: 1, prior_week: 0 },
+      },
+      first_seen_agents: [{ agent_bucket: 'gptbot', first_seen_at: '2026-07-04T08:00:00Z' }],
     });
     expect(stats.agentFilter).toBe('googlebot');
     expect(stats.rawRetentionDays).toBe(14);
@@ -45,6 +53,27 @@ describe('crawlTrafficStats', () => {
     expect(stats.bot.recent[0]?.userAgent).toBe('GPTBot/1.0');
     expect(stats.visitor.totals.hits).toBe(3);
     expect(stats.visitor.byCountry[0]?.countryCode).toBe('NO');
+    expect(stats.visitor.byReferrer[0]?.referrerBucket).toBe('google');
+    expect(stats.deltas.bot.currentWeek).toBe(5);
+    expect(stats.firstSeenAgents[0]?.agentBucket).toBe('gptbot');
+  });
+
+  it('aligns unique country count with by-country buckets including Unknown', () => {
+    const stats = mapCrawlTrafficStats({
+      days: 7,
+      visitor: {
+        totals: { hits: 5, unique_countries: 2, unique_routes: 1 },
+        by_country: [
+          { country_code: 'NO', hits: 2 },
+          { country_code: 'US', hits: 2 },
+          { country_code: '??', hits: 1 },
+        ],
+        by_route: [],
+        by_day: [],
+        recent: [],
+      },
+    });
+    expect(stats.visitor.totals.uniqueCountries).toBe(3);
   });
 
   it('labels known crawler buckets', () => {
@@ -68,5 +97,25 @@ describe('crawlTrafficStats', () => {
     });
     expect(stats.bot.totals.hits).toBe(2);
     expect(stats.bot.byAgent[0]?.agentBucket).toBe('googlebot');
+  });
+
+  it('maps per-agent format breakdown rows', () => {
+    const stats = mapCrawlTrafficStats({
+      days: 7,
+      bot: {
+        totals: { hits: 2, unique_agents: 1, llm_hits: 2 },
+        by_agent: [{ agent_bucket: 'gptbot', hits: 2 }],
+        by_agent_format: [
+          { agent_bucket: 'gptbot', response_format: 'html', hits: 1 },
+          { agent_bucket: 'gptbot', response_format: 'md', hits: 1 },
+        ],
+        by_route: [],
+        by_day: [],
+        recent: [],
+      },
+      visitor: { totals: { hits: 0, unique_countries: 0, unique_routes: 0 } },
+    });
+    expect(stats.bot.byAgentFormat).toHaveLength(2);
+    expect(stats.bot.byAgentFormat[1]?.format).toBe('md');
   });
 });

@@ -1,7 +1,9 @@
 import { isCrawlerUserAgent } from './lib/crawlerAgents';
 import { recordApiError } from './lib/apiErrorTelemetry';
+import { classifyReferrer } from './lib/crawlReferrer';
 import { recordPublicCrawlEvent } from './lib/crawlTelemetry';
 import { extractRequestGeo } from './lib/requestGeo';
+import { extractCrawlViewerUserId } from './lib/crawlViewerCookie';
 import { checkPublicRateLimit, clientIpFromRequest } from './lib/publicRateLimit';
 import { isPublicUuid, parsePersonIdPrefix } from './lib/publicSlugs';
 import { resolvePublicPersonId, resolvePublicBookId, resolvePublicTreeId } from './lib/publicRouteResolve';
@@ -168,6 +170,8 @@ export default async function middleware(
       userAgent,
       resourceId: visitorRoute.resourceId,
       geo: extractRequestGeo(request),
+      viewerUserId: extractCrawlViewerUserId(request),
+      referrerBucket: classifyReferrer(request.headers.get('referer')),
     });
     if (context?.waitUntil) {
       context.waitUntil(recordPromise);

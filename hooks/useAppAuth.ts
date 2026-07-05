@@ -7,6 +7,7 @@ import {
   signOut,
   subscribeToAuthChanges,
 } from '../services/auth';
+import { clearCrawlViewerCookie, setCrawlViewerCookie } from '../lib/crawlViewerCookie';
 import type { User } from '../types';
 
 type UseAppAuthOptions = {
@@ -81,6 +82,14 @@ export const useAppAuth = (options: UseAppAuthOptions = {}) => {
   useEffect(() => {
     void refreshPendingInvites();
   }, [refreshPendingInvites]);
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      setCrawlViewerCookie(currentUser.id);
+      return;
+    }
+    clearCrawlViewerCookie();
+  }, [currentUser?.id]);
 
   const handleLogout = useCallback(async () => {
     try {

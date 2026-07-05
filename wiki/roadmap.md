@@ -252,6 +252,76 @@ that gates raw data.
   Policy: [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md).
 - **Sequencing:** K7 → K6 → K1 → K5 — **complete.**
 
+**K11. Shared matches vanish unless the counterpart is already a tree person + married/maiden name
+identity breaks association (BUG, found 2026-07-05).** Reported: ~7 shared-segment CSVs imported for
+Helle (Ulla Thøgersen, Ruben Lykke Pedersen, Eva Hansson, David Allan Christiansen, Mona Howell,
+Birgitta Hallgren, Laurie Griffith…) but only **Ulla** shows under "Shared Autosomal Matches". Two
+compounding causes in [../services/archive/dna.ts](../services/archive/dna.ts):
+- **(a) Counterpart must resolve to a tree person or the row is dropped.** `loadDnaSharedMatches`
+  computes the counterpart entirely by fuzzy name (`focusIsSharedMatchParty` +
+  `resolveCounterpartFromSummaryNames`/`inferCounterpartForFocus`, all `scoreNameMatch ≥ 60`), and
+  if no counterpart person resolves it does `if (!counterpartPersonId) return;` — so every match
+  whose counterpart isn't yet a tree person is **removed from the list** and only reappears in the
+  separate K3 "Unknown Matches" pile. Ulla shows solely because she was turned into a tree person.
+  The two sections read as unrelated, so it looks like the imports "disappeared." **Fix:** show
+  *every* shared import for the focus in one list with a per-row **linked / unlinked** status
+  (fold K3 placement inline), rather than dropping unlinked ones. Continues K8c/K8d.
+- **(b) Name identity: DNA-kit name ≠ tree name.** The CSVs call her "Helle **Due**" (married name
+  — she married Aksel Egon Gether **Due**) but the tree stores "Helle **Andersen**" (birth name).
+  Association survives only because `scoreNameMatch("Helle Andersen","Helle Due")` lands at 65 (one
+  shared token + equal length); any less-lucky married-name change scores < 60 and the whole
+  import silently fails to attach — so some names may be **absent even from K3** (verify against
+  live data: are Ruben/Eva/Laurie in the K3 list or gone entirely? gone ⇒ import-time association
+  failure). **Fix:** (1) trust structured links first — associate a CSV via `dna_tests.person_id`
+  FK + stored counterpart UUID, only falling back to names when absent (the FK is already loaded
+  but the gate ignores it); (2) record a person's DNA-kit display name as a **married-name alias**
+  (the `AlternateNameType 'married'` from the GEDCOM work already exists) so name matching can find
+  them; (3) at import, let the curator **confirm which tree person** owns the kit / is the
+  counterpart and persist the UUID. Nordic maiden↔married surname changes make pure name-matching
+  structurally unreliable — same identity theme as K10. **High priority — user is losing imported
+  data from view.**
+
+> **DESIGN DECISION 2026-07-05 (owner-selection at import — the primary fix):** the shared-segment
+> CSV import must **require selecting the kit-owner tree person** (the individual whose autosomal
+> test produced the match list) and persist it as `dna_tests.person_id`. This turns fuzzy name
+> matching from the *silent load-time source of truth* into an *import-time pre-fill suggestion the
+> human confirms* — killing the K11(b) owner-side failure class entirely (Helle Due ↔ Helle
+> Andersen becomes a non-issue because a human picked Helle). Load-time then trusts the FK and never
+> re-guesses ownership. Design points:
+> - **Owner required; counterpart optional.** The counterpart is legitimately often unknown (that's
+>   what K3 places) — suggest an existing person or "create placeholder," else leave unlinked.
+> - **Pre-fill from the filename/header** (existing `extractComparisonNamesFromFileName` + name
+>   suggestion) so the dropdown defaults to the best guess; the human confirms/overrides.
+> - **Batch:** a match-list export is all from one owner → select the owner **once** for a
+>   multi-file import.
+> - **Default (don't require) owners who already have a raw `Autosomal` test** — a match list is
+>   generated from a raw kit, but you can hold the export without having uploaded the raw data.
+> - **Offer to save the CSV owner-name as a `married` alias** on confirm (one click; improves
+>   name-matching everywhere, incl. K10/GEDCOM).
+> - **Backfill:** add a **"re-link owner"** repair action for already-imported orphan tests (the
+>   current ~7 Helle CSVs) — the new requirement is not retroactive.
+> Sequencing: ship owner-selection + FK-trust first (fixes new + repaired imports), then the
+> unified linked/unlinked match list (a) and alias plumbing (b2).
+
+**K10. Family kits are 1-hop only — tested grandparents/siblings/cousins never surface (BUG, found
+2026-07-05).** Reported case: Helle Andersen has a full autosomal kit and is Pernille's grandmother
+(Helle → Niels → Pernille = **2 hops**), but neither shows on the other's DNA panel.
+[list_family_autosomal_kits](../supabase/migrations/20260703191000_list_family_autosomal_kits.sql)
+only joins **direct parent ↔ child** edges (parent-type where `related_id = focus`, or a `child`
+edge) — so grandparents, grandchildren, siblings, aunts/uncles, and cousins are all invisible, even
+though the whole point of "in-tree family kits" is to surface tested relatives for validation and
+triangulation. The other surfacing path (`dna_matches` rows) needs an explicit pairwise CSV, which a
+raw full-kit upload doesn't create, so there's no fallback. **Fix:** enumerate *all* in-tree
+autosomal kits and compute each relative's relationship to the focus with the existing
+[relationshipCalculator.ts](../lib/relationshipCalculator.ts) `computeRelationship` (already returns
+"grandparent" / "2nd cousin once removed" + MRCA + generation counts), including everyone within a
+sane distance (e.g. ≤ N meioses). Label the family-kit card with the real relationship and, since the
+relationship is known, **show the expected shared-cM range** and flag a raw-kit comparison (K6) when
+both kits have SNP data (a grandmother should share ~1300–2300 cM — verifiable). Prefer doing the
+hop-walk in TS via the pedigree scope + relationshipCalculator (reuses tested code) over a recursive
+SQL CTE. Pure parts unit-testable; add fixtures for grandparent, sibling, 1C, 1C1R. **This is the
+"why doesn't it show they're related?" bug — high priority.**
+
 **K9. Candidate-branch hypothesis for unplaced matches ("where does Tia fit?") — DONE 2026-07-05.**
 The motivating case: Tia Edelman shares 118.8 cM / 6 segments with the tester (2nd–3rd cousin
 band) but triangulates with nothing — because she belongs to a branch with **no DNA coverage
@@ -601,37 +671,46 @@ and the metrics that make it *actionable* rather than a hit counter.
 
 *Quick fixes (display correctness):*
 - **U18a — City names render URL-encoded** ("Los%20Angeles, CA"): Vercel URI-encodes
-  `x-vercel-ip-city`; `decodeURIComponent` in [../lib/requestGeo.ts](../lib/requestGeo.ts).
+  `x-vercel-ip-city`; `decodeURIComponent` in [../lib/requestGeo.ts](../lib/requestGeo.ts). **DONE 2026-07-05.**
 - **U18b — Raw ISO region codes** ("Copenhagen, 84"): map ISO-3166-2 codes to names (DK-84 →
-  Capital Region) or omit numeric-only regions.
+  Capital Region) or omit numeric-only regions. **DONE 2026-07-05.**
 - **U18c — "LLM agents 0 / GPTBot, ClaudeBot, Perplexity"** reads as if those three visited;
-  re-copy as "watching for: …" or hide the example list when the count is 0.
+  re-copy as "watching for: …" or hide the example list when the count is 0. **DONE 2026-07-05.**
 - **U18d — Count consistency:** "Countries 2" while the list shows three buckets (incl. Unknown)
-  — either count Unknown or visually separate it.
+  — either count Unknown or visually separate it. **DONE 2026-07-05** (stat card matches list length).
 - **U18e — INVESTIGATE: duplicate events.** Recent-visitors shows identical-timestamp pairs
-  (12:27:56 ×2, 09:08:37 ×2, 06:51:15 ×2). Telemetry records from 4 call sites (middleware + 3
-  edge routes) — check middleware re-invocation on rewrites/prefetch and client double-fire;
-  dedupe at ingestion (idempotency key: minute-bucket + route + resource + UA hash) or filter in
-  stats RPC.
+  (12:27:56 ×2, 09:08:37 ×2, 06:51:15 ×2). Telemetry records from middleware (visitor SPA
+  paths) and Edge API routes (crawler shells). Root cause: middleware can fire twice per
+  navigation (prefetch / edge re-invocation). **DONE 2026-07-05** — minute-bucket dedupe in
+  `record_public_crawl_event` + deduped raw tail in stats RPC; `resource_key` stores slug
+  segments for visitor dedupe identity.
 
 *Actionability:*
 - **U18f — Resolve resource UUIDs to names.** "0fd167f2-…" tells the admin nothing; join to
   persons/trees and render "Pernille Gether Gamby (person)" linking to the public page
-  (admin-only panel, so names are fine).
+  (admin-only panel, so names are fine). **DONE 2026-07-05** — batch resolve in
+  `services/crawlTraffic.ts` + `lib/crawlTrafficResourceLabels.ts`; recent tables link to public URLs.
 - **U18g — Self-traffic exclusion.** The admin's own browsing inflates visitor counts; tag hits
   from signed-in sessions (or a device cookie) and default the panel to "exclude my traffic."
+  **DONE 2026-07-05** — `linegra_viewer` cookie + `viewer_user_id` on events; stats RPC
+  `payload_exclude_viewer_user_id`; panel toggle default on.
 - **U18h — Chart scaling.** A single hit renders as a full-width bar; use a fixed axis over the
   whole window with zero-days shown, and overlay bot vs visitor series for trend comparison.
+  **DONE 2026-07-05** — `lib/crawlTrafficCharts.ts` + `CrawlTrafficTrendChart` shared axis.
 - **U18i — Format breakdown per agent** (html / md / json / xml): measures whether LLM agents
-  actually use the U7/U8 alternates — feedback loop for the whole U track.
+  actually use the U7/U8 alternates — feedback loop for the whole U track. **DONE 2026-07-05**
+  — `bot_by_agent_format` in stats RPC + `CrawlTrafficFormatBreakdown` stacked bars.
 - **U18j — Crawl coverage.** Join sitemap entries against crawl events: "Googlebot has fetched
   38% of public person pages; 214 never crawled." Per-tree coverage % + a never-crawled list —
-  turns the panel into an SEO instrument.
+  turns the panel into an SEO instrument. **DONE 2026-07-05** — `admin_get_crawl_coverage_stats`
+  RPC + `CrawlTrafficCoverageSection`.
 - **U18k — First-seen + deltas.** Callout when a new agent appears ("ClaudeBot first visit
-  2026-07-08") and week-over-week change chips on the stat cards.
+  2026-07-08") and week-over-week change chips on the stat cards. **DONE 2026-07-05** —
+  `deltas` + `first_seen_agents` in stats RPC + `CrawlTrafficWowChip`.
 - **U18l — Referrer capture for human visits.** Store the `Referer` header bucket (google / bing
   / chatgpt.com / perplexity.ai / direct) — no IP, consistent with the privacy stance. "Humans
   referred by AI assistants" is the metric that shows the LLM-discoverability work paying off.
+  **DONE 2026-07-05** — `referrer_bucket` column + `lib/crawlReferrer.ts` + visitor breakdown.
 - CSV export of any drill-down view (small).
 
 #### U16. Proposed URL scheme v2 — slugs, indexes, family pages (proposed 2026-07-05)

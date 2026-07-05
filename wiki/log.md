@@ -15,6 +15,73 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — U18j–l crawl coverage, WoW deltas, referrer buckets
+
+**U18 (complete):** Traffic panel now joins sitemap person URLs vs bot fetches (`admin_get_crawl_coverage_stats`),
+shows never-crawled samples per tree, week-over-week chips on stat cards, first-seen agent callouts, and
+visitor referrer buckets (google / bing / AI / direct — header only). Migration
+`20260705257000_crawl_traffic_u18jkl.sql`; `lib/crawlReferrer.ts`, `lib/crawlCoverage.ts`,
+`CrawlTrafficCoverageSection.tsx`, `CrawlTrafficWowChip.tsx`.
+
+---
+
+## 2026-07-05 — U18i per-agent response format breakdown
+
+**U18:** Traffic panel shows HTML/Markdown/JSON/XML adoption stacked bars per crawler agent from
+the raw event tail. `lib/crawlFormatBreakdown.ts`, `CrawlTrafficFormatBreakdown.tsx`,
+migration `20260705256000_crawl_traffic_agent_formats.sql`.
+
+---
+
+## 2026-07-05 — U18h traffic trend chart scaling
+
+**U18:** Overlay bot vs visitor daily series on a fixed UTC window (zero-fill missing days) with a
+shared axis max instead of per-day full-width bars. `lib/crawlTrafficCharts.ts`,
+`CrawlTrafficTrendChart.tsx`.
+
+---
+
+## 2026-07-05 — U18g self-traffic exclusion
+
+**U18:** Signed-in viewers set a `linegra_viewer` cookie; middleware tags `viewer_user_id` on crawl
+events; traffic panel defaults to excluding the current user's raw-tail visits.
+`lib/crawlViewerCookie.ts`, migration `20260705255000_crawl_traffic_viewer_tag.sql`.
+
+---
+
+## 2026-07-05 — U18f crawl resource labels in traffic panel
+
+**U18:** Recent bot/visitor rows resolve UUIDs to person/tree/book/family names with links to
+public crawl URLs; slug `resource_key` rows humanized as fallback.
+`lib/crawlTrafficResourceLabels.ts`, `services/crawlTraffic.ts`, `AdminCrawlTrafficPanel.tsx`.
+
+---
+
+## 2026-07-05 — U18e crawl event dedupe
+
+**U18:** Minute-bucket idempotency in `record_public_crawl_event` (route + resource key + UA);
+`resource_key` column for slug-based visitor paths; stats RPC dedupes raw-tail rows for recent
+visitor/bot tables. `lib/crawlEventDedupe.ts`, migration `20260705253000_crawl_event_dedupe.sql`.
+
+---
+
+## 2026-07-05 — U18a–d traffic panel display fixes
+
+**U18:** Decode URL-encoded Vercel city names; map DK numeric subdivisions (or drop unmapped);
+"Watching for …" LLM copy when count is 0; align country stat card with by-country buckets
+(incl. Unknown). `lib/requestGeo.ts`, `lib/crawlTrafficStats.ts`,
+`AdminCrawlTrafficPanel.tsx`.
+
+---
+
+## 2026-07-05 — Multiple shared autosomal DNA imports (PR #18)
+
+**DNA:** **Add shared match** on the profile DNA tab creates a new Shared Autosomal test and
+opens the CSV picker; per-card import labeled **Replace this match CSV** when data exists.
+`DNATab.tsx`, `PersonProfile.tsx`.
+
+---
+
 ## 2026-07-05 — Y2 App.tsx hooks (route, tree bootstrap, profile)
 
 **Y:** `useAppAuth`, `useAppTreeBootstrap`, `useAppPublicRoutes`, `usePersonProfileSelection` —
