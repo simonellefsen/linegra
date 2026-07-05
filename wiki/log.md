@@ -15,6 +15,14 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-05 — U18i per-agent response format breakdown
+
+**U18:** Traffic panel shows HTML/Markdown/JSON/XML adoption stacked bars per crawler agent from
+the raw event tail. `lib/crawlFormatBreakdown.ts`, `CrawlTrafficFormatBreakdown.tsx`,
+migration `20260705256000_crawl_traffic_agent_formats.sql`.
+
+---
+
 ## 2026-07-05 — U18h traffic trend chart scaling
 
 **U18:** Overlay bot vs visitor daily series on a fixed UTC window (zero-fill missing days) with a

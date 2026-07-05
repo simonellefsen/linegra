@@ -32,7 +32,7 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **U18g — Self-traffic exclusion** (tag signed-in admin hits; default-on filter).
 - [x] **U18h — Chart scaling:** fixed axis over the full window incl. zero days; bot + visitor
       series overlaid.
-- [ ] **U18i — Format breakdown per agent** (html/md/json/xml) — measures U7/U8 adoption.
+- [x] **U18i — Format breakdown per agent** (html/md/json/xml) — measures U7/U8 adoption.
 - [ ] **U18j — Crawl coverage:** % of sitemap URLs actually fetched per bot/tree + never-crawled
       list.
 - [ ] **U18k — First-seen callouts + week-over-week deltas** on stat cards.

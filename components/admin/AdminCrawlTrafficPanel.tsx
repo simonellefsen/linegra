@@ -19,6 +19,7 @@ import {
   type CrawlTrafficStats,
 } from '../../services/crawlTraffic';
 import CrawlTrafficTrendChart from './CrawlTrafficTrendChart';
+import CrawlTrafficFormatBreakdown from './CrawlTrafficFormatBreakdown';
 
 interface AdminCrawlTrafficPanelProps {
   supabaseActive: boolean;
@@ -307,6 +308,14 @@ const AdminCrawlTrafficPanel: React.FC<AdminCrawlTrafficPanelProps> = ({
                   )}
                 </div>
               </div>
+
+              <CrawlTrafficFormatBreakdown
+                rows={stats.bot.byAgentFormat}
+                agentOrder={stats.bot.byAgent.map((row) => row.agentBucket)}
+                agentFilter={agentFilter}
+                rawRetentionDays={stats.rawRetentionDays}
+                labelAgent={labelCrawlerAgent}
+              />
 
               {stats.bot.recent.length > 0 && (
                 <div className="rounded-2xl border border-white bg-white overflow-hidden">

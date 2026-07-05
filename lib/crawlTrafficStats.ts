@@ -42,6 +42,12 @@ export interface VisitorRecentRow {
   resourceKey?: string | null;
 }
 
+export interface CrawlTrafficAgentFormatRow {
+  agentBucket: string;
+  format: string;
+  hits: number;
+}
+
 export interface BotTrafficStats {
   totals: {
     hits: number;
@@ -49,6 +55,7 @@ export interface BotTrafficStats {
     llmHits: number;
   };
   byAgent: CrawlTrafficAgentRow[];
+  byAgentFormat: CrawlTrafficAgentFormatRow[];
   byRoute: CrawlTrafficRouteRow[];
   byDay: CrawlTrafficDayRow[];
   recent: CrawlTrafficRecentRow[];
@@ -104,6 +111,12 @@ export const labelCountryCode = (countryCode: string | null | undefined): string
   if (!code || code === '??') return 'Unknown country';
   return countryDisplay?.of(code) ?? code;
 };
+
+const mapAgentFormat = (row: Record<string, unknown>): CrawlTrafficAgentFormatRow => ({
+  agentBucket: String(row.agent_bucket ?? 'unknown'),
+  format: String(row.response_format ?? 'other'),
+  hits: Number(row.hits ?? 0),
+});
 
 const mapAgent = (row: Record<string, unknown>): CrawlTrafficAgentRow => ({
   agentBucket: String(row.agent_bucket ?? 'unknown'),
@@ -164,6 +177,7 @@ const mapBotSection = (section: unknown): BotTrafficStats => {
       llmHits: Number(totals.llm_hits ?? 0),
     },
     byAgent: asRows(data.by_agent, mapAgent),
+    byAgentFormat: asRows(data.by_agent_format, mapAgentFormat),
     byRoute: asRows(data.by_route, mapRoute),
     byDay: asRows(data.by_day, mapDay),
     recent: asRows(data.recent, mapBotRecent),
@@ -205,6 +219,7 @@ export const mapCrawlTrafficStats = (payload: unknown): CrawlTrafficStats => {
       ? {
           totals: data.totals,
           by_agent: data.by_agent,
+          by_agent_format: data.by_agent_format,
           by_route: data.by_route,
           by_day: data.by_day,
           recent: data.recent,

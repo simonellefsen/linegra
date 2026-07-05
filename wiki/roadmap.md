@@ -698,7 +698,8 @@ and the metrics that make it *actionable* rather than a hit counter.
   whole window with zero-days shown, and overlay bot vs visitor series for trend comparison.
   **DONE 2026-07-05** — `lib/crawlTrafficCharts.ts` + `CrawlTrafficTrendChart` shared axis.
 - **U18i — Format breakdown per agent** (html / md / json / xml): measures whether LLM agents
-  actually use the U7/U8 alternates — feedback loop for the whole U track.
+  actually use the U7/U8 alternates — feedback loop for the whole U track. **DONE 2026-07-05**
+  — `bot_by_agent_format` in stats RPC + `CrawlTrafficFormatBreakdown` stacked bars.
 - **U18j — Crawl coverage.** Join sitemap entries against crawl events: "Googlebot has fetched
   38% of public person pages; 214 never crawled." Per-tree coverage % + a never-crawled list —
   turns the panel into an SEO instrument.

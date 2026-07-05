@@ -87,4 +87,24 @@ describe('crawlTrafficStats', () => {
     expect(stats.bot.totals.hits).toBe(2);
     expect(stats.bot.byAgent[0]?.agentBucket).toBe('googlebot');
   });
+
+  it('maps per-agent format breakdown rows', () => {
+    const stats = mapCrawlTrafficStats({
+      days: 7,
+      bot: {
+        totals: { hits: 2, unique_agents: 1, llm_hits: 2 },
+        by_agent: [{ agent_bucket: 'gptbot', hits: 2 }],
+        by_agent_format: [
+          { agent_bucket: 'gptbot', response_format: 'html', hits: 1 },
+          { agent_bucket: 'gptbot', response_format: 'md', hits: 1 },
+        ],
+        by_route: [],
+        by_day: [],
+        recent: [],
+      },
+      visitor: { totals: { hits: 0, unique_countries: 0, unique_routes: 0 } },
+    });
+    expect(stats.bot.byAgentFormat).toHaveLength(2);
+    expect(stats.bot.byAgentFormat[1]?.format).toBe('md');
+  });
 });
