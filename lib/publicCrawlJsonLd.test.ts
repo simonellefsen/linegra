@@ -49,6 +49,7 @@ describe('buildPersonJsonLd', () => {
         childUnions: [],
         siblings: [rel('Sibling Example', 'https://linegra.app/tree/example-tree/person/sibling', 'sibling', 'Sibling')],
       },
+      sources: [],
       origin: 'https://linegra.app',
     });
 

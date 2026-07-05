@@ -19,6 +19,7 @@ export default async function handler(request: Request): Promise<Response> {
 - Public tree directory: ${origin}/trees
 - Public tree landing: ${origin}/tree/{treeSlug-or-uuid}
 - Public person profile: ${origin}/tree/{treeSlug}/person/{name-year-id8}
+- Public family union: ${origin}/tree/{treeSlug}/family/{union-id8}
 - Shared family book: ${origin}/book/{bookUuid}
 
 Legacy query URLs (\`?tree=&person=\`) redirect to the canonical paths above.
@@ -31,6 +32,9 @@ Legacy query URLs (\`?tree=&person=\`) redirect to the canonical paths above.
 - Person JSON: ${origin}/api/public/person/{personUuid}
 - Person Markdown: ${origin}/api/public/person/{personUuid}?format=md
 - Person HTML (crawler shell): ${origin}/api/public/person/{personUuid}?format=html
+- Family JSON: ${origin}/api/public/family/{unionUuid}
+- Family Markdown: ${origin}/api/public/family/{unionUuid}?format=md
+- Family HTML (crawler shell): ${origin}/api/public/family/{unionUuid}?format=html
 - Tree index HTML: ${origin}/api/public/tree/{treeUuid}?format=html
 - Tree index Markdown: ${origin}/api/public/tree/{treeUuid}?format=md
 

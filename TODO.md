@@ -87,8 +87,8 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       `/api/public/family/{unionId}` with HTML/md/JSON-LD shells.
 - [x] **U14 — Broaden crawler UA gate.** Added `Claude-Web`, `Perplexity-User`, `Meta-ExternalAgent`;
       `Accept: text/markdown` honored on public routes.
-- [~] **U15 — Format parity + shell completeness.** Tree `?format=md`; dynamic `llms.txt` API route.
-      Sources/citations on person shells still open.
+- [x] **U15 — Format parity + shell completeness.** Tree `?format=md`; dynamic `llms.txt` API route;
+      sources/citations on person HTML/md/JSON-LD shells.
 - [x] **U17b — Typed JSON-LD kinship.** Emit Schema.org `parent`/`children`/`spouse`/`sibling`
       instead of lumping into `relatedTo`.
 - [x] **U17c — Lifespans on relation anchors.** "Jens Jensen (1832–1901)" in HTML/md/JSON links —

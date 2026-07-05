@@ -12,6 +12,7 @@ import {
 import { formatLifespanSuffix } from './publicSlugs';
 import { formatPersonDisplayName } from './publicCrawlPrivacy';
 import { buildFamilyUrl, buildPersonUrl } from './publicRoutes';
+import { buildPublicCrawlSources, type PublicCrawlSourceRef } from './publicCrawlSources';
 import { createServerSupabase } from './supabaseServer';
 import type { PublicCrawlPersonRef } from './publicCrawlRelations';
 
@@ -33,6 +34,7 @@ export interface PublicPersonCrawlPayload {
     isLiving?: boolean;
   };
   relationships: ReturnType<typeof bucketPublicCrawlRelationships>;
+  sources: PublicCrawlSourceRef[];
   updatedAt?: string | null;
 }
 
@@ -47,6 +49,52 @@ const mapDbRelationship = (row: Record<string, unknown>): Relationship => ({
   date: relationshipDateFromRow(row),
   place: relationshipPlaceFromRow(row),
 });
+
+const loadPublicPersonSources = async (
+  personId: string,
+  treeId: string
+): Promise<PublicCrawlSourceRef[]> => {
+  const supabase = createServerSupabase();
+  const { data: citationRows, error: citationError } = await supabase
+    .from('citations')
+    .select('source_id, event_label, label, page_text, data_date, data_text')
+    .eq('person_id', personId)
+    .eq('tree_id', treeId);
+  if (citationError || !citationRows?.length) return [];
+
+  const sourceIds = [...new Set(citationRows.map((row) => String(row.source_id)))];
+  const { data: sourceRows, error: sourceError } = await supabase
+    .from('sources')
+    .select(
+      'id, title, type, repository, url, citation_date_text, page, call_number, abbreviation, notes'
+    )
+    .eq('tree_id', treeId)
+    .in('id', sourceIds);
+  if (sourceError || !sourceRows?.length) return [];
+
+  return buildPublicCrawlSources(
+    sourceRows.map((row) => ({
+      id: String(row.id),
+      title: String(row.title ?? ''),
+      type: String(row.type ?? 'Unknown'),
+      repository: row.repository,
+      url: row.url,
+      citation_date_text: row.citation_date_text,
+      page: row.page,
+      call_number: row.call_number,
+      abbreviation: row.abbreviation,
+      notes: row.notes,
+    })),
+    citationRows.map((row) => ({
+      source_id: String(row.source_id),
+      event_label: row.event_label,
+      label: row.label,
+      page_text: row.page_text,
+      data_date: row.data_date,
+      data_text: row.data_text,
+    }))
+  );
+};
 
 export const loadPublicPersonCrawlPayload = async (
   personId: string,
@@ -130,6 +178,8 @@ export const loadPublicPersonCrawlPayload = async (
     return endpointIds.every((id) => id === personId || people.some((person) => person.id === id));
   });
 
+  const sources = await loadPublicPersonSources(personId, personRow.tree_id);
+
   return {
     treeId: personRow.tree_id,
     treeName: treeRow.name ?? 'Family tree',
@@ -142,6 +192,7 @@ export const loadPublicPersonCrawlPayload = async (
       people,
       origin
     ),
+    sources,
     updatedAt: personRow.updated_at,
   };
 };
