@@ -1538,6 +1538,7 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
         {activeSection === 'dna' && (
           <DNATab
             personId={person.id}
+            treeId={person.treeId}
             personNameCandidates={[
               [firstName, lastName].filter(Boolean).join(' ').trim(),
               [firstName, maidenName].filter(Boolean).join(' ').trim(),
@@ -1549,6 +1550,20 @@ const PersonProfile: React.FC<PersonProfileProps> = ({
             onAddTest={handleAddDNATest}
             onUpdateTest={handleUpdateDnaTest}
             onRemoveTest={handleRemoveDnaTest}
+            onAddMarriedNameAlias={(fullName) => {
+              const parts = fullName.trim().split(/\s+/);
+              const firstName = parts[0] || '';
+              const lastName = parts.slice(1).join(' ');
+              if (!firstName) return;
+              setAltNames((current) => [
+                ...current,
+                {
+                  type: 'Married Name',
+                  firstName,
+                  lastName,
+                },
+              ]);
+            }}
           />
         )}
 

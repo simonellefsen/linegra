@@ -4,6 +4,7 @@ import { parseQuay } from '../../lib/sourceQuality';
 import { Citation, DNATest, Note, Person, PersonEvent, Relationship, Source, StructuredPlace } from '../../types';
 import { mapBasicPeople, mapDbDnaTest, mapDbPerson, mapDbRelationship } from '../../lib/archiveDbMappers';
 import { fetchArchiveRpcPages, normalizeActor, parseRpcJsonPage, UUID_REGEX } from './shared';
+import { mapDbRowToNameLookup } from '../../lib/dnaPersonNameVariants';
 import { scoreNameMatch } from '../../lib/dnaNameMatch';
 import {
   buildDnaMatchPayload,
@@ -337,10 +338,10 @@ export const updatePersonProfile = async (
       focusMaidenFullName = buildFullName(targetPersonRow.first_name, targetPersonRow.maiden_name);
       const { data: peopleNameRows, error: peopleNameError } = await supabase
         .from('persons')
-        .select('id, first_name, last_name, maiden_name')
+        .select('id, first_name, last_name, maiden_name, metadata')
         .eq('tree_id', targetPersonRow.tree_id);
       if (peopleNameError) throw new Error(peopleNameError.message);
-      nameRows = (peopleNameRows || []) as NameLookupRow[];
+      nameRows = ((peopleNameRows || []) as any[]).map((row) => mapDbRowToNameLookup(row));
 
       const { data: autosomalRows, error: autosomalError } = await supabase
         .from('dna_tests')

@@ -20,6 +20,7 @@ import {
   type ParentalSideHint,
 } from '../lib/dnaParentalHints';
 import { suggestUnknownMatchPlacements } from '../lib/dnaMatchPlacement';
+import { sharedMatchToUnlinkedRecord } from '../lib/dnaUnlinkedMatchAdapter';
 import { buildClusterLabelByIndex, formatClusterHeading } from '../lib/dnaClusterLabels';
 import {
   createDnaMatchPlaceholderPerson,
@@ -30,6 +31,7 @@ import {
   listSharedMatchesForAutosomalPerson,
   listUnlinkedSharedMatchesForAutosomalPerson,
   loadDnaPathRelationshipsForTree,
+  relinkSharedAutosomalTestOwner,
   resolveFamilyKitLineage,
   resolveSharedMatchLineage,
   resolveSharedTestLineage,
@@ -103,6 +105,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [placingMatchId, setPlacingMatchId] = useState<string | null>(null);
   const [dismissingMatchId, setDismissingMatchId] = useState<string | null>(null);
+  const [relinkingOwnerTestId, setRelinkingOwnerTestId] = useState<string | null>(null);
   const [rawKits, setRawKits] = useState<Awaited<ReturnType<typeof listAutosomalRawKitsForTree>>>([]);
   const [kitCompareA, setKitCompareA] = useState('');
   const [kitCompareB, setKitCompareB] = useState('');
@@ -233,7 +236,11 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
   );
 
   const mrcaMatchInputs = useMemo((): MatchLineageInput[] => {
-    return matches.map((match) => {
+    return matches
+      .filter((match): match is DNASharedMatchRecord & { counterpartPersonId: string } =>
+        !!match.counterpartPersonId
+      )
+      .map((match) => {
       const resolution = resolutionByMatchId[match.id];
       const pathPersonIds = resolution?.pathPersonIds?.length
         ? resolution.pathPersonIds
@@ -279,9 +286,25 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
     [segmentBackedMatches, segmentsByMatchId]
   );
 
+  const inlineUnlinkedByMatchId = useMemo(() => {
+    const map = new Map<string, UnlinkedDnaMatchRecord>();
+    matches.forEach((match) => {
+      const unlinked = sharedMatchToUnlinkedRecord(match);
+      if (unlinked) map.set(match.id, unlinked);
+    });
+    return map;
+  }, [matches]);
+
+  const allUnlinkedForPlacement = useMemo(() => {
+    const fromMain = Array.from(inlineUnlinkedByMatchId.values());
+    const mainTestIds = new Set(fromMain.map((row) => row.dnaTestId));
+    const fromK3 = unlinkedMatches.filter((row) => !mainTestIds.has(row.dnaTestId));
+    return [...fromMain, ...fromK3];
+  }, [inlineUnlinkedByMatchId, unlinkedMatches]);
+
   const placementByUnlinkedId = useMemo(() => {
     const map = new Map<string, ReturnType<typeof suggestUnknownMatchPlacements>>();
-    unlinkedMatches.forEach((match) => {
+    allUnlinkedForPlacement.forEach((match) => {
       map.set(
         match.id,
         suggestUnknownMatchPlacements(
@@ -316,7 +339,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
     });
     return map;
   }, [
-    unlinkedMatches,
+    allUnlinkedForPlacement,
     mrcaCandidates,
     linkedMatchSegmentInputs,
     clusterGroups,
@@ -386,10 +409,25 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
         focusPersonId: selectedPersonId,
       });
       setUnlinkedMatches((current) => current.filter((item) => item.id !== match.id));
+      await loadMatches();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not dismiss unknown match.');
     } finally {
       setDismissingMatchId(null);
+    }
+  };
+
+  const handleRelinkKitOwner = async (dnaTestId: string) => {
+    if (!selectedPersonId || relinkingOwnerTestId) return;
+    setRelinkingOwnerTestId(dnaTestId);
+    setError(null);
+    try {
+      await relinkSharedAutosomalTestOwner(dnaTestId, selectedPersonId);
+      await loadMatches();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not re-link kit owner.');
+    } finally {
+      setRelinkingOwnerTestId(null);
     }
   };
 
@@ -521,6 +559,10 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
       const pathRelationships = await loadDnaPathRelationshipsForTree(treeId);
       const resolveOptions = { pathRelationships };
       for (const match of matches) {
+        if (!match.counterpartPersonId) {
+          setResolveAllProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+          continue;
+        }
         try {
           const resolution =
             match.source === 'dna_match'
@@ -586,6 +628,9 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
       const match = matches.find((item) => item.id === matchId);
       if (!match) {
         throw new Error('Selected DNA match is no longer available.');
+      }
+      if (!match.counterpartPersonId) {
+        throw new Error('Link this match to a tree person before resolving lineage.');
       }
       const pathRelationships = await loadDnaPathRelationshipsForTree(treeId);
       const resolveOptions = { pathRelationships };
@@ -751,7 +796,9 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                       ? resolution.pathRelationshipIds
                       : match.pathRelationshipIds;
                     const pathNames = new Map(personNameById);
-                    pathNames.set(match.counterpartPersonId, match.counterpartPersonName);
+                    if (match.counterpartPersonId) {
+                      pathNames.set(match.counterpartPersonId, match.counterpartPersonName);
+                    }
                     if (selectedPersonId) {
                       const focusName = personNameById.get(selectedPersonId);
                       if (focusName) pathNames.set(selectedPersonId, focusName);
@@ -782,19 +829,30 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                     return (
                       <div
                         key={match.id}
-                        onClick={() => onOpenPerson?.(match.counterpartPersonId)}
+                        onClick={() => {
+                          if (match.counterpartPersonId) onOpenPerson?.(match.counterpartPersonId);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key !== 'Enter' && e.key !== ' ') return;
                           e.preventDefault();
-                          onOpenPerson?.(match.counterpartPersonId);
+                          if (match.counterpartPersonId) onOpenPerson?.(match.counterpartPersonId);
                         }}
                         role="button"
                         tabIndex={0}
-                        className="w-full text-left rounded-2xl border border-slate-200 bg-white px-4 py-4 space-y-2 hover:border-blue-200 hover:bg-blue-50/30 transition-colors"
+                        className={`w-full text-left rounded-2xl border border-slate-200 bg-white px-4 py-4 space-y-2 transition-colors ${
+                          match.counterpartPersonId
+                            ? 'hover:border-blue-200 hover:bg-blue-50/30 cursor-pointer'
+                            : 'hover:border-amber-200 hover:bg-amber-50/20'
+                        }`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-bold text-slate-900">{match.counterpartPersonName}</p>
+                            {match.isCounterpartLinked === false && (
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700 mt-0.5">
+                                Not linked to a tree person
+                              </p>
+                            )}
                             {match.source === 'family_kit' && match.familyRelationLabel && (
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mt-0.5">
                                 {match.familyRelationLabel} · family kit
@@ -829,7 +887,11 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                               e.stopPropagation();
                               handleResolveLineage(match.id);
                             }}
-                            disabled={resolvingMatchId === match.id || resolvingAll}
+                            disabled={
+                              !match.counterpartPersonId ||
+                              resolvingMatchId === match.id ||
+                              resolvingAll
+                            }
                             className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] ${
                               resolvingMatchId === match.id
                                 ? 'bg-slate-100 text-slate-400'
@@ -861,6 +923,76 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             <p className="font-bold">{match.predictionLabel}</p>
                           </div>
                         </div>
+                        {(() => {
+                          const unlinked = inlineUnlinkedByMatchId.get(match.id);
+                          if (!unlinked) return null;
+                          const suggestions = placementByUnlinkedId.get(unlinked.id) || [];
+                          const linkSuggestion = suggestions.find((item) => item.kind === 'link_existing');
+                          const linkTargetPersonId =
+                            linkSuggestion?.anchorPersonId || unlinked.suggestedNameMatchPersonId || null;
+                          const linkTargetPersonName =
+                            linkSuggestion?.anchorPersonName || unlinked.suggestedNameMatchPersonName || null;
+                          const isPlacing = placingMatchId === unlinked.id;
+                          const isDismissing = dismissingMatchId === unlinked.id;
+                          const isBusy = isPlacing || isDismissing;
+                          return (
+                            <div
+                              className="rounded-xl border border-amber-200 bg-amber-50/50 px-3 py-3 space-y-2"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              role="presentation"
+                            >
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">
+                                Link this match in your tree
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {match.ownerPersonId !== selectedPersonId && match.dnaTestId && (
+                                  <button
+                                    type="button"
+                                    disabled={isBusy || relinkingOwnerTestId === match.dnaTestId}
+                                    onClick={() => {
+                                      if (match.dnaTestId) handleRelinkKitOwner(match.dnaTestId);
+                                    }}
+                                    className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-amber-300 text-amber-800 hover:bg-white disabled:opacity-50"
+                                  >
+                                    {relinkingOwnerTestId === match.dnaTestId
+                                      ? 'Re-linking…'
+                                      : 'Set kit owner to selected person'}
+                                  </button>
+                                )}
+                                {linkTargetPersonId && linkTargetPersonName && (
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => handleLinkUnlinkedToPerson(unlinked, linkTargetPersonId)}
+                                    className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
+                                  >
+                                    <Link2 className="w-3.5 h-3.5" />
+                                    Link to {linkTargetPersonName}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleCreateDnaMatchPerson(unlinked)}
+                                  className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1.5"
+                                >
+                                  <UserPlus className="w-3.5 h-3.5" />
+                                  {isPlacing ? 'Placing…' : 'Create match person'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleDismissUnlinkedMatch(unlinked)}
+                                  className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-slate-300 text-slate-600 hover:bg-white disabled:opacity-50 flex items-center gap-1.5"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  {isDismissing ? 'Dismissing…' : 'Not in my tree'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <span
                             className={`inline-flex items-center gap-1 rounded-full px-2 py-1 border ${
@@ -957,9 +1089,25 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                       <p className="text-xs text-slate-500">
                         {formatCm(match.sharedCM)} · {match.segments ?? 'n/a'} segments · {match.predictionLabel}
                       </p>
+                      <p className="text-xs text-slate-500">
+                        Owner: {match.ownerPersonName}
+                        {match.ownerPersonId !== selectedPersonId && (
+                          <span className="text-amber-700"> (different from selected person)</span>
+                        )}
+                      </p>
                       {match.fileName && <p className="text-xs text-slate-400 truncate max-w-xl">{match.fileName}</p>}
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      {match.ownerPersonId !== selectedPersonId && (
+                        <button
+                          type="button"
+                          disabled={isBusy || relinkingOwnerTestId === match.dnaTestId}
+                          onClick={() => handleRelinkKitOwner(match.dnaTestId)}
+                          className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-amber-300 text-amber-800 hover:bg-white disabled:opacity-50"
+                        >
+                          {relinkingOwnerTestId === match.dnaTestId ? 'Re-linking…' : 'Set kit owner to selected person'}
+                        </button>
+                      )}
                       {linkTargetPersonId && linkTargetPersonName && (
                         <button
                           type="button"
