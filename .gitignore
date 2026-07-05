@@ -21,6 +21,11 @@ supabase/.env
 # Vercel / build outputs
 .vercel
 
+# Playwright
+test-results/
+playwright-report/
+e2e/.auth/
+
 # Misc
 npm-debug.log*
 pnpm-debug.log*

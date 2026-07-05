@@ -1,9 +1,13 @@
 import { expect, test } from '@playwright/test';
 
-const hasAuthCredentials = Boolean(process.env.E2E_TEST_EMAIL && process.env.E2E_TEST_PASSWORD);
 const profilePath = process.env.E2E_PROFILE_PATH;
+const hasE2eToken = Boolean(process.env.E2E_ACCESS_TOKEN);
+const hasDeployedTarget = Boolean(process.env.E2E_BASE_URL);
 
-test.describe('Deployed public crawl surfaces', () => {
+const describeDeployed = hasDeployedTarget ? test.describe : test.describe.skip;
+const describeAuthenticated = hasE2eToken ? test.describe : test.describe.skip;
+
+describeDeployed('Deployed public crawl surfaces', () => {
   test('sitemap responds with urlset or sitemap index', async ({ request }) => {
     const response = await request.get('/sitemap.xml');
     expect(response.ok()).toBeTruthy();
@@ -52,31 +56,19 @@ test.describe('Deployed public crawl surfaces', () => {
   });
 });
 
-test.describe('Deployed authenticated smoke', () => {
-  test.skip(!hasAuthCredentials, 'Set E2E_TEST_EMAIL and E2E_TEST_PASSWORD for sign-in smoke.');
-
-  test('signs in and opens the interactive tree tab', async ({ page }) => {
+describeAuthenticated('Deployed authenticated smoke', () => {
+  test('opens the interactive tree tab with a bootstrapped session', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: /login/i }).click();
-    await page.getByPlaceholder('you@example.com').fill(process.env.E2E_TEST_EMAIL!);
-    await page.getByPlaceholder('••••••••').fill(process.env.E2E_TEST_PASSWORD!);
-    await page.getByRole('button', { name: /sign in/i }).click();
-
     await expect(page.getByRole('button', { name: /log out/i })).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: /interactive tree/i }).click();
     await expect(page.getByText(/interactive tree/i).first()).toBeVisible();
   });
 
   test('opens a person profile from a public URL', async ({ page }) => {
-    test.skip(!hasAuthCredentials || !profilePath, 'Requires E2E_TEST_EMAIL/PASSWORD and E2E_PROFILE_PATH.');
+    test.skip(!profilePath, 'Set E2E_PROFILE_PATH to a public person route.');
 
     await page.goto('/');
-    await page.getByRole('button', { name: /login/i }).click();
-    await page.getByPlaceholder('you@example.com').fill(process.env.E2E_TEST_EMAIL!);
-    await page.getByPlaceholder('••••••••').fill(process.env.E2E_TEST_PASSWORD!);
-    await page.getByRole('button', { name: /sign in/i }).click();
     await expect(page.getByRole('button', { name: /log out/i })).toBeVisible({ timeout: 20_000 });
-
     await page.goto(profilePath!);
     await expect(page.getByRole('button', { name: /open in interactive tree/i })).toBeVisible({
       timeout: 25_000,

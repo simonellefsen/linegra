@@ -36,20 +36,43 @@ Playwright smoke pack for browser flows Vitest cannot cover:
 ```bash
 npx playwright install chromium   # once per machine
 npm run test:e2e:local            # built SPA on :4173
-npm run test:e2e:deployed         # public APIs on E2E_BASE_URL (default https://linegra.app)
+E2E_BASE_URL=https://<preview>.vercel.app npm run test:e2e:deployed
 npm run test:e2e                  # both projects
 ```
 
-Optional secrets for authenticated flows (GitHub Actions repository secrets):
+Deployed smoke **must** target a Vercel deployment (preview or production) so `/api/public/*`
+and `/sitemap.xml` edge routes are available. Local `vite preview` does not serve those APIs.
 
-| Variable | Purpose |
-|----------|---------|
-| `E2E_TEST_EMAIL` | Supabase test account email |
-| `E2E_TEST_PASSWORD` | Supabase test account password |
-| `E2E_PROFILE_PATH` | Public person URL path, e.g. `/tree/{slug}/person/{slug}` |
-| `E2E_BASE_URL` | Override deployed target (default `https://linegra.app`) |
+### CI (`e2e-smoke` job)
 
-CI runs `e2e-smoke` after the unit `build` job (local + deployed read-only checks).
+After `build`, the workflow waits for the matching Vercel deployment
+(`patrickedqvist/wait-for-vercel-preview`) and sets `E2E_BASE_URL` to that URL before running
+Playwright.
+
+### E2E access tokens (authenticated smoke)
+
+Superadmins mint revocable tokens under **Admin → Errors → E2E access tokens**. Playwright redeems
+them via `POST /api/e2e/redeem` (server signs in the dedicated service user).
+
+| Where | Name | Purpose |
+|-------|------|---------|
+| GitHub secret | `E2E_ACCESS_TOKEN` | Minted `lg_e2e_…` token for CI auth bootstrap |
+| GitHub variable | `SUPABASE_URL` | Storage key for Playwright `storageState` (same as Vercel) |
+| GitHub secret (optional) | `E2E_PROFILE_PATH` | Public person path for profile smoke |
+| Vercel env | `E2E_SERVICE_USER_EMAIL` | Dedicated E2E runner account |
+| Vercel env | `E2E_SERVICE_USER_PASSWORD` | Service user password |
+| Vercel env | `SUPABASE_SERVICE_ROLE_KEY` | Redeem route consumes tokens + signs in |
+
+Local bootstrap (optional):
+
+```bash
+E2E_BASE_URL=https://<preview>.vercel.app \
+E2E_ACCESS_TOKEN=lg_e2e_… \
+SUPABASE_URL=https://<ref>.supabase.co \
+node scripts/e2e-bootstrap-session.mjs
+```
+
+CI runs `e2e-smoke` after the unit `build` job (local SPA + deployed public APIs on Vercel).
 
 ## Require CI on `main` (roadmap W2) — **active**
 
