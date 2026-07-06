@@ -820,13 +820,21 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                       const focusName = personNameById.get(selectedPersonId);
                       if (focusName) pathNames.set(selectedPersonId, focusName);
                     }
+                    const lineageMrcaOptions =
+                      selectedPersonId && match.counterpartPersonId
+                        ? {
+                            focusPersonId: selectedPersonId,
+                            counterpartPersonId: match.counterpartPersonId,
+                          }
+                        : undefined;
                     const lineageBreadcrumb =
                       match.pathFound && pathPersonIds.length
                         ? buildDnaLineagePathBreadcrumb(
                             pathPersonIds,
                             pathRelationshipIds,
                             lineageRelationshipRows,
-                            pathNames
+                            pathNames,
+                            lineageMrcaOptions
                           )
                         : [];
                     const pathSummary =
@@ -835,12 +843,18 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             pathPersonIds,
                             pathRelationshipIds,
                             lineageRelationshipRows,
-                            pathNames
+                            pathNames,
+                            lineageMrcaOptions
                           )
                         : 'No linked lineage path';
                     const mrcaPersonId =
                       match.pathFound && pathPersonIds.length
-                        ? pickLineageMrcaPersonId(pathPersonIds, pathRelationshipIds, lineageRelationshipRows)
+                        ? pickLineageMrcaPersonId(
+                            pathPersonIds,
+                            pathRelationshipIds,
+                            lineageRelationshipRows,
+                            lineageMrcaOptions
+                          )
                         : null;
                     const viewInTreePersonId = mrcaPersonId || selectedPersonId;
                     return (

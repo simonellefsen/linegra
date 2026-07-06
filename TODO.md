@@ -66,6 +66,10 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
       likely connects via ancestor couple X" suggestion with research to-dos. Pedigree UI: amber
       coverage-gap halo (inverse of the DNA badges) + hypothesis mode highlighting candidate
       branches. `lib/dnaUncoveredBranches.ts`, `uncovered_branch` in `dnaMatchPlacement.ts`.
+- [x] **K13 — BUG: lineage summary names the DNA match as MRCA.** Long paths with missing or
+      mis-oriented edge labels fell back to the counterpart person (e.g. "11 hops · MRCA Kenneth
+      Russell Hansen"). `pickLineageMrcaPersonId` now uses path topology + `computeRelationship`
+      and never treats the match as MRCA on multi-hop paths (`lib/dnaLineagePathLabel.ts`).
 
 ## DNA panel (screenshot review 2026-07-05 — roadmap K8)
 

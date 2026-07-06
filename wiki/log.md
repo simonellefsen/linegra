@@ -15,6 +15,15 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-07-06 — K13: lineage MRCA label no longer names the DNA match
+
+**K13:** `pickLineageMrcaPersonId` detects the ascent→descent turn via blood-path topology and
+falls back to `computeRelationship` instead of defaulting to the path endpoint. Admin lineage cards
+pass focus + counterpart ids so summaries like "11 hops · MRCA …" name the shared ancestor, not the
+match (`lib/dnaLineagePathLabel.ts`, `AdminDnaPanel.tsx`).
+
+---
+
 ## 2026-07-06 — K1: triangulation clustering complete (ICW + Leeds labels)
 
 **K1:** Strict ICW (50% reciprocal overlap) is the default cluster join rule; clusters that mix
