@@ -223,13 +223,11 @@ that gates raw data.
 > surfaces overlap clusters for the selected autosomal tester (min-cM filter, segment-row data from
 > shared-segment CSV imports). ICW / parental-side confirmation still future work (caveat below).
 
-- **K1. Segment triangulation / Leeds-method clustering — UI slice DONE 2026-07-03.** Admin DNA panel
-  shows overlap clusters. Remaining: four-grandparent Leeds labeling, ICW confirmation, parental-side
-  filtering. Reuse the per-segment data already parsed in
-  [../lib/dnaRawParser.ts](../lib/dnaRawParser.ts) (`parseSharedSegmentsCsv`,
-  `parseFtdnaSharedSegmentsCsv`), the cluster labels in
-  [../lib/dnaClassification.ts](../lib/dnaClassification.ts), and the `dna_matches` schema. Deeper
-  design: `sources/dna-triangulation.md` (to be written).
+- **K1. Segment triangulation / Leeds-method clustering — DONE 2026-07-06.** Admin DNA panel
+  groups shared-segment matches with strict ICW (50% reciprocal overlap), splits mixed maternal/
+  paternal path clusters, labels groups by four-grandparent Leeds slots (with K2 MRCA fallback).
+  Engine: [../lib/dnaClustering.ts](../lib/dnaClustering.ts); paths: [../lib/dnaParentalHints.ts](../lib/dnaParentalHints.ts);
+  design: [sources/dna-triangulation.md](sources/dna-triangulation.md).
 - **K2. MRCA suggestion from shared matches + cM — DONE 2026-07-04.** Ranks MRCA candidates by
   supporting matches, combined cM, cluster overlap, and path convergence in
   [../lib/dnaMrcaSuggestions.ts](../lib/dnaMrcaSuggestions.ts), surfaced in the admin DNA panel.
@@ -920,8 +918,6 @@ cheap, high leverage, unblocks Dependabot), **X** (E2E smoke), **Y** (archive.ts
 **W first** (an afternoon, protects everything else) → **V1/V4** (error boundary + live AI key check)
 → **N Phase 4** → the rest opportunistically.
 
-> **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit
-> owner* on the same region. True triangulation/Leeds also requires the two matches to share that
-> segment **with each other** (in-common-with) and to be on the **same parental side** — overlapping
-> the owner's region on opposite parental chromosomes is a false cluster. Fold in ICW / parental-side
-> data before presenting clusters as confirmed shared-ancestor groups.
+> **K1 correctness caveat (addressed 2026-07-06):** strict ICW + parental-side cluster splitting
+> reduce false clusters on unphased data; phased/trio confirmation remains future work if raw
+> phased segments become available.

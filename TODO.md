@@ -39,8 +39,12 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **U18l — Referrer buckets for human visits** (google / AI assistants / direct — header
       only, no IP).
 
-## DNA analysis (roadmap K9/K10)
+## DNA analysis (roadmap K1/K9/K10)
 
+- [x] **K1 — Segment triangulation / Leeds clustering.** Strict ICW join (50%), parental-side cluster
+      split when paths conflict, four-grandparent Leeds labels + K2 MRCA fallback; admin segment
+      clusters + painter. `lib/dnaClustering.ts`, `lib/dnaParentalHints.ts`, `lib/dnaClusterLabels.ts`,
+      `wiki/sources/dna-triangulation.md`.
 - [x] **K10 — BUG: family kits are 1-hop only.** `list_family_autosomal_kits` joins only direct
       parent↔child edges, so a tested grandmother (Helle Andersen, 2 hops from Pernille), sibling,
       or cousin never appears on the DNA panel. Enumerate all in-tree autosomal kits and label each

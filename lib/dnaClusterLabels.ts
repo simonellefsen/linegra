@@ -1,5 +1,7 @@
-// K8f — human-readable Leeds cluster labels from K2 MRCA suggestions.
+// K8f / K1 — human-readable Leeds cluster labels from grandparent paths + K2 MRCA.
 
+import type { GrandparentSlot } from './dnaParentalHints';
+import { grandparentSlotShortLabel } from './dnaParentalHints';
 import type { MrcaCandidate } from './dnaMrcaSuggestions';
 
 export const buildClusterLabelByIndex = (
@@ -13,6 +15,37 @@ export const buildClusterLabelByIndex = (
       .sort((a, b) => b.score - a.score);
     labels.set(index, ranked[0] ? `${ranked[0].ancestorName} branch` : `Cluster ${index + 1}`);
   }
+  return labels;
+};
+
+/** Prefer documented four-grandparent Leeds slots; fall back to K2 MRCA branch names. */
+export const buildLeedsClusterLabels = (
+  clusterGroups: string[][],
+  grandparentSlots: GrandparentSlot[],
+  grandparentSlotByMatchId: Map<string, GrandparentSlot | null>,
+  mrcaCandidates: MrcaCandidate[]
+): Map<number, string> => {
+  const mrcaLabels = buildClusterLabelByIndex(clusterGroups.length, mrcaCandidates);
+  const labels = new Map<number, string>();
+
+  clusterGroups.forEach((group, index) => {
+    const slotVotes = new Map<string, number>();
+    group.forEach((matchId) => {
+      const slot = grandparentSlotByMatchId.get(matchId);
+      if (slot) slotVotes.set(slot.key, (slotVotes.get(slot.key) || 0) + 1);
+    });
+    const dominantKey = [...slotVotes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const dominantSlot = grandparentSlots.find((slot) => slot.key === dominantKey);
+    if (dominantSlot) {
+      labels.set(
+        index,
+        `${grandparentSlotShortLabel(dominantSlot.key)} · ${dominantSlot.label}`
+      );
+    } else {
+      labels.set(index, mrcaLabels.get(index) ?? `Cluster ${index + 1}`);
+    }
+  });
+
   return labels;
 };
 
