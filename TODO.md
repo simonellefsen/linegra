@@ -39,6 +39,62 @@ Check items off here; when a slice ships, also update the roadmap entry and add 
 - [x] **U18l — Referrer buckets for human visits** (google / AI assistants / direct — header
       only, no IP).
 
+## New from 2026-07-06 screenshot sweep (post-K10/K11/K12/K13 catch-up)
+
+- [ ] **V5 — Triage errors the new Errors panel caught (production crashes).**
+      `canonicalizeLegacyPublicUrl is not defined` + `isAuthCallbackUrl is not defined`
+      (U16-refactor ReferenceErrors on public routes), React conditional-hook crash (10 boundary
+      hits on `/tree/gether-gamby*`), "child already linked" thrown instead of inline validation.
+      Plus: per-signature resolved flag, route↔signature cross-links.
+- [ ] **O2 — BUG: data-quality year extraction false positives.** "lifespan 17–1980 (1963
+      years)", "death (19) before birth (27)" — day numbers/partial dates parsed as years. Clamp
+      to plausible years, treat missing-year as unknown, skip checks on unknown; add dismiss/
+      convert-to-Discrepancy actions (O remainder).
+- [ ] **K14 — Lineage pill: raw UUID as MRCA (bug) + relationship-first wording.** "2 hops ·
+      MRCA 5b652651-…" → resolve all path names (never print an id); lead with "Grandchild — via
+      Niels Gether Nielsen" instead of hop counts.
+- [ ] **K15 — DNA panel polish round 2.** Collapse n/a stat rows on family kits + surface K6
+      "Compare raw kits" CTA; K9-hypothesis fallback labels for unnamed Leeds clusters; cluster ↔
+      K3 cross-links; in-place refresh after "Set kit owner to selected person".
+- [ ] **Y3 — Relationship-edge direction hygiene.** Canonical `asParentChildEdge()` accessor;
+      migrate the five orientation case-switches (lineage label, child-map, crawl relations,
+      relationship calculator, family-kit labeler); fixtures for both storage conventions.
+- [ ] **K16 — BUG: Y-DNA field shown for females.** DNATab renders a Y-DNA haplogroup input for
+      Pernille (gender F) — women have no Y chromosome. Thread `person.gender` in, hide Y-DNA (+ its
+      migration route) for F; mtDNA/Mitotree stay for all; placeholders never render as values.
+- [ ] **K17 — NEW: haplogroup line propagation + contradiction check.** Inherit mtDNA down maternal
+      lines / Y-DNA down paternal lines via the relationship graph (pre-fill "inherited
+      (unconfirmed)"); flag same-line haplogroup conflicts as O data-quality errors; optional
+      pedigree tint overlay. `lib/haplogroupInheritance.ts`.
+- [ ] **L8 — Timeline view layout redesign.** Cards positioned by `(index % 8)*72px` (arbitrary
+      cascade, overlaps, no axis tie). Greedy lane packing + leader lines + decade ticks; consider
+      lifespan bars. Pure math in `lib/timelineLayout.ts`.
+
+## Dashboard / books / media (screenshot sweep 2026-07-06 — roadmap Z/M13/O3/Q1)
+
+- [ ] **Z1 — Nameless rows in "What's New" / "Most Wanted".** Blank names + bare "Hansson" from K3
+      DNA placeholders; universal display-name fallback + placeholder badge; placeholder creation
+      always yields a usable name ("Unknown (DNA match, 45 cM)").
+- [ ] **Z2 — "This Month" unsorted + no birthday/anniversary distinction.** Jul 20 → 18 → 24; sort
+      by day; label deceased people's dates as anniversaries, not birthdays.
+- [ ] **Z3 — Share button emits legacy `?tree=` URLs** (`TreeLandingPage.tsx` L71) — use canonical
+      U16 slug URLs (`buildTreeUrl`); grep for other legacy URL builders.
+- [ ] **Z4 — Stat redundancy:** Oldest Birth Record shown twice on one screen (Key Benchmarks +
+      Demographic Pulse); merge/differentiate cards.
+- [ ] **Z5 — "Most Wanted" DATE/MEDIA chips → deep-link** to the person's Vital/Media tab; carry
+      person filter into Research panel.
+- [ ] **O3 — Fuzzy near-duplicate detection.** "Eva Hansson" vs "Eva Hansen" added same day; extend
+      O duplicate check with name-variant matching (`dnaPersonNameVariants` + Nordic normalization
+      from R); warn + side-by-side compare; check at K3 placeholder creation ("similar person
+      exists — link instead?"). Merge-persons action may be its own slice.
+- [ ] **M13 — Saved-books list hygiene.** Two identical "Christensdatter Family History" rows →
+      version-group same-title books (surface M4 history) or warn on duplicate title; scope/style/
+      language badges per row; delete confirmation.
+- [ ] **Q1 — External media-link UX.** Broken-image frames for hotlink-protected archive URLs →
+      link-card fallback on img error; "New Media Link" placeholder caption persists as title
+      (`PersonProfile.tsx:1026`) → editable/derived title, never persist placeholder; recognize
+      Mediestream/Arkivalieronline URLs as typed source cards + "attach as Source citation".
+
 ## DNA analysis (roadmap K1/K9/K10)
 
 - [x] **K1 — Segment triangulation / Leeds clustering.** Strict ICW join (50%), parental-side cluster

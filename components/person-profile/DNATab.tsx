@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Lock, Trash2, Dna, Upload, FileText } from 'lucide-react';
 import { DnaConsentScope, DNATest } from '../../types';
 import { DNA_VENDORS, DNA_TEST_TYPES } from './constants';
@@ -179,29 +179,6 @@ const SharedKitOwnerField: React.FC<{
   );
 };
 
-const SharedAutosomalPartyLine: React.FC<{
-  label: string;
-  name: string;
-  personId?: string;
-  currentPersonId: string;
-  onOpenPersonId?: (personId: string) => void;
-}> = ({ label, name, personId, currentPersonId, onOpenPersonId }) => (
-  <p>
-    {label}:{' '}
-    {personId && personId !== currentPersonId && onOpenPersonId ? (
-      <button
-        type="button"
-        onClick={() => onOpenPersonId(personId)}
-        className="font-semibold text-blue-200 underline decoration-dotted underline-offset-2 hover:text-blue-100"
-      >
-        {name}
-      </button>
-    ) : (
-      <span className="font-semibold text-white">{name}</span>
-    )}
-  </p>
-);
-
 const DNATab: React.FC<DNATabProps> = ({
   personId,
   treeId,
@@ -250,7 +227,7 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
   const [purgingTestId, setPurgingTestId] = useState<string | null>(null);
   const [treePeople, setTreePeople] = useState<SharedImportNameRow[]>([]);
   const [autosomalTesters, setAutosomalTesters] = useState<SharedImportNameRow[]>([]);
-  const [loadingTreePeople, setLoadingTreePeople] = useState(false);
+  const [, setLoadingTreePeople] = useState(false);
   const [loadingAutosomalTesters, setLoadingAutosomalTesters] = useState(false);
   const [pendingSharedImport, setPendingSharedImport] = useState<{
     testId: string;
@@ -265,6 +242,12 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
     }>
   | null>(null);
   const [savingKitOwnerTestId, setSavingKitOwnerTestId] = useState<string | null>(null);
+
+  const profileDisplayName = useMemo(() => {
+    const row = treePeople.find((entry) => entry.id === personId);
+    if (!row) return null;
+    return [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || null;
+  }, [treePeople, personId]);
 
   useEffect(() => {
     if (!treeId || !isSupabaseConfigured()) {
@@ -537,9 +520,9 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
           preview={pendingSharedImport.preview}
           treePeople={treePeople}
           autosomalTesters={autosomalTesters}
-          defaultOwnerPersonId={personId}
-          lockOwnerPersonId={personId}
-          loadingPeople={loadingTreePeople || loadingAutosomalTesters}
+          profilePersonId={personId}
+          profileDisplayName={profileDisplayName}
+          loadingPeople={loadingAutosomalTesters}
           onClose={() => {
             setPendingSharedImport(null);
             setImportTargetId(null);
@@ -561,9 +544,9 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
           }))}
           treePeople={treePeople}
           autosomalTesters={autosomalTesters}
-          defaultOwnerPersonId={personId}
-          lockOwnerPersonId={personId}
-          loadingPeople={loadingTreePeople || loadingAutosomalTesters}
+          profilePersonId={personId}
+          profileDisplayName={profileDisplayName}
+          loadingPeople={loadingAutosomalTesters}
           onClose={() => {
             setPendingSharedBatch(null);
             setImportTargetId(null);
@@ -729,27 +712,24 @@ const DNATabInner: React.FC<Omit<DNATabProps, 'personNameCandidates'>> = ({
                         {test.sharedSegmentSummary.fileName}
                       </p>
                       {(() => {
-                        const parties = resolveSharedAutosomalParties(personId, test, treePeople);
+                        const { kitOwner, suggestedKitOwnerPersonId } = resolveSharedAutosomalParties(
+                          personId,
+                          test,
+                          treePeople
+                        );
                         return (
                           <>
                             <SharedKitOwnerField
                               test={test}
                               personId={personId}
                               autosomalTesters={autosomalTesters}
-                              kitOwnerPersonId={parties.kitOwner.personId}
-                              kitOwnerDisplayName={parties.kitOwner.displayName}
-                              suggestedKitOwnerPersonId={parties.suggestedKitOwnerPersonId}
+                              kitOwnerPersonId={kitOwner.personId}
+                              kitOwnerDisplayName={kitOwner.displayName}
+                              suggestedKitOwnerPersonId={suggestedKitOwnerPersonId}
                               loadingTesters={loadingAutosomalTesters}
                               savingKitOwner={savingKitOwnerTestId === test.id}
                               onOpenPersonId={onOpenPersonId}
                               onKitOwnerChange={handleKitOwnerChange}
-                            />
-                            <SharedAutosomalPartyLine
-                              label="Match"
-                              name={parties.match.displayName}
-                              personId={parties.match.personId}
-                              currentPersonId={personId}
-                              onOpenPersonId={onOpenPersonId}
                             />
                           </>
                         );
