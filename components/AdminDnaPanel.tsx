@@ -16,12 +16,13 @@ import {
   inferPathGrandparentSlot,
   inferPathParentalSide,
   resolveGrandparentSlots,
+  splitClustersByParentalSide,
   type GrandparentSlot,
   type ParentalSideHint,
 } from '../lib/dnaParentalHints';
 import { suggestUnknownMatchPlacements } from '../lib/dnaMatchPlacement';
 import { sharedMatchToUnlinkedRecord } from '../lib/dnaUnlinkedMatchAdapter';
-import { buildClusterLabelByIndex, formatClusterHeading } from '../lib/dnaClusterLabels';
+import { buildLeedsClusterLabels, formatClusterHeading } from '../lib/dnaClusterLabels';
 import {
   createDnaMatchPlaceholderPerson,
   dismissUnlinkedDnaMatchForFocus,
@@ -164,7 +165,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
 
   const minIcwOverlapFraction = strictIcw ? 0.5 : 0;
 
-  const clusterGroups = useMemo(() => {
+  const rawClusterGroups = useMemo(() => {
     if (!segmentBackedMatches.length) return [];
     return clusterSharedSegments(
       segmentBackedMatches.map((match) => ({
@@ -174,11 +175,6 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
       { minCentimorgans: minClusterCm, minIcwOverlapFraction }
     );
   }, [segmentBackedMatches, segmentsByMatchId, minClusterCm, minIcwOverlapFraction]);
-
-  const clusterSummaries = useMemo(
-    () => clusterGroups.map((group) => summarizeClusterIcw(group, segmentsByMatchId, minIcwOverlapFraction)),
-    [clusterGroups, segmentsByMatchId, minIcwOverlapFraction]
-  );
 
   interface MatchLineageHints {
     parentalSide: ParentalSideHint;
@@ -200,6 +196,19 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
     });
     return hints;
   }, [matches, resolutionByMatchId, selectedPersonId, relationships, grandparentSlots]);
+
+  const clusterGroups = useMemo(() => {
+    const sideByMatchId = new Map<string, ParentalSideHint>();
+    matchLineageHints.forEach((hints, matchId) => {
+      sideByMatchId.set(matchId, hints.parentalSide);
+    });
+    return splitClustersByParentalSide(rawClusterGroups, sideByMatchId);
+  }, [rawClusterGroups, matchLineageHints]);
+
+  const clusterSummaries = useMemo(
+    () => clusterGroups.map((group) => summarizeClusterIcw(group, segmentsByMatchId, minIcwOverlapFraction)),
+    [clusterGroups, segmentsByMatchId, minIcwOverlapFraction]
+  );
 
   const clusteredMatchIds = useMemo(() => new Set(clusterGroups.flat()), [clusterGroups]);
 
@@ -271,10 +280,18 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
     });
   }, [selectedPersonId, matches.length, mrcaMatchInputs, relationships, resolvePersonName, clusterGroups]);
 
-  const clusterLabelsByIndex = useMemo(
-    () => buildClusterLabelByIndex(clusterGroups.length, mrcaCandidates),
-    [clusterGroups.length, mrcaCandidates]
-  );
+  const clusterLabelsByIndex = useMemo(() => {
+    const slotByMatchId = new Map<string, GrandparentSlot | null>();
+    matchLineageHints.forEach((hints, matchId) => {
+      slotByMatchId.set(matchId, hints.grandparentSlot);
+    });
+    return buildLeedsClusterLabels(
+      clusterGroups,
+      grandparentSlots,
+      slotByMatchId,
+      mrcaCandidates
+    );
+  }, [clusterGroups, grandparentSlots, matchLineageHints, mrcaCandidates]);
 
   const linkedMatchSegmentInputs = useMemo(
     () =>
@@ -803,13 +820,21 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                       const focusName = personNameById.get(selectedPersonId);
                       if (focusName) pathNames.set(selectedPersonId, focusName);
                     }
+                    const lineageMrcaOptions =
+                      selectedPersonId && match.counterpartPersonId
+                        ? {
+                            focusPersonId: selectedPersonId,
+                            counterpartPersonId: match.counterpartPersonId,
+                          }
+                        : undefined;
                     const lineageBreadcrumb =
                       match.pathFound && pathPersonIds.length
                         ? buildDnaLineagePathBreadcrumb(
                             pathPersonIds,
                             pathRelationshipIds,
                             lineageRelationshipRows,
-                            pathNames
+                            pathNames,
+                            lineageMrcaOptions
                           )
                         : [];
                     const pathSummary =
@@ -818,12 +843,18 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             pathPersonIds,
                             pathRelationshipIds,
                             lineageRelationshipRows,
-                            pathNames
+                            pathNames,
+                            lineageMrcaOptions
                           )
                         : 'No linked lineage path';
                     const mrcaPersonId =
                       match.pathFound && pathPersonIds.length
-                        ? pickLineageMrcaPersonId(pathPersonIds, pathRelationshipIds, lineageRelationshipRows)
+                        ? pickLineageMrcaPersonId(
+                            pathPersonIds,
+                            pathRelationshipIds,
+                            lineageRelationshipRows,
+                            lineageMrcaOptions
+                          )
                         : null;
                     const viewInTreePersonId = mrcaPersonId || selectedPersonId;
                     return (
@@ -1218,8 +1249,8 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Segment clusters</p>
               <h3 className="text-xl font-serif font-bold text-slate-900 mt-1">Overlap groups (Leeds-style)</h3>
               <p className="text-sm text-slate-500 mt-2 max-w-3xl">
-                Matches imported with shared-segment CSV rows are grouped when their owner-side segments overlap.
-                Enable strict ICW to require ~50% reciprocal overlap (reduces false clusters on unphased data).
+                Matches imported with shared-segment CSV rows are grouped when their owner-side segments overlap with strict ICW (50% reciprocal overlap by default).
+                Clusters that mix documented maternal and paternal paths are split automatically.
                 Parental / grandparent labels come from documented lineage paths when available.
               </p>
             </div>

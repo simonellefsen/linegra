@@ -1,8 +1,68 @@
 // K8e — human-readable DNA lineage path labels and MRCA breadcrumbs.
 
-import type { BloodRelationshipEdge } from './dnaLineagePath';
+import {
+  buildChildToParentsMap,
+  buildParentToChildrenMap,
+  DNA_BLOOD_PATH_RELATIONSHIP_TYPES,
+  type BloodRelationshipEdge,
+} from './dnaLineagePath';
+import { computeRelationship } from './relationshipCalculator';
+import type { Relationship } from '../types';
 
 export type LineageRelationshipEdge = BloodRelationshipEdge;
+
+export interface LineageMrcaOptions {
+  focusPersonId?: string;
+  counterpartPersonId?: string;
+}
+
+const bloodEdgesToRelationships = (rows: LineageRelationshipEdge[]): Relationship[] =>
+  rows
+    .filter((row) => row.type && DNA_BLOOD_PATH_RELATIONSHIP_TYPES.has(row.type))
+    .map((row) => ({
+      id: row.id,
+      treeId: '',
+      type: (row.type === 'child' ? 'bio_father' : row.type) as Relationship['type'],
+      personId: row.person_id,
+      relatedId: row.related_id,
+    }));
+
+/** Turn from ascent to descent on a focus→counterpart path (topology, not edge labels). */
+const pickMrcaFromPathTopology = (
+  pathPersonIds: string[],
+  relationshipRows: LineageRelationshipEdge[]
+): string | null => {
+  if (pathPersonIds.length < 2) return null;
+  const childToParents = buildChildToParentsMap(relationshipRows);
+  const parentToChildren = buildParentToChildrenMap(childToParents);
+  let foundAscent = false;
+  for (let index = 0; index < pathPersonIds.length - 1; index += 1) {
+    const fromPersonId = pathPersonIds[index]!;
+    const toPersonId = pathPersonIds[index + 1]!;
+    const ascends = childToParents.get(fromPersonId)?.has(toPersonId) ?? false;
+    const descends = parentToChildren.get(fromPersonId)?.has(toPersonId) ?? false;
+    if (ascends) foundAscent = true;
+    if (descends && foundAscent) return fromPersonId;
+  }
+  return null;
+};
+
+const pickMrcaFromFirstParentOfEdge = (
+  pathPersonIds: string[],
+  pathRelationshipIds: string[],
+  relationshipRows: LineageRelationshipEdge[]
+): string | null => {
+  const relationshipById = new Map(relationshipRows.map((row) => [row.id, row]));
+  for (let index = 0; index < pathRelationshipIds.length; index += 1) {
+    const fromPersonId = pathPersonIds[index]!;
+    const toPersonId = pathPersonIds[index + 1]!;
+    const relationship = relationshipById.get(pathRelationshipIds[index]!);
+    if (lineageTraversalLabel(relationship, fromPersonId, toPersonId) === 'parent of') {
+      return fromPersonId;
+    }
+  }
+  return null;
+};
 
 export const lineageTraversalLabel = (
   relationship: LineageRelationshipEdge | undefined,
@@ -52,20 +112,43 @@ export const buildDnaLineagePathLabel = (
 export const pickLineageMrcaPersonId = (
   pathPersonIds: string[],
   pathRelationshipIds: string[],
-  relationshipRows: LineageRelationshipEdge[]
+  relationshipRows: LineageRelationshipEdge[],
+  options?: LineageMrcaOptions
 ): string | null => {
   if (!pathPersonIds.length) return null;
   if (pathPersonIds.length === 1) return pathPersonIds[0]!;
-  const relationshipById = new Map(relationshipRows.map((row) => [row.id, row]));
-  for (let index = 0; index < pathRelationshipIds.length; index += 1) {
-    const fromPersonId = pathPersonIds[index]!;
-    const toPersonId = pathPersonIds[index + 1]!;
-    const relationship = relationshipById.get(pathRelationshipIds[index]!);
-    if (lineageTraversalLabel(relationship, fromPersonId, toPersonId) === 'parent of') {
-      return fromPersonId;
-    }
+
+  const focusPersonId = options?.focusPersonId ?? pathPersonIds[0]!;
+  const counterpartPersonId =
+    options?.counterpartPersonId ?? pathPersonIds[pathPersonIds.length - 1]!;
+  const bloodRows = relationshipRows.filter(
+    (row) => row.type && DNA_BLOOD_PATH_RELATIONSHIP_TYPES.has(row.type)
+  );
+
+  const topologyMrca = pickMrcaFromPathTopology(pathPersonIds, bloodRows);
+  if (topologyMrca && topologyMrca !== counterpartPersonId) return topologyMrca;
+  if (topologyMrca && pathPersonIds.length <= 2) return topologyMrca;
+
+  if (focusPersonId !== counterpartPersonId) {
+    const relationship = computeRelationship(
+      focusPersonId,
+      counterpartPersonId,
+      bloodEdgesToRelationships(bloodRows)
+    );
+    const calculatorMrca = relationship?.commonAncestorIds[0];
+    if (calculatorMrca) return calculatorMrca;
   }
-  return pathPersonIds[pathPersonIds.length - 1]!;
+
+  const labelMrca = pickMrcaFromFirstParentOfEdge(
+    pathPersonIds,
+    pathRelationshipIds,
+    relationshipRows
+  );
+  if (labelMrca && labelMrca !== counterpartPersonId) return labelMrca;
+  if (labelMrca && pathPersonIds.length <= 2) return labelMrca;
+
+  const interior = pathPersonIds.slice(1, -1);
+  return interior.length ? interior[interior.length - 1]! : null;
 };
 
 export interface LineagePathBreadcrumbNode {
@@ -80,12 +163,18 @@ export const buildDnaLineagePathBreadcrumb = (
   pathPersonIds: string[],
   pathRelationshipIds: string[],
   relationshipRows: LineageRelationshipEdge[],
-  pathNames: Map<string, string> | Record<string, string>
+  pathNames: Map<string, string> | Record<string, string>,
+  options?: LineageMrcaOptions
 ): LineagePathBreadcrumbNode[] => {
   if (!pathPersonIds.length) return [];
   const nameFor = (personId: string) =>
     pathNames instanceof Map ? pathNames.get(personId) || personId : pathNames[personId] || personId;
-  const mrcaId = pickLineageMrcaPersonId(pathPersonIds, pathRelationshipIds, relationshipRows);
+  const mrcaId = pickLineageMrcaPersonId(
+    pathPersonIds,
+    pathRelationshipIds,
+    relationshipRows,
+    options
+  );
   const relationshipById = new Map(relationshipRows.map((row) => [row.id, row]));
   return pathPersonIds.map((personId, index) => {
     const nextPersonId = pathPersonIds[index + 1];
@@ -107,11 +196,17 @@ export const formatDnaLineagePathSummary = (
   pathPersonIds: string[],
   pathRelationshipIds: string[],
   relationshipRows: LineageRelationshipEdge[],
-  pathNames: Map<string, string> | Record<string, string>
+  pathNames: Map<string, string> | Record<string, string>,
+  options?: LineageMrcaOptions
 ): string => {
   if (!pathPersonIds.length) return 'No lineage path';
   const hopCount = Math.max(0, pathPersonIds.length - 1);
-  const mrcaId = pickLineageMrcaPersonId(pathPersonIds, pathRelationshipIds, relationshipRows);
+  const mrcaId = pickLineageMrcaPersonId(
+    pathPersonIds,
+    pathRelationshipIds,
+    relationshipRows,
+    options
+  );
   const nameFor = (personId: string) =>
     pathNames instanceof Map ? pathNames.get(personId) || personId : pathNames[personId] || personId;
   const mrcaName = mrcaId ? nameFor(mrcaId) : null;

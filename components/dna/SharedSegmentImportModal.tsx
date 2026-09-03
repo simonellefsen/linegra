@@ -30,6 +30,9 @@ interface SharedSegmentImportModalProps {
   batchSummaries?: SharedSegmentBatchSummary[];
   treePeople: SharedImportNameRow[];
   autosomalTesters: SharedImportNameRow[];
+  /** When importing on a person profile, the CSV match links to this person (not the tester). */
+  profilePersonId?: string | null;
+  profileDisplayName?: string | null;
   defaultOwnerPersonId?: string | null;
   loadingPeople?: boolean;
   lockOwnerPersonId?: string | null;
@@ -43,6 +46,8 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
   preview,
   treePeople,
   autosomalTesters,
+  profilePersonId,
+  profileDisplayName,
   defaultOwnerPersonId,
   lockOwnerPersonId,
   loadingPeople = false,
@@ -59,39 +64,52 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
   const [counterpartPersonId, setCounterpartPersonId] = useState<string>('');
   const [saveMarriedAlias, setSaveMarriedAlias] = useState(true);
   const lockedOwnerId = lockOwnerPersonId || '';
+  const lockedCounterpartId = profilePersonId || '';
 
   useEffect(() => {
     if (!open) return;
-    const nextOwner = lockedOwnerId || suggestedOwnerId || defaultOwnerPersonId || '';
+    const nextOwner = lockedOwnerId || suggestedOwnerId || '';
     setOwnerPersonId(nextOwner);
-    const counterpart = nextOwner
-      ? suggestCounterpartPersonId(summary, nextOwner, treePeople)
-      : null;
+    const counterpart = lockedCounterpartId
+      ? lockedCounterpartId
+      : nextOwner
+        ? suggestCounterpartPersonId(summary, nextOwner, treePeople)
+        : null;
     setCounterpartPersonId(counterpart || '');
     setSaveMarriedAlias(true);
-  }, [open, suggestedOwnerId, defaultOwnerPersonId, summary, treePeople, lockedOwnerId]);
+  }, [
+    open,
+    suggestedOwnerId,
+    summary,
+    treePeople,
+    lockedOwnerId,
+    lockedCounterpartId,
+  ]);
 
   useEffect(() => {
-    if (!open || !ownerPersonId) return;
+    if (!open || lockedCounterpartId) return;
+    if (!ownerPersonId) return;
     const counterpart = suggestCounterpartPersonId(summary, ownerPersonId, treePeople);
     setCounterpartPersonId(counterpart || '');
-  }, [open, ownerPersonId, summary, treePeople]);
+  }, [open, ownerPersonId, summary, treePeople, lockedCounterpartId]);
 
   if (!open) return null;
 
   const csvOwnerName = ownerPersonId
-    ? csvKitOwnerDisplayName(summary, ownerPersonId, treePeople)
+    ? csvKitOwnerDisplayName(summary, ownerPersonId, autosomalTesters)
     : summary.personName;
   const offerMarriedAlias =
     !!ownerPersonId &&
-    shouldOfferMarriedNameAlias(summary, ownerPersonId, treePeople, csvOwnerName);
+    shouldOfferMarriedNameAlias(summary, ownerPersonId, autosomalTesters, csvOwnerName);
+
+  const resolvedCounterpartId = lockedCounterpartId || counterpartPersonId;
 
   const handleConfirm = () => {
     const resolvedOwner = lockedOwnerId || ownerPersonId;
     if (!resolvedOwner) return;
     onConfirm({
       ownerPersonId: resolvedOwner,
-      counterpartPersonId: counterpartPersonId || null,
+      counterpartPersonId: resolvedCounterpartId || null,
       saveMarriedNameAlias: offerMarriedAlias && saveMarriedAlias,
       marriedNameAlias: offerMarriedAlias && saveMarriedAlias ? csvOwnerName : undefined,
     });
@@ -208,23 +226,37 @@ const SharedSegmentImportModal: React.FC<SharedSegmentImportModalProps> = ({
 
           <label className="block space-y-2">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              Counterpart (optional)
+              Match in tree
+              {lockedCounterpartId ? ' (this profile)' : ' (optional)'}
             </span>
-            <select
-              value={counterpartPersonId}
-              onChange={(event) => setCounterpartPersonId(event.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-slate-800"
-              disabled={!ownerPersonId}
-            >
-              <option value="">Leave unlinked — {summary.matchName || 'unknown match'}</option>
-              {treePeople
-                .filter((person) => person.id !== ownerPersonId)
-                .map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {[person.first_name, person.last_name].filter(Boolean).join(' ')}
-                  </option>
-                ))}
-            </select>
+            {lockedCounterpartId ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 space-y-1">
+                <p className="font-semibold text-slate-800">
+                  {profileDisplayName || 'This profile'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Links CSV match <span className="font-semibold">{summary.matchName}</span> to this
+                  person&apos;s DNA record. The autosomal tester above is whoever ran the comparison
+                  (e.g. a parent&apos;s kit).
+                </p>
+              </div>
+            ) : (
+              <select
+                value={counterpartPersonId}
+                onChange={(event) => setCounterpartPersonId(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-slate-800"
+                disabled={!ownerPersonId}
+              >
+                <option value="">Leave unlinked — {summary.matchName || 'unknown match'}</option>
+                {treePeople
+                  .filter((person) => person.id !== ownerPersonId)
+                  .map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {[person.first_name, person.last_name].filter(Boolean).join(' ')}
+                    </option>
+                  ))}
+              </select>
+            )}
           </label>
 
           {offerMarriedAlias && (

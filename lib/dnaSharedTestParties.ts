@@ -70,38 +70,10 @@ export const suggestSharedAutosomalKitOwnerId = (
   return suggestKitOwnerPersonId(names, candidates);
 };
 
-const tokenizeDisplayName = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .replace(/[^a-zA-Z0-9æøåÆØÅ\s-]/g, ' ')
-    .toLowerCase()
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter(Boolean);
-
-const storedOwnerMatchesCsv = (
-  ownerPersonId: string | undefined,
-  csvOwnerName: string | undefined,
-  treePeople: SharedImportNameRow[]
-): boolean => {
-  if (!ownerPersonId || !csvOwnerName?.trim()) return false;
-  const row = treePeople.find((entry) => entry.id === ownerPersonId);
-  if (!row) return false;
-  const display = displayNameForRow(row);
-  if (!display) return false;
-  const score = scoreNameMatch(display, csvOwnerName);
-  if (score >= 1000) return true;
-  const csvTokens = tokenizeDisplayName(csvOwnerName);
-  const displayTokens = tokenizeDisplayName(display);
-  if (!csvTokens.length || !displayTokens.length) return false;
-  const firstNameAligned = csvTokens[0] === displayTokens[0];
-  return firstNameAligned && scoreNameMatch(display, csvOwnerName) >= 60;
-};
-
 /**
  * Resolve kit-owner vs match for one shared-segment test.
- * Each test carries its own owner (supports multiple imports per match person).
+ * Each test carries its own owner UUID (supports multiple imports per match person).
+ * CSV names can suggest a party only when that UUID has not been set.
  */
 export const resolveSharedAutosomalParties = (
   viewingPersonId: string,
@@ -132,18 +104,6 @@ export const resolveSharedAutosomalParties = (
 
   let kitOwnerId = test.sharedPersonId;
   let matchPersonId = test.sharedMatchPersonId;
-
-  if (kitOwnerId === viewingPersonId && viewerIsMatch) {
-    kitOwnerId = undefined;
-  }
-  if (
-    kitOwnerId &&
-    viewerIsMatch &&
-    personName &&
-    !storedOwnerMatchesCsv(kitOwnerId, personName, treePeople)
-  ) {
-    kitOwnerId = undefined;
-  }
 
   if (!kitOwnerId) {
     kitOwnerId = suggestedKitOwnerPersonId ?? undefined;

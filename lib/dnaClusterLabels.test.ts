@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildClusterLabelByIndex, formatClusterHeading } from './dnaClusterLabels';
+import { buildClusterLabelByIndex, buildLeedsClusterLabels, formatClusterHeading } from './dnaClusterLabels';
+import type { GrandparentSlot } from './dnaParentalHints';
 import type { MrcaCandidate } from './dnaMrcaSuggestions';
 
 const candidate = (overrides: Partial<MrcaCandidate> & Pick<MrcaCandidate, 'ancestorPersonId'>): MrcaCandidate => ({
@@ -40,5 +41,29 @@ describe('dnaClusterLabels', () => {
   it('falls back to numbered clusters when K2 has no MRCA for a group', () => {
     const labels = buildClusterLabelByIndex(1, []);
     expect(labels.get(0)).toBe('Cluster 1');
+  });
+
+  it('prefers four-grandparent Leeds slots over MRCA names', () => {
+    const slots: GrandparentSlot[] = [
+      { key: 'mgf', personId: 'mgf', label: 'Ole Hansen' },
+    ];
+    const slotByMatchId = new Map<string, GrandparentSlot | null>([
+      ['m1', slots[0]],
+      ['m2', slots[0]],
+    ]);
+    const labels = buildLeedsClusterLabels(
+      [['m1', 'm2']],
+      slots,
+      slotByMatchId,
+      [
+        candidate({
+          ancestorPersonId: 'other',
+          ancestorName: 'Wrong MRCA',
+          clusterIndices: [0],
+          score: 999,
+        }),
+      ]
+    );
+    expect(labels.get(0)).toBe("Mother's father · Ole Hansen");
   });
 });

@@ -60,16 +60,19 @@ describe('resolveSharedAutosomalParties', () => {
     expect(pernilleView.match.personId).toBe(BIRGITTA);
   });
 
-  it('replaces a wrong stored kit owner when it does not match the CSV name', () => {
+  it('honors an explicitly saved kit-owner UUID over CSV name heuristics', () => {
     const view = resolveSharedAutosomalParties(
       BIRGITTA,
       {
         sharedPersonId: MARIANNE,
         sharedMatchPersonId: BIRGITTA,
         sharedSegmentSummary: {
-          personName: 'Pernille Gamby',
+          // FTDNA comparison exports do not identify the tested person. A later
+          // curator selection must not be replaced by the match-profile name.
+          personName: 'Unknown',
           matchName: 'Birgitta Svensson Hallgren',
-          fileName: 'Shared DNA segments of Pernille Gamby and Birgitta Svensson Hallgren.csv',
+          fileName: '33413_Chromosome_Browser_Results.csv',
+          importFormat: 'FTDNA_COMPARISON_SEGMENTS',
           segmentCount: 2,
           totalCentimorgans: 36,
           largestSegmentCentimorgans: 28.6,
@@ -80,9 +83,8 @@ describe('resolveSharedAutosomalParties', () => {
       },
       treePeople
     );
-    expect(view.kitOwner.personId).toBe(PERNILLE);
-    expect(view.kitOwner.displayName).toBe('Pernille Gether Gamby');
-    expect(view.suggestedKitOwnerPersonId).toBe(PERNILLE);
+    expect(view.kitOwner.personId).toBe(MARIANNE);
+    expect(view.kitOwner.displayName).toBe('Marianne Gamby');
   });
 
   it('infers kit owner from CSV when only names are stored', () => {

@@ -113,3 +113,39 @@ export const grandparentSlotShortLabel = (key: GrandparentSlot['key']): string =
       return 'Grandparent';
   }
 };
+
+/**
+ * Split clusters that mix documented maternal and paternal lineage paths.
+ * Unphased segment overlap alone cannot distinguish chromosome copies; when paths
+ * disagree, keep separate Leeds buckets. Unknown-side matches follow the larger side.
+ */
+export const splitClustersByParentalSide = (
+  clusters: string[][],
+  sideByMatchId: Map<string, ParentalSideHint>
+): string[][] => {
+  const result: string[][] = [];
+
+  for (const cluster of clusters) {
+    const maternal = cluster.filter((id) => sideByMatchId.get(id) === 'maternal');
+    const paternal = cluster.filter((id) => sideByMatchId.get(id) === 'paternal');
+
+    if (maternal.length > 0 && paternal.length > 0) {
+      const unknown = cluster.filter((id) => {
+        const side = sideByMatchId.get(id);
+        return !side || side === 'unknown';
+      });
+      const maternalGroup = [...maternal];
+      const paternalGroup = [...paternal];
+      if (unknown.length) {
+        if (maternal.length >= paternal.length) maternalGroup.push(...unknown);
+        else paternalGroup.push(...unknown);
+      }
+      if (maternalGroup.length > 1) result.push(maternalGroup);
+      if (paternalGroup.length > 1) result.push(paternalGroup);
+    } else {
+      result.push(cluster);
+    }
+  }
+
+  return result.sort((a, b) => b.length - a.length);
+};
