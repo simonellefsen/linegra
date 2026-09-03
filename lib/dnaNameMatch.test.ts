@@ -10,6 +10,9 @@ describe('dnaNameMatch', () => {
     expect(scoreNameMatch('Jon Arndal Reiersen', 'Jon Arndal Reiersen')).toBe(1000);
     expect(scoreNameMatch('Michael', 'Michaelsen')).toBe(0);
     expect(scoreNameMatch('Hans', 'Johansson')).toBe(0);
+    expect(scoreNameMatch('Erik Simonsen', 'Erik Olsen')).toBe(0);
+    expect(scoreNameMatch('Rolf Torset', 'Silvia Torset')).toBe(0);
+    expect(scoreNameMatch('Stefan Byström', 'Stefan Timmermann Byström')).toBeGreaterThan(0);
   });
 
   it('normalizes ranking scores to 0–100 for display', () => {

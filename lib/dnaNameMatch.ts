@@ -15,11 +15,6 @@ const tokenizeName = (value?: string | null): string[] =>
     .map((token) => token.trim())
     .filter(Boolean);
 
-const sharesExactToken = (left: string[], right: string[]): boolean => {
-  const rightSet = new Set(right);
-  return left.some((token) => rightSet.has(token));
-};
-
 /** Raw ranking score (typically 0–1000). Higher is a stronger match. */
 export const scoreNameMatch = (inputName: string, candidateName: string): number => {
   const normalizedInput = normalizeName(inputName);
@@ -31,20 +26,16 @@ export const scoreNameMatch = (inputName: string, candidateName: string): number
   const candidateTokens = tokenizeName(normalizedCandidate);
   if (!inputTokens.length || !candidateTokens.length) return 0;
 
-  if (inputTokens.length === 1 && candidateTokens.includes(inputTokens[0]!)) return 700;
-  if (candidateTokens.length === 1 && inputTokens.includes(candidateTokens[0]!)) return 700;
-  if (sharesExactToken(inputTokens, candidateTokens) && inputTokens.length > 1 && candidateTokens.length > 1) {
-    const candidateSet = new Set(candidateTokens);
-    const overlap = inputTokens.filter((token) => candidateSet.has(token)).length;
-    if (overlap === inputTokens.length && overlap === candidateTokens.length) return 700;
-  }
-
   const candidateSet = new Set(candidateTokens);
-  let overlap = 0;
-  inputTokens.forEach((token) => {
-    if (candidateSet.has(token)) overlap += 1;
-  });
-  if (!overlap) return 0;
+  const sharedTokens = inputTokens.filter((token) => candidateSet.has(token));
+  const overlap = sharedTokens.length;
+
+  // A common given name or surname alone is not enough to offer an action that
+  // links an imported DNA match to a person. Permit omitted middle names, but
+  // require a matching surname and at least one other name token.
+  const sharesSurname = inputTokens.at(-1) === candidateTokens.at(-1);
+  if (inputTokens.length < 2 || candidateTokens.length < 2 || !sharesSurname || overlap < 2) return 0;
+
   let score = overlap * 40;
   if (candidateTokens[0] === inputTokens[0]) score += 15;
   if (candidateTokens[candidateTokens.length - 1] === inputTokens[inputTokens.length - 1]) score += 30;
