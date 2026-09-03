@@ -40,7 +40,7 @@ describe('dnaSharedImportOwner', () => {
     ).toBe(false);
   });
 
-  it('suggests owner from filename when tree name differs from CSV married name', () => {
+  it('uses an explicit default owner when a CSV name cannot be resolved safely', () => {
     const ownerId = suggestKitOwnerPersonId(
       {
         personName: 'Helle Due',
@@ -53,7 +53,7 @@ describe('dnaSharedImportOwner', () => {
     expect(ownerId).toBe(helle.id);
   });
 
-  it('does not default kit owner to profile person when they are not an autosomal tester', () => {
+  it('does not use a shared given name when the profile person is not a tester', () => {
     const inger = {
       id: '33333333-3333-4333-8333-333333333333',
       first_name: 'Inger',
@@ -69,7 +69,7 @@ describe('dnaSharedImportOwner', () => {
       [helle, ulla],
       inger.id
     );
-    expect(ownerId).toBe(helle.id);
+    expect(ownerId).toBeNull();
   });
 
   it('labels unlinked counterpart from CSV when owner is focus', () => {

@@ -1082,9 +1082,11 @@ export const listUnlinkedSharedMatchesForAutosomalPerson = async (
       );
     }
 
+    // K3 is only for imports with no person attached to the other side. An
+    // explicit counterpart UUID is already a resolved in-tree match.
+    if (counterpartPersonId) return;
     if (linkedDnaTestIds.has(testId)) return;
     if (ownerPersonId === focusPersonId) return;
-    if (counterpartPersonId && linkedCounterpartIds.has(counterpartPersonId)) return;
     if (isK3DismissedForFocus(metadata, focusPersonId)) return;
 
     const matchName = resolveUnknownMatchName(focusPersonId, summary, nameRows);

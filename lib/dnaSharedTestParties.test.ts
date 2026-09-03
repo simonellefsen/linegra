@@ -87,7 +87,7 @@ describe('resolveSharedAutosomalParties', () => {
     expect(view.kitOwner.displayName).toBe('Marianne Gamby');
   });
 
-  it('infers kit owner from CSV when only names are stored', () => {
+  it('does not infer kit owner from an ambiguous CSV name when UUIDs are missing', () => {
     const view = resolveSharedAutosomalParties(
       BIRGITTA,
       {
@@ -95,8 +95,8 @@ describe('resolveSharedAutosomalParties', () => {
       },
       treePeople
     );
-    expect(view.kitOwner.displayName).toBe('Helle Andersen');
-    expect(view.kitOwner.personId).toBe(HELLE);
+    expect(view.kitOwner.displayName).toBe('Helle Due');
+    expect(view.kitOwner.personId).toBeUndefined();
     expect(view.match.displayName).toBe('Birgitta Hallgren');
     expect(view.match.personId).toBe(BIRGITTA);
   });
