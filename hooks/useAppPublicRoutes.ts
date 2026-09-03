@@ -9,14 +9,11 @@ import {
 } from '../lib/publicRoutes';
 import type { FamilyTree as FamilyTreeType, Person } from '../types';
 
-type AppTab = 'home' | 'tree' | 'records' | 'settings' | 'profile';
-
 type UseAppPublicRoutesParams = {
   pendingPersonId: string | null;
   setPendingPersonId: (id: string | null) => void;
   trees: FamilyTreeType[];
   activeTreeId: string | null;
-  activeTab: AppTab;
   selectedPerson: Person | null;
   treePeople: Person[];
   setActiveTree: (tree: FamilyTreeType | null) => void;
@@ -31,7 +28,6 @@ export const useAppPublicRoutes = ({
   setPendingPersonId,
   trees,
   activeTreeId,
-  activeTab,
   selectedPerson,
   treePeople,
   setActiveTree,
@@ -84,15 +80,15 @@ export const useAppPublicRoutes = ({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (parsePublicRouteFromLocation(window.location).kind === 'book') return;
-    if (activeTab === 'records' || activeTab === 'profile') return;
     const selectedPersonId = selectedPerson?.id ?? null;
-    if (selectedPersonId && activeTreeId) {
-      const activeTreeRef = trees.find((tree) => tree.id === activeTreeId);
+    const selectedPersonTreeId = selectedPerson?.treeId ?? activeTreeId;
+    if (selectedPersonId && selectedPersonTreeId) {
+      const selectedTreeRef = trees.find((tree) => tree.id === selectedPersonTreeId);
       window.history.replaceState(
         {},
         '',
         buildPersonUrl(
-          { id: activeTreeId, slug: activeTreeRef?.slug },
+          { id: selectedPersonTreeId, slug: selectedTreeRef?.slug },
           {
             id: selectedPersonId,
             firstName: selectedPerson?.firstName,
@@ -107,7 +103,7 @@ export const useAppPublicRoutes = ({
       const activeTreeRef = trees.find((tree) => tree.id === activeTreeId);
       window.history.replaceState({}, '', buildTreeUrl({ id: activeTreeId, slug: activeTreeRef?.slug }));
     }
-  }, [activeTreeId, selectedPerson?.id, selectedPerson, activeTab, trees]);
+  }, [activeTreeId, selectedPerson?.id, selectedPerson, trees]);
 
   useEffect(() => {
     if (!pendingPersonId) return;

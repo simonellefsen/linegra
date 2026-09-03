@@ -45,6 +45,20 @@ describe('publicRoutes', () => {
     expect(buildTreesDirectoryUrl('https://linegra.app')).toBe('https://linegra.app/trees');
   });
 
+  it('builds a canonical profile URL from the selected person rather than the current route', () => {
+    expect(
+      buildPersonUrl(
+        { id: TREE, slug: 'myheritage' },
+        {
+          id: '81df82df-6ab9-4c03-94bf-98dd0762ec7b',
+          firstName: 'Erik',
+          lastName: 'Simonsen',
+        },
+        'https://linegra.vercel.app'
+      )
+    ).toBe('https://linegra.vercel.app/tree/myheritage/person/erik-simonsen-81df82df');
+  });
+
   it('parses legacy query URLs and canonicalizes them', () => {
     const legacy = parsePublicRouteFromLocation({
       pathname: '/',

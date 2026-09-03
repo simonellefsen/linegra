@@ -51,6 +51,7 @@ import { useAppAuth } from './hooks/useAppAuth';
 import { useAppPublicRoutes } from './hooks/useAppPublicRoutes';
 import { useAppTreeBootstrap } from './hooks/useAppTreeBootstrap';
 import { usePersonProfileSelection } from './hooks/usePersonProfileSelection';
+import { buildPersonUrl } from './lib/publicRoutes';
 
 const AdminDnaPanel = lazy(() => import('./components/AdminDnaPanel'));
 const AdminDatabasePanel = lazy(() => import('./components/admin/AdminDatabasePanel'));
@@ -440,7 +441,6 @@ const App: React.FC = () => {
     setPendingPersonId,
     trees,
     activeTreeId,
-    activeTab,
     selectedPerson,
     treePeople,
     setActiveTree,
@@ -1001,13 +1001,13 @@ const App: React.FC = () => {
       try {
         const person = await fetchPersonDetails(personId);
         if (person) {
-          setSelectedPerson(person);
+          handlePersonSelect(person);
         }
       } catch (err) {
         console.error('Failed to open person from DNA panel', err);
       }
     },
-    []
+    [handlePersonSelect]
   );
 
   const handleViewLineageInTree = useCallback((personId: string) => {
@@ -1731,6 +1731,18 @@ const App: React.FC = () => {
             <PersonProfile 
               key={selectedPerson.id}
               person={selectedPerson} 
+              shareUrl={buildPersonUrl(
+                {
+                  id: selectedPerson.treeId,
+                  slug: trees.find((tree) => tree.id === selectedPerson.treeId)?.slug,
+                },
+                {
+                  id: selectedPerson.id,
+                  firstName: selectedPerson.firstName,
+                  lastName: selectedPerson.lastName,
+                  birthDate: selectedPerson.birthDate,
+                }
+              )}
               currentUser={currentUser}
               canEditTree={canWriteActiveTree}
               onClose={() => handlePersonSelect(null)} 
