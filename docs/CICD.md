@@ -50,6 +50,10 @@ Deployments API (no unauthenticated probe — Vercel Deployment Protection retur
 runners even when the link works in your logged-in browser). Playwright then sends
 `x-vercel-protection-bypass` on every request.
 
+Dependabot pull requests only run the unit `build` job. `e2e-smoke` is skipped for
+`dependabot[bot]` because GitHub does not expose the preview-bypass and E2E bootstrap secrets to
+Dependabot-triggered workflows.
+
 Preview deployments with **Deployment Protection** require the automation bypass secret. Copy the
 secret from Vercel → Project → Settings → Deployment Protection → **Protection Bypass for
 Automation** into a GitHub repository secret (same value).
@@ -68,6 +72,11 @@ them via `POST /api/e2e/redeem` (server signs in the dedicated service user).
 | Vercel env | `E2E_SERVICE_USER_EMAIL` | Dedicated E2E runner account (redeem API) |
 | Vercel env | `E2E_SERVICE_USER_PASSWORD` | Service user password (redeem API) |
 | Vercel env | `SUPABASE_SERVICE_ROLE_KEY` | Redeem route consumes tokens + signs in |
+
+### Dependabot guardrails
+
+`typescript` major bumps are ignored in Dependabot until the local ESLint stack supports the new
+peer range. This avoids PRs that fail at `npm ci` before Linegra code is even evaluated.
 
 Do **not** put `E2E_ACCESS_TOKEN` on Vercel — GitHub Actions reads it from repository secrets when
 bootstrapping Playwright. Vercel only needs the service-user credentials for `/api/e2e/redeem`.

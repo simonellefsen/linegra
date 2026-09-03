@@ -45,7 +45,7 @@ export const suggestKitOwnerPersonId = (
   if (defaultPersonId && candidates.some((row) => row.id === defaultPersonId)) {
     return defaultPersonId;
   }
-  return best?.id ?? defaultPersonId ?? null;
+  return best?.id ?? null;
 };
 
 export const suggestCounterpartPersonId = (

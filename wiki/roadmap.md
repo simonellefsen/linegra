@@ -223,13 +223,11 @@ that gates raw data.
 > surfaces overlap clusters for the selected autosomal tester (min-cM filter, segment-row data from
 > shared-segment CSV imports). ICW / parental-side confirmation still future work (caveat below).
 
-- **K1. Segment triangulation / Leeds-method clustering — UI slice DONE 2026-07-03.** Admin DNA panel
-  shows overlap clusters. Remaining: four-grandparent Leeds labeling, ICW confirmation, parental-side
-  filtering. Reuse the per-segment data already parsed in
-  [../lib/dnaRawParser.ts](../lib/dnaRawParser.ts) (`parseSharedSegmentsCsv`,
-  `parseFtdnaSharedSegmentsCsv`), the cluster labels in
-  [../lib/dnaClassification.ts](../lib/dnaClassification.ts), and the `dna_matches` schema. Deeper
-  design: `sources/dna-triangulation.md` (to be written).
+- **K1. Segment triangulation / Leeds-method clustering — DONE 2026-07-06.** Admin DNA panel
+  groups shared-segment matches with strict ICW (50% reciprocal overlap), splits mixed maternal/
+  paternal path clusters, labels groups by four-grandparent Leeds slots (with K2 MRCA fallback).
+  Engine: [../lib/dnaClustering.ts](../lib/dnaClustering.ts); paths: [../lib/dnaParentalHints.ts](../lib/dnaParentalHints.ts);
+  design: [sources/dna-triangulation.md](sources/dna-triangulation.md).
 - **K2. MRCA suggestion from shared matches + cM — DONE 2026-07-04.** Ranks MRCA candidates by
   supporting matches, combined cM, cluster overlap, and path convergence in
   [../lib/dnaMrcaSuggestions.ts](../lib/dnaMrcaSuggestions.ts), surfaced in the admin DNA panel.
@@ -251,6 +249,65 @@ that gates raw data.
   ([../lib/dnaRawEncryption.ts](../lib/dnaRawEncryption.ts)), purge RPC, private test flagging.
   Policy: [decisions/raw-dna-consent-and-encryption.md](decisions/raw-dna-consent-and-encryption.md).
 - **Sequencing:** K7 → K6 → K1 → K5 — **complete.**
+
+**K14. Lineage pill: raw UUID as MRCA + hops-first wording (found 2026-07-06, screenshot).**
+On Helle's panel the grandchild family-kit card reads **"2 hops · MRCA
+5b652651-dee2-4ab5-9e67-dd1976e36e97"** — two issues:
+- **(a) BUG — MRCA renders a raw UUID.** The K13 fix computes the MRCA id correctly, but the
+  `pathNames` map passed to `formatDnaLineagePathSummary` only contains the focus + counterpart
+  (+ match-row people); intermediate/MRCA persons on family-kit paths aren't in `personNameById`,
+  so the id falls through unresolved. Fix: resolve every `pathPersonIds` member's name (they're
+  already fetched for the breadcrumb via `fetchPersonNameRows` — reuse that), and as a guard never
+  print an id — omit the MRCA clause when the name is unknown.
+- **(b) Relationship-first labels.** "N hops" is developer vocabulary; genealogists read
+  relationships. The card header already shows "GRANDCHILD" (K10's `computeRelationship`), so the
+  pill should lead with it: **"Grandchild — via Niels Gether Nielsen"** / **"4th cousin — MRCA
+  Karen Johanne Jakobsen"**, with hops demoted to the expanded breadcrumb. `computeRelationship`
+  already returns label + `commonAncestorIds` + generations; this is presentation-only.
+
+**K15. DNA panel polish, round 2 (screenshot sweep 2026-07-06).** Small items now visible live:
+- Family-kit cards show five "n/a" stat boxes + the same text twice (Prediction box repeats the
+  header chip). Collapse the stat row for kits with no pairwise segments and show one line:
+  "No pairwise segments — typical for a Grandchild: ~1300–2300 cM", with the **K6 "Compare raw
+  kits" CTA** right there when both parties have SNP data (`rawKitComparisonAvailable` already
+  flags it) — comparing would fill *actual* shared cM and verify the paper relationship.
+- Leeds clusters without documented lineage paths still label as "Cluster 1/2/3" — when no
+  Leeds slot name resolves, fall back to the **K9 uncovered-branch hypothesis** ("likely
+  [couple] branch — unverified") instead of a bare number.
+- Cross-link clusters ↔ K3: a cluster member that is an unlinked import should link to its K3
+  card (and the K3 card back to its cluster), so "these three cluster together" and "place this
+  match" stop being separate discoveries.
+- After **"Set kit owner to selected person"** repairs a row, refresh it into the shared-matches
+  list in place (it currently requires a reload / reselect to move sections).
+
+**K16. Haplogroup fields ignore sex — Y-DNA shown for a female (BUG, screenshot 2026-07-06).**
+Pernille's (gender `F`) DNA tab renders a **Y-DNA** haplogroup input ("e.g. I-M6155"). A female has
+no Y chromosome, so her own test cannot yield a Y-DNA haplogroup — offering the field is
+biologically wrong and invites bad data. `person.gender` (`'M'|'F'|'O'`, [../types.ts](../types.ts))
+exists and `PersonProfile` already tracks it; thread it into
+[../components/person-profile/DNATab.tsx](../components/person-profile/DNATab.tsx) (L623) and **hide
+Y-DNA for `F`** (mtDNA + Mitotree apply to everyone — mtDNA is maternally inherited by both sexes).
+Keep an optional, clearly-labeled **"paternal-line Y-DNA (via father/brother)"** surrogate field if
+useful, but never a bare "Y-DNA" on a female's own test. Also: ensure the greyed `e.g. …`
+placeholders never render as *values* in any read-only/shared view (show "—"). Small; pairs with the
+migration-route card, which should likewise only show a Y-line route for males.
+
+**K17. Haplogroup line propagation + contradiction check (NEW FEATURE, 2026-07-06).** Haplogroups
+follow strict inheritance the app already has the graph for: **mtDNA passes mother→all children**
+(so an entire direct-maternal line shares it), **Y-DNA passes father→son**. Today each person's
+haplogroup is entered in isolation. Leverage [../lib/relationshipCalculator.ts](../lib/relationshipCalculator.ts)
++ the pedigree graph to:
+- **Propagate:** when one person on a maternal line has a confirmed mtDNA (Pernille = H10a1u),
+  pre-fill it for her mother, maternal grandmother, siblings, and her own children as **"inherited
+  (unconfirmed)"** (distinct badge from a tested value); same for Y-DNA down paternal lines.
+- **Contradict:** flag as a data-quality error (ties to **O**) when two people on the same strict
+  maternal (or paternal) line carry **different** haplogroups — a genuine impossibility signalling a
+  mis-linked parent, an NPE, or a typo.
+- **Visualize:** tint the pedigree by maternal-line mtDNA / paternal-line Y-DNA (a new **L**-style
+  overlay), making haplogroup groups legible across the tree.
+This turns a single entered haplogroup into tree-wide signal and a correctness check; builds on the
+existing `haplogroupRoutes` dataset and the L1 DNA-edge precedent. Pure inheritance/conflict logic is
+unit-testable in a `lib/haplogroupInheritance.ts`.
 
 **K11. Shared matches vanish unless the counterpart is already a tree person + married/maiden name
 identity breaks association (BUG, found 2026-07-05).** Reported: ~7 shared-segment CSVs imported for
@@ -433,7 +490,20 @@ replacing the layout engine in [../lib/pedigreeLayout.ts](../lib/pedigreeLayout.
 - **L7. Side-by-side person / tree compare — DONE 2026-07-04.** Dual pedigree scopes with person pickers
   ([../components/InteractiveTree/CompareTreeView.tsx](../components/InteractiveTree/CompareTreeView.tsx)).
 - Virtualization for large trees folds under **G** (performance guardrails) / SPEC §7**, not a new L item.
-- **L track complete (L1–L7).** **N Phase 3** (AI spend cap) is done. Next themed groups: **A** (multi-user auth polish) or remaining **M** items.
+- **L8. Timeline view layout redesign (screenshot 2026-07-06).** L3 shipped, but
+  [../components/InteractiveTree/TimelineView.tsx](../components/InteractiveTree/TimelineView.tsx)
+  positions each card vertically by **`(index % 8) * 72px`** — an arbitrary cascade unrelated to the
+  data, so cards near the same year overlap, the vertical axis carries no meaning, and there's no
+  visual tie from a card to its point on the year axis. Redesign:
+  - **Greedy lane packing** — place each card at its year-x, then the lowest row that doesn't
+    collide with an already-placed card (real de-overlap, not `index % 8`), with a thin leader line
+    to the axis.
+  - **Decade tick marks + labels** on the axis (today only min/max years are shown).
+  - Consider **lifespan bars** (birth→death as one horizontal bar per person, not two scattered
+    point-cards) — far more legible and shows overlapping lifetimes at a glance; keep custom events
+    as points on the bar. Pure layout math belongs in `lib/timelineLayout.ts` (unit-testable, mirrors
+    `fanLayout`/`placeCoordinates`).
+- **L track: L1–L7 complete; L8 (timeline polish) open.** Next themed groups: **A** (multi-user auth polish) or remaining **M** items.
 
 ### M. AI family books & biography editing
 Builds on J. Extends SPEC §3.5 (admin workspace) and adds a public viewer; grounding policy ties to
@@ -512,6 +582,13 @@ foundation: [decisions/ai-narrative-editing-and-grounding.md](decisions/ai-narra
   system; policy in the decision doc above. Pairs with M7.
 - **M12. Retire legacy `generateBio`.** [../services/ai.ts](../services/ai.ts) `generateBio`
   (~L416–446) is unused (books use `composePersonBiography`). Remove it — housekeeping, like B.
+- **M13. Saved-books list hygiene (screenshot 2026-07-06).** The list shows **two identical
+  "Christensdatter Family History" rows** (4 chapters, generated 5 minutes apart) — regenerating
+  creates a sibling row instead of a version. Group same-title books as versions (M4's history
+  already snapshots client-side; surface it here) or at minimum warn "a book with this title
+  exists — new version or new book?". Add **scope · style · language badges** per row (a list of
+  four titles gives no hint which is the Danish narrative whole-tree vs the English scholarly
+  branch), and a delete confirmation (Delete is one click, irreversible, beside Open).
 - **Sequencing:** M6 + M1 (editing foundation, parallel) → M2 → M7 → M11 → M10 → M3/M4/M5. M9 runs
   in parallel; M12 anytime.
 
@@ -577,6 +654,30 @@ already has `note_type = 'Discrepancy'`/`'To-do'` and `lib/lifespan.ts` (130-yr 
 - Optional AI layer: suggest the *next record to find* given what vitals/sources are present (pairs
   with P/§ research log).
 
+**O2. BUG — year extraction feeds the checks garbage (screenshot 2026-07-06).** The live panel
+shows "lifespan **17**–1980 (**1963 years**)", "death (**19**) recorded before birth (**27**)",
+"would be only **3** when … was born (**20**)" — day numbers / partial dates are being read as
+years, so most of the 14 "errors" are parser false positives, which teaches the curator to ignore
+the panel. Fix: (a) year extraction (`extractBirthYear` / `representativeYear` path) must only
+accept plausible years (~1000–2200, 3–4 digits) and return **unknown** otherwise — a date like
+"27 JUN" (no year) or a 2-digit year is *unknown*, not year 27; (b) every `dataQuality` check
+skips (or downgrades to an "unparseable date" info-item) when either year is unknown; (c) unit
+fixtures from the real offenders (Klas Josef Verner Eriksson, Margaretha Wilhelmina Hagenzieker,
+Julie Antonia Madsen). Also still open from O: **dismiss / convert-to-`Discrepancy`** actions on
+each issue (the "Open" link exists; triage doesn't).
+
+**O3. Fuzzy near-duplicate detection (screenshot 2026-07-06).** The dashboard's "What's New" shows
+**Eva Hansson** and **Eva Hansen** added the same day — almost certainly one person imported via
+two spellings (DNA CSV vs tree), exactly the maiden/married/patronymic variance K11 fought. O's
+duplicate check requires *same* name + overlapping dates, so it stays silent. Extend it with the
+name-variant machinery that now exists: `lib/dnaPersonNameVariants.ts` (aliases, maiden names) +
+token-boundary similarity from the K8b fix + Nordic normalization from **R** (`-sen/-son`,
+`-datter/-dotter`, `æøå` folding). Near-matches surface as **warnings** with a side-by-side
+compare + "merge persons" action (merge itself may be a bigger slice — flag it separately if so).
+Placeholder persons created from DNA matches (`is_dna_match`) should be prime suspects and
+checked at creation time ("A similar person already exists — link instead?" — reuses the K3
+link-existing suggestion).
+
 ### P. Relationship calculator + path finder — DONE 2026-06-26
 Shipped: [../lib/relationshipCalculator.ts](../lib/relationshipCalculator.ts) finds the MRCA, derives
 the label (parent / grandparent / sibling / half-sibling / aunt-uncle / niece-nephew / cousin with
@@ -593,6 +694,24 @@ The media store + AI vision are both live (`transcribeRecordImage`, `media_perso
 `event_label`). Build on them: tag people in a photo (write `media_person_links`), AI auto-caption,
 optional face-grouping, and a **per-person photo timeline/gallery**. Document images can reuse the
 transcription pipeline for searchable OCR text. New runtime deps (a face model) must be flagged.
+
+**Q1. External media-link UX (screenshot 2026-07-06, Søren Nielsen's Media tab).** Three issues on
+linked (non-uploaded) media:
+- **Broken-image previews.** External links typed IMAGE render an `<img>` that fails (Mediestream
+  and most archive URLs are hotlink-protected **viewer pages**, not direct image files) — the tab
+  shows broken-image icons in empty frames. Fix: on `img onError` (or when the URL fails a
+  direct-image sniff), fall back to a **link card** — domain, title, "open external ↗" — never a
+  broken frame. Consider a HEAD/content-type check or simply trusting the user-picked kind.
+- **"New Media Link" placeholder title never replaced.** New links get `caption: 'New Media Link'`
+  ([../components/PersonProfile.tsx](../components/PersonProfile.tsx) L1026) and saved items render
+  that as their heading while the real description sits below. Make the title editable/derived
+  (first line of description or domain) and never persist the placeholder string.
+- **Danish-archive URL recognition.** Mediestream (`statsbiblioteket.dk/mediestream`),
+  Arkivalieronline/Rigsarkivet, and kirkebøger viewer links are the *dominant* source type for this
+  archive's users — recognize them and render a typed source card (archive name, record type
+  guess), and offer "attach as Source citation" (the sources system exists) so a tax record or
+  dødsannonce becomes a **citation**, not just a media link. Pairs with the OCR/transcription
+  pipeline above.
 
 ### R. Patronymic & Nordic naming intelligence (folds toward I)
 Danish/Swedish/Norwegian records are patronymic-heavy. Add: derive/validate `-sen/-son/-datter/-dotter`
@@ -853,6 +972,22 @@ is watching. Zero-new-deps path available: reuse the `public_crawl_events` patte
 - **V4. Ops check: both configured OpenRouter keys were expired** ("User not found" 401) as of the
   2026-07-02 N-Phase-1 verification, so the proxy's success path has never been exercised live
   end-to-end. Renew a key, run a real book/bio generation, confirm usage logging + spend cap fire.
+- **V5. Triage the errors V2 caught (screenshot 2026-07-06) — the panel worked; now fix what it
+  found.** 11 reports / 7 signatures in two days, all real production bugs:
+  - **`canonicalizeLegacyPublicUrl is not defined`** and **`isAuthCallbackUrl is not defined`**
+    (two separate signatures ×2 hits) — ReferenceErrors, almost certainly stale references left by
+    the U16 route refactor (check `hooks/useAppPublicRoutes` / `lib/publicRoutes.ts` exports vs
+    call sites). These crash real visitors on public routes.
+  - **React invalid-hook-call crash** ("Should have a queue. You are likely calling Hooks
+    conditionally") — 10 React-boundary hits concentrated on `/tree/gether-gamby*` routes; a
+    conditional hook in a tree/person view. The error boundary is containing it, but the page is
+    broken for those visitors.
+  - **"This child is already linked to this parent."** surfacing as a boundary crash — a
+    validation case that should be an inline message on the relationship editor, not a thrown
+    error.
+  Panel polish while in there: an **acknowledge/resolved** flag per signature (so fixed errors
+  leave the list), and route ↔ signature cross-links (top signatures don't show which route they
+  fired on).
 
 ### W. Continuous integration (GitHub Actions) — NEW 2026-07-04
 There is **no `.github/workflows`**. The build gate (`lint + typecheck + 255 tests`) runs only in
@@ -887,7 +1022,41 @@ navigation, review, and test isolation.
   shared) behind a 12-line barrel; mappers in `lib/archiveDbMappers.ts` + tests.
 - **Y2 — DONE 2026-07-05.** Extracted `hooks/useAppAuth`, `useAppTreeBootstrap`, `useAppPublicRoutes`,
   and `usePersonProfileSelection` from `App.tsx` (public routes, tree bootstrap, profile selection).
+- **Y3. Relationship-edge direction hygiene (recurring bug class — K10/K11/K13/U17a all tripped on
+  it).** Relationship rows encode parent↔child direction inconsistently across types (`bio_father`
+  stores parent-first; `child` rows child-centric), and every consumer re-derives orientation with
+  its own case-switch — `lineageTraversalLabel`, `buildChildToParentsMap`,
+  `bucketPublicCrawlRelationships`, `relationshipCalculator.buildParentMap`, the K10 family-kit
+  labeler — each of which has now had (or narrowly avoided) an inversion bug. Fix once: a canonical
+  accessor in `lib/` (e.g. `asParentChildEdge(rel): { parentId, childId } | null` +
+  `isParentalType`) that every consumer uses; migrate the five call sites, add fixtures for both
+  storage conventions, and lint-nudge (or grep-audit) against new direct `person_id/related_id`
+  orientation logic. Small, prevents the whole class.
 - Do opportunistically alongside feature work, not as a big-bang rewrite.
+
+### Z. Portal dashboard polish (screenshot review 2026-07-06) — NEW
+The tree landing dashboard ([../components/TreeLandingPage.tsx](../components/TreeLandingPage.tsx))
+is information-rich and mostly good; these are the rough edges visible on live data:
+- **Z1. Nameless / fragment entries in "What's New" + "Most Wanted".** Rows render with **no name
+  at all** (avatar + "ADDED 7/6/2026") or a bare surname ("Hansson") — DNA-match placeholders from
+  K3's `parseMatchDisplayName` with empty/partial names. Two-part fix: a universal display-name
+  fallback ("Unknown person" + an *is-DNA-match-placeholder* badge so viewers know why it's
+  nameless), and at the source, K3 placeholder creation should always produce a display-usable
+  name ("Unknown (DNA match, 45 cM)"). The near-dupe pair (Eva Hansson / Eva Hansen) is **O3**.
+- **Z2. "This Month" isn't sorted.** Shows Jul 20 → Jul 18 → Jul 24; sort by day-of-month. Also
+  distinguish **living birthdays** from **anniversaries of deceased people** (born-date of someone
+  who died in 1977 is an anniversary, not a birthday — different label/color, and arguably the
+  living should be default-hidden on public views for privacy consistency).
+- **Z3. Share button emits legacy URLs.** `handleShareTree` builds `?tree={id}` query URLs
+  ([../components/TreeLandingPage.tsx](../components/TreeLandingPage.tsx) L71) — pre-U16 format
+  that costs every shared link a redirect hop and re-spreads deprecated URLs. Use the canonical
+  slug URL (`buildTreeUrl` / publicRoutes v2). Grep for other legacy-URL builders while at it.
+- **Z4. Stat redundancy.** "Oldest Birth Record — Christen Jensen (1440)" appears in both Key
+  Benchmarks and Demographic Pulse on the same screen; Demographic Pulse's remaining stats
+  (lifespan, gender split) also live in the hero. Merge or differentiate the cards.
+- **Z5. Make "Most Wanted" chips actionable.** The DATE / MEDIA chips name what's missing — make
+  them deep-link into the person's Vital/Media tab in edit mode, and "View Research Tasks" should
+  carry the person filter into the Research panel (ties to O's to-do conversion).
 
 ## Maintenance note (2026-06-23)
 The 2026-06-22/23 work (M-series editing arc, L1, K1, husky hooks, DNA panel fixes) is **committed and
@@ -920,8 +1089,6 @@ cheap, high leverage, unblocks Dependabot), **X** (E2E smoke), **Y** (archive.ts
 **W first** (an afternoon, protects everything else) → **V1/V4** (error boundary + live AI key check)
 → **N Phase 4** → the rest opportunistically.
 
-> **K1 correctness caveat:** `clusterSharedSegments` currently joins matches that overlap the *kit
-> owner* on the same region. True triangulation/Leeds also requires the two matches to share that
-> segment **with each other** (in-common-with) and to be on the **same parental side** — overlapping
-> the owner's region on opposite parental chromosomes is a false cluster. Fold in ICW / parental-side
-> data before presenting clusters as confirmed shared-ancestor groups.
+> **K1 correctness caveat (addressed 2026-07-06):** strict ICW + parental-side cluster splitting
+> reduce false clusters on unphased data; phased/trio confirmation remains future work if raw
+> phased segments become available.

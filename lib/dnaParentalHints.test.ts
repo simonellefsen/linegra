@@ -5,6 +5,7 @@ import {
   inferPathGrandparentSlot,
   inferPathParentalSide,
   resolveGrandparentSlots,
+  splitClustersByParentalSide,
 } from './dnaParentalHints';
 
 const person = (id: string, firstName: string, lastName: string): Person => ({
@@ -75,5 +76,38 @@ describe('resolveGrandparentSlots and inferPathGrandparentSlot', () => {
     const slot = inferPathGrandparentSlot(['t', 'mom', 'mgf', 'cousin'], slots);
     expect(slot?.key).toBe('mgf');
     expect(slot?.label).toBe('Ole MG');
+  });
+});
+
+describe('splitClustersByParentalSide', () => {
+  it('splits a cluster that mixes maternal and paternal documented paths', () => {
+    const side = new Map([
+      ['a', 'maternal' as const],
+      ['b', 'maternal' as const],
+      ['c', 'paternal' as const],
+      ['d', 'paternal' as const],
+    ]);
+    const split = splitClustersByParentalSide([['a', 'b', 'c', 'd']], side);
+    expect(split).toContainEqual(['a', 'b']);
+    expect(split).toContainEqual(['c', 'd']);
+  });
+
+  it('keeps a cluster when all matches share one parental side', () => {
+    const side = new Map([
+      ['a', 'maternal' as const],
+      ['b', 'maternal' as const],
+    ]);
+    expect(splitClustersByParentalSide([['a', 'b']], side)).toEqual([['a', 'b']]);
+  });
+
+  it('assigns unknown-side matches to the larger parental subgroup', () => {
+    const side = new Map([
+      ['a', 'maternal' as const],
+      ['b', 'maternal' as const],
+      ['c', 'paternal' as const],
+      ['u', 'unknown' as const],
+    ]);
+    const split = splitClustersByParentalSide([['a', 'b', 'c', 'u']], side);
+    expect(split).toEqual([['a', 'b', 'u']]);
   });
 });

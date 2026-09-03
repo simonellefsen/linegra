@@ -53,6 +53,25 @@ describe('dnaSharedImportOwner', () => {
     expect(ownerId).toBe(helle.id);
   });
 
+  it('does not default kit owner to profile person when they are not an autosomal tester', () => {
+    const inger = {
+      id: '33333333-3333-4333-8333-333333333333',
+      first_name: 'Inger',
+      last_name: 'Algesten',
+      maiden_name: 'Nordin',
+    };
+    const ownerId = suggestKitOwnerPersonId(
+      {
+        personName: 'Helle Due',
+        matchName: 'Inger Nordin',
+        fileName: 'Shared DNA segments of Helle Due and Inger Nordin.csv',
+      },
+      [helle, ulla],
+      inger.id
+    );
+    expect(ownerId).toBe(helle.id);
+  });
+
   it('labels unlinked counterpart from CSV when owner is focus', () => {
     expect(
       inferCounterpartDisplayName(helle.id, helle.id, {
