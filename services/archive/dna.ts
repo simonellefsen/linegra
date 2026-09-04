@@ -11,6 +11,7 @@ import {
   DNA_BLOOD_PATH_RELATIONSHIP_TYPES,
   buildChildToParentsMap,
   findDnaBloodRelationshipPath,
+  findRecordedSharedAncestorLineages,
   pathHasCoparentBridge,
 } from '../../lib/dnaLineagePath';
 import { buildDnaLineagePathLabel } from '../../lib/dnaLineagePathLabel';
@@ -667,14 +668,23 @@ export const listSharedMatchesForAutosomalPerson = async (
   const lineageDisplayData = (
     pathPersonIds: string[],
     pathRelationshipIds: string[],
+    sharedAncestorLineages: DNASharedMatchRecord['sharedAncestorLineages'],
     lineagePeopleById: Map<string, NameLookupRow>
   ) => {
     const lineagePersonNames: Record<string, string> = {};
-    pathPersonIds.forEach((personId) => {
+    const allPathPersonIds = new Set([
+      ...pathPersonIds,
+      ...(sharedAncestorLineages || []).flatMap((lineage) => lineage.pathPersonIds),
+    ]);
+    const allPathRelationshipIds = new Set([
+      ...pathRelationshipIds,
+      ...(sharedAncestorLineages || []).flatMap((lineage) => lineage.pathRelationshipIds),
+    ]);
+    allPathPersonIds.forEach((personId) => {
       const person = lineagePeopleById.get(personId);
       if (person) lineagePersonNames[personId] = toDisplayName(person);
     });
-    const lineageRelationshipEdges = pathRelationshipIds.flatMap((relationshipId) => {
+    const lineageRelationshipEdges = Array.from(allPathRelationshipIds).flatMap((relationshipId) => {
       const relationship = relationshipById.get(relationshipId);
       if (!relationship?.id || !relationship.person_id || !relationship.related_id || !relationship.type) {
         return [];
@@ -704,6 +714,9 @@ export const listSharedMatchesForAutosomalPerson = async (
     const pathPersonIds = path?.pathPersonIds || [];
     const pathRelationshipIds = path?.pathRelationshipIds || [];
     const pathFound = pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
+    const sharedAncestorLineages = pathFound
+      ? findRecordedSharedAncestorLineages(focusPersonId, counterpartId, typedRelationships)
+      : [];
     const sharedCM = toNumberOrNull(row.shared_cm);
     const segments = toNumberOrNull(row.segments);
     const longestSegment = toNumberOrNull(row.longest_segment);
@@ -736,6 +749,7 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathFitsPrediction,
       pathPersonIds,
       pathRelationshipIds,
+      sharedAncestorLineages,
       fileName: typeof metadata.file_name === 'string' ? metadata.file_name : undefined,
       importedAt: typeof metadata.imported_at === 'string' ? metadata.imported_at : undefined,
       sharedSegmentsPreview: sharedSegmentsPreviewFromMetadata(metadata),
@@ -852,6 +866,9 @@ export const listSharedMatchesForAutosomalPerson = async (
     const pathRelationshipIds = path?.pathRelationshipIds || [];
     const pathFound =
       !!counterpartPersonId && pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
+    const sharedAncestorLineages = pathFound && counterpartPersonId
+      ? findRecordedSharedAncestorLineages(focusPersonId, counterpartPersonId, typedRelationships)
+      : [];
     const predictionLabel = relationshipPredictionLabel(summary.totalCentimorgans, summary.segmentCount);
     const pathFitsPrediction = computePathFitsPrediction(
       pathFound,
@@ -897,6 +914,7 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathFitsPrediction,
       pathPersonIds,
       pathRelationshipIds,
+      sharedAncestorLineages,
       fileName: summary.fileName,
       importedAt: summary.importedAt,
       sharedSegmentsPreview: sharedSegmentsPreviewFromMetadata(metadata),
@@ -935,6 +953,9 @@ export const listSharedMatchesForAutosomalPerson = async (
         : path?.pathPersonIds || [];
     const pathRelationshipIds = path?.pathRelationshipIds || [];
     const pathFound = pathPersonIds.length > 1 && pathRelationshipIds.length > 0;
+    const sharedAncestorLineages = pathFound
+      ? findRecordedSharedAncestorLineages(focusPersonId, ownerPersonId, typedRelationships)
+      : [];
     const pathFitsPrediction = computePathFitsPrediction(
       pathFound,
       pathPersonIds,
@@ -965,6 +986,7 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathFitsPrediction,
       pathPersonIds,
       pathRelationshipIds,
+      sharedAncestorLineages,
       fileName: rawAutosomalFileNameFromMetadata(metadata),
       importedAt: rawAutosomalImportedAtFromMetadata(metadata),
     });
@@ -972,13 +994,21 @@ export const listSharedMatchesForAutosomalPerson = async (
 
   // Supabase REST responses are capped at 1,000 rows by default. A DNA path can traverse
   // people outside the currently fetched pedigree/name page, so hydrate only its exact UUIDs.
-  const pathPersonIds = Array.from(new Set(results.flatMap((match) => match.pathPersonIds)));
+  const pathPersonIds = Array.from(new Set(results.flatMap((match) => [
+    ...match.pathPersonIds,
+    ...(match.sharedAncestorLineages || []).flatMap((lineage) => lineage.pathPersonIds),
+  ])));
   const pathNameRows = await fetchPersonNameRows(pathPersonIds);
   const pathPeopleById = new Map(pathNameRows.map((row) => [row.id, row]));
 
   return results.map((match) => ({
     ...match,
-    ...lineageDisplayData(match.pathPersonIds, match.pathRelationshipIds, pathPeopleById),
+    ...lineageDisplayData(
+      match.pathPersonIds,
+      match.pathRelationshipIds,
+      match.sharedAncestorLineages,
+      pathPeopleById
+    ),
   })).sort((a, b) => {
     const score = (row: DNASharedMatchRecord) => {
       if (row.source === 'family_kit') return 10_000;

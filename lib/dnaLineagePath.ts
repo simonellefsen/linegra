@@ -7,6 +7,19 @@ export interface BloodRelationshipEdge {
   type?: string;
 }
 
+/**
+ * One recorded shared-ancestor route between two people. These routes describe
+ * tree topology only; a shared DNA segment does not independently prove each
+ * route when a pedigree contains multiple common ancestors.
+ */
+export interface RecordedSharedAncestorLineage {
+  mrcaPersonId: string;
+  pathPersonIds: string[];
+  pathRelationshipIds: string[];
+  focusGenerations: number;
+  counterpartGenerations: number;
+}
+
 export const buildChildToParentsMap = (relationshipRows: BloodRelationshipEdge[]) => {
   const childToParents = new Map<string, Set<string>>();
   const addParent = (childId: string, parentId: string) => {
@@ -41,6 +54,145 @@ export const buildParentToChildrenMap = (childToParents: Map<string, Set<string>
     });
   });
   return parentToChildren;
+};
+
+interface AncestorTraversalStep {
+  childPersonId: string;
+  relationshipId: string;
+}
+
+interface AncestorTraversal {
+  depths: Map<string, number>;
+  /** For each discovered ancestor, the child used to reach it from the start person. */
+  predecessorByAncestor: Map<string, AncestorTraversalStep>;
+}
+
+const buildChildToParentEdges = (relationshipRows: BloodRelationshipEdge[]) => {
+  const parentEdgesByChild = new Map<string, Array<{ parentPersonId: string; relationshipId: string }>>();
+  relationshipRows.forEach((relationship) => {
+    if (
+      !relationship.id ||
+      !relationship.person_id ||
+      !relationship.related_id ||
+      !relationship.type ||
+      !DNA_BLOOD_PATH_RELATIONSHIP_TYPES.has(relationship.type) ||
+      relationship.person_id === relationship.related_id
+    ) {
+      return;
+    }
+    const edges = parentEdgesByChild.get(relationship.related_id) || [];
+    edges.push({ parentPersonId: relationship.person_id, relationshipId: relationship.id });
+    parentEdgesByChild.set(relationship.related_id, edges);
+  });
+  return parentEdgesByChild;
+};
+
+const findAncestors = (
+  startPersonId: string,
+  parentEdgesByChild: Map<string, Array<{ parentPersonId: string; relationshipId: string }>>
+): AncestorTraversal => {
+  const depths = new Map<string, number>([[startPersonId, 0]]);
+  const predecessorByAncestor = new Map<string, AncestorTraversalStep>();
+  const queue = [startPersonId];
+
+  while (queue.length) {
+    const childPersonId = queue.shift()!;
+    const depth = depths.get(childPersonId)!;
+    (parentEdgesByChild.get(childPersonId) || []).forEach(({ parentPersonId, relationshipId }) => {
+      if (depths.has(parentPersonId)) return;
+      depths.set(parentPersonId, depth + 1);
+      predecessorByAncestor.set(parentPersonId, { childPersonId, relationshipId });
+      queue.push(parentPersonId);
+    });
+  }
+
+  return { depths, predecessorByAncestor };
+};
+
+/** Rebuilds a single shortest route from an ancestor down to the starting person. */
+const reconstructAncestorToStartPath = (
+  ancestorPersonId: string,
+  startPersonId: string,
+  predecessorByAncestor: Map<string, AncestorTraversalStep>
+) => {
+  const pathPersonIds = [ancestorPersonId];
+  const pathRelationshipIds: string[] = [];
+  let currentPersonId = ancestorPersonId;
+
+  while (currentPersonId !== startPersonId) {
+    const step = predecessorByAncestor.get(currentPersonId);
+    if (!step) return null;
+    pathRelationshipIds.push(step.relationshipId);
+    pathPersonIds.push(step.childPersonId);
+    currentPersonId = step.childPersonId;
+  }
+
+  return { pathPersonIds, pathRelationshipIds };
+};
+
+/**
+ * Finds the recorded common ancestors and one shortest tree route through each.
+ * This deliberately does not replace the primary DNA path: alternate routes are
+ * useful evidence in endogamous/pedigree-collapse cases, but are informational.
+ */
+export const findRecordedSharedAncestorLineages = (
+  focusPersonId: string,
+  counterpartPersonId: string,
+  relationshipRows: BloodRelationshipEdge[],
+  maxLineages = 12
+): RecordedSharedAncestorLineage[] => {
+  if (!focusPersonId || !counterpartPersonId || focusPersonId === counterpartPersonId || maxLineages < 1) {
+    return [];
+  }
+
+  const parentEdgesByChild = buildChildToParentEdges(relationshipRows);
+  const focusAncestors = findAncestors(focusPersonId, parentEdgesByChild);
+  const counterpartAncestors = findAncestors(counterpartPersonId, parentEdgesByChild);
+  const sharedAncestorIds = Array.from(focusAncestors.depths.keys()).filter(
+    (personId) => personId !== focusPersonId && personId !== counterpartPersonId && counterpartAncestors.depths.has(personId)
+  );
+
+  return sharedAncestorIds
+    .map((mrcaPersonId) => {
+      const focusGenerations = focusAncestors.depths.get(mrcaPersonId)!;
+      const counterpartGenerations = counterpartAncestors.depths.get(mrcaPersonId)!;
+      const mrcaToFocus = reconstructAncestorToStartPath(
+        mrcaPersonId,
+        focusPersonId,
+        focusAncestors.predecessorByAncestor
+      );
+      const mrcaToCounterpart = reconstructAncestorToStartPath(
+        mrcaPersonId,
+        counterpartPersonId,
+        counterpartAncestors.predecessorByAncestor
+      );
+      if (!mrcaToFocus || !mrcaToCounterpart) return null;
+
+      return {
+        mrcaPersonId,
+        pathPersonIds: [
+          ...mrcaToFocus.pathPersonIds.slice().reverse(),
+          ...mrcaToCounterpart.pathPersonIds.slice(1),
+        ],
+        pathRelationshipIds: [
+          ...mrcaToFocus.pathRelationshipIds.slice().reverse(),
+          ...mrcaToCounterpart.pathRelationshipIds,
+        ],
+        focusGenerations,
+        counterpartGenerations,
+      };
+    })
+    .filter((lineage): lineage is RecordedSharedAncestorLineage => lineage !== null)
+    .sort((left, right) => {
+      const leftTotal = left.focusGenerations + left.counterpartGenerations;
+      const rightTotal = right.focusGenerations + right.counterpartGenerations;
+      if (leftTotal !== rightTotal) return leftTotal - rightTotal;
+      const leftLongest = Math.max(left.focusGenerations, left.counterpartGenerations);
+      const rightLongest = Math.max(right.focusGenerations, right.counterpartGenerations);
+      if (leftLongest !== rightLongest) return leftLongest - rightLongest;
+      return left.mrcaPersonId.localeCompare(right.mrcaPersonId);
+    })
+    .slice(0, maxLineages);
 };
 
 /** True when outer nodes are different parents of the same child (spouse bridge — not a DNA path). */

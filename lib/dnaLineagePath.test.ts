@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildChildToParentsMap,
   findDnaBloodRelationshipPath,
+  findRecordedSharedAncestorLineages,
   pathHasCoparentBridge,
   type BloodRelationshipEdge,
 } from './dnaLineagePath';
@@ -64,5 +65,33 @@ describe('findDnaBloodRelationshipPath', () => {
 
     const path = findDnaBloodRelationshipPath('child-a', 'child-b', rows);
     expect(path?.pathPersonIds).toEqual(['child-a', 'parent', 'child-b']);
+  });
+
+  it('lists each recorded common ancestor without replacing the primary route', () => {
+    const rows = [
+      rel('fa', 'ancestor-a', 'focus-parent', 'bio_mother'),
+      rel('ff', 'focus-parent', 'focus', 'bio_mother'),
+      rel('ca', 'ancestor-a', 'counterpart-parent', 'bio_father'),
+      rel('cc', 'counterpart-parent', 'counterpart', 'bio_father'),
+      rel('fb', 'ancestor-b', 'focus', 'bio_father'),
+      rel('cb', 'ancestor-b', 'counterpart', 'bio_mother'),
+    ];
+
+    expect(findRecordedSharedAncestorLineages('focus', 'counterpart', rows)).toEqual([
+      {
+        mrcaPersonId: 'ancestor-b',
+        pathPersonIds: ['focus', 'ancestor-b', 'counterpart'],
+        pathRelationshipIds: ['fb', 'cb'],
+        focusGenerations: 1,
+        counterpartGenerations: 1,
+      },
+      {
+        mrcaPersonId: 'ancestor-a',
+        pathPersonIds: ['focus', 'focus-parent', 'ancestor-a', 'counterpart-parent', 'counterpart'],
+        pathRelationshipIds: ['ff', 'fa', 'ca', 'cc'],
+        focusGenerations: 2,
+        counterpartGenerations: 2,
+      },
+    ]);
   });
 });

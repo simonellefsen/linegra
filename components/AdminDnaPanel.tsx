@@ -852,6 +852,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             lineageMrcaOptions
                           )
                         : [];
+                    const sharedAncestorLines = match.sharedAncestorLineages || [];
                     const pathSummary =
                       match.pathFound && pathPersonIds.length
                         ? formatDnaLineagePathSummary(
@@ -1079,10 +1080,43 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                             <Sparkles className="w-3.5 h-3.5" />
                             {isPathExpanded ? 'Hide lineage' : pathSummary}
                           </button>
+                          {sharedAncestorLines.length > 1 && (
+                            <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-violet-700">
+                              {sharedAncestorLines.length} recorded shared ancestors
+                            </span>
+                          )}
                         </div>
                         {isPathExpanded && lineageBreadcrumb.length > 0 && (
                           <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 space-y-2">
                             <DnaLineagePathBreadcrumb nodes={lineageBreadcrumb} className="text-xs" />
+                            {sharedAncestorLines.length > 1 && (
+                              <div className="rounded-lg border border-violet-200 bg-white/70 px-3 py-2 space-y-1.5">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
+                                  Recorded shared-ancestor lines
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {sharedAncestorLines.map((lineage) => {
+                                    const ancestorName =
+                                      pathNames.get(lineage.mrcaPersonId) || 'Unresolved tree person';
+                                    return (
+                                      <span
+                                        key={lineage.mrcaPersonId}
+                                        className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] text-violet-800"
+                                      >
+                                        <span className="font-semibold">{ancestorName}</span>
+                                        {' '}
+                                        <span className="text-violet-600">
+                                          {lineage.focusGenerations} + {lineage.counterpartGenerations} generations
+                                        </span>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                                <p className="text-[10px] text-violet-700">
+                                  Informational only; DNA support remains attached to the selected shortest lineage.
+                                </p>
+                              </div>
+                            )}
                             {viewInTreePersonId && onViewLineageInTree ? (
                               <button
                                 type="button"
