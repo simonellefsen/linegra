@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { inferParentPairsForUnion, inferParentRelationshipType, isSpuriousCoparentParentLink, shouldSkipCoparentChildLink } from '../../lib/parentChildLinks';
 import { inferSpouseDefaultGender } from '../../lib/personGender';
+import { parentPlaceholderDefaults } from '../../lib/placeholderProfileDefaults';
 import { Person, RelationshipType, FamilyLayoutState } from '../../types';
 import { mapDbPerson } from '../../lib/archiveDbMappers';
 import { normalizeActor, randomId, type ImportActor } from './shared';
@@ -22,6 +23,21 @@ export const createPlaceholderParent = async ({
   const normalizedActor = normalizeActor(actor);
   const parentId = randomId();
   const defaultGender = parentType === 'father' ? 'M' : 'F';
+  const { data: childRow, error: childError } = await supabase
+    .from('persons')
+    .select('birth_date_text, death_date_text, burial_date_text, is_living, is_private')
+    .eq('id', childId)
+    .eq('tree_id', treeId)
+    .maybeSingle();
+  if (childError) throw new Error(childError.message);
+  if (!childRow) throw new Error('The child record could not be found in this tree.');
+  const visibility = parentPlaceholderDefaults({
+    birthDate: childRow.birth_date_text ?? undefined,
+    deathDate: childRow.death_date_text ?? undefined,
+    burialDate: childRow.burial_date_text ?? undefined,
+    isLiving: childRow.is_living ?? undefined,
+    isPrivate: Boolean(childRow.is_private),
+  });
   const metadata: Record<string, any> = {
     createdVia: 'manual_parent_button',
   };
@@ -46,10 +62,10 @@ export const createPlaceholderParent = async ({
       bio: null,
       occupations: [],
       created_by: normalizedActor.id,
-      is_private: true,
+      is_private: visibility.isPrivate,
       is_dna_match: false,
       dna_match_info: null,
-      is_living: null,
+      is_living: visibility.isLiving,
       tags: [],
       user_role: null,
     })
