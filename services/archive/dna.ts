@@ -664,10 +664,14 @@ export const listSharedMatchesForAutosomalPerson = async (
 
   // The Admin DNA panel can be open while the interactive tree has only a small pedigree scope
   // loaded. Keep the labels tied to the UUID path returned by the resolver, not that UI scope.
-  const lineageDisplayData = (pathPersonIds: string[], pathRelationshipIds: string[]) => {
+  const lineageDisplayData = (
+    pathPersonIds: string[],
+    pathRelationshipIds: string[],
+    lineagePeopleById: Map<string, NameLookupRow>
+  ) => {
     const lineagePersonNames: Record<string, string> = {};
     pathPersonIds.forEach((personId) => {
-      const person = personById.get(personId);
+      const person = lineagePeopleById.get(personId);
       if (person) lineagePersonNames[personId] = toDisplayName(person);
     });
     const lineageRelationshipEdges = pathRelationshipIds.flatMap((relationshipId) => {
@@ -732,7 +736,6 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathFitsPrediction,
       pathPersonIds,
       pathRelationshipIds,
-      ...lineageDisplayData(pathPersonIds, pathRelationshipIds),
       fileName: typeof metadata.file_name === 'string' ? metadata.file_name : undefined,
       importedAt: typeof metadata.imported_at === 'string' ? metadata.imported_at : undefined,
       sharedSegmentsPreview: sharedSegmentsPreviewFromMetadata(metadata),
@@ -894,7 +897,6 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathFitsPrediction,
       pathPersonIds,
       pathRelationshipIds,
-      ...lineageDisplayData(pathPersonIds, pathRelationshipIds),
       fileName: summary.fileName,
       importedAt: summary.importedAt,
       sharedSegmentsPreview: sharedSegmentsPreviewFromMetadata(metadata),
@@ -963,13 +965,21 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathFitsPrediction,
       pathPersonIds,
       pathRelationshipIds,
-      ...lineageDisplayData(pathPersonIds, pathRelationshipIds),
       fileName: rawAutosomalFileNameFromMetadata(metadata),
       importedAt: rawAutosomalImportedAtFromMetadata(metadata),
     });
   });
 
-  return results.sort((a, b) => {
+  // Supabase REST responses are capped at 1,000 rows by default. A DNA path can traverse
+  // people outside the currently fetched pedigree/name page, so hydrate only its exact UUIDs.
+  const pathPersonIds = Array.from(new Set(results.flatMap((match) => match.pathPersonIds)));
+  const pathNameRows = await fetchPersonNameRows(pathPersonIds);
+  const pathPeopleById = new Map(pathNameRows.map((row) => [row.id, row]));
+
+  return results.map((match) => ({
+    ...match,
+    ...lineageDisplayData(match.pathPersonIds, match.pathRelationshipIds, pathPeopleById),
+  })).sort((a, b) => {
     const score = (row: DNASharedMatchRecord) => {
       if (row.source === 'family_kit') return 10_000;
       return row.sharedCM ?? 0;
