@@ -173,6 +173,15 @@ export interface DNASharedMatchRecord {
   pathFitsPrediction: boolean;
   pathPersonIds: string[];
   pathRelationshipIds: string[];
+  /** UUID-keyed display data for this exact lineage path. Keeps the admin view independent of the visible tree scope. */
+  lineagePersonNames?: Record<string, string>;
+  /** Exact relationship rows used to resolve this path, so breadcrumb labels remain accurate outside the loaded pedigree. */
+  lineageRelationshipEdges?: Array<{
+    id: string;
+    personId: string;
+    relatedId: string;
+    type: RelationshipType;
+  }>;
   fileName?: string;
   importedAt?: string;
   testId?: string;

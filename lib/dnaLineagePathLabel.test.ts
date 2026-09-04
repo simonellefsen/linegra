@@ -61,6 +61,45 @@ describe('dnaLineagePathLabel', () => {
     ).toBe('2 hops · MRCA Lord Byron');
   });
 
+  it('uses UUID-keyed path data to render every name and relationship label', () => {
+    const path = {
+      pathPersonIds: ['tester', 'parent', 'mrca', 'cousin-parent', 'match'],
+      pathRelationshipIds: ['r1', 'r2', 'r3', 'r4'],
+    };
+    const pathRows = [
+      rel('r1', 'parent', 'tester', 'bio_mother'),
+      rel('r2', 'mrca', 'parent', 'bio_father'),
+      rel('r3', 'mrca', 'cousin-parent', 'bio_mother'),
+      rel('r4', 'cousin-parent', 'match', 'bio_father'),
+    ];
+    const pathNames = {
+      tester: 'Simon Ellefsen',
+      parent: 'Known Parent',
+      mrca: 'Shared Ancestor',
+      'cousin-parent': 'Cousin Parent',
+      match: 'Stefan Timmermann Byström',
+    };
+
+    expect(
+      buildDnaLineagePathLabel(
+        path.pathPersonIds,
+        path.pathRelationshipIds,
+        pathRows,
+        pathNames
+      )
+    ).toBe(
+      'Simon Ellefsen → child of Known Parent → child of Shared Ancestor → parent of Cousin Parent → parent of Stefan Timmermann Byström'
+    );
+    expect(
+      formatDnaLineagePathSummary(
+        path.pathPersonIds,
+        path.pathRelationshipIds,
+        pathRows,
+        pathNames
+      )
+    ).toBe('4 hops · MRCA Shared Ancestor');
+  });
+
   it('does not label the DNA match as MRCA when edge labels are all child-of', () => {
     const ids = {
       tester: 't',

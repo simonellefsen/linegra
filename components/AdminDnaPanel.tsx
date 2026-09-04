@@ -813,6 +813,9 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                       ? resolution.pathRelationshipIds
                       : match.pathRelationshipIds;
                     const pathNames = new Map(personNameById);
+                    Object.entries(match.lineagePersonNames || {}).forEach(([personId, name]) => {
+                      pathNames.set(personId, name);
+                    });
                     if (match.counterpartPersonId) {
                       pathNames.set(match.counterpartPersonId, match.counterpartPersonName);
                     }
@@ -820,6 +823,18 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                       const focusName = personNameById.get(selectedPersonId);
                       if (focusName) pathNames.set(selectedPersonId, focusName);
                     }
+                    const relationshipRowsById = new Map(
+                      lineageRelationshipRows.map((relationship) => [relationship.id, relationship])
+                    );
+                    (match.lineageRelationshipEdges || []).forEach((relationship) => {
+                      relationshipRowsById.set(relationship.id, {
+                        id: relationship.id,
+                        person_id: relationship.personId,
+                        related_id: relationship.relatedId,
+                        type: relationship.type,
+                      });
+                    });
+                    const pathRelationshipRows = Array.from(relationshipRowsById.values());
                     const lineageMrcaOptions =
                       selectedPersonId && match.counterpartPersonId
                         ? {
@@ -832,7 +847,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                         ? buildDnaLineagePathBreadcrumb(
                             pathPersonIds,
                             pathRelationshipIds,
-                            lineageRelationshipRows,
+                            pathRelationshipRows,
                             pathNames,
                             lineageMrcaOptions
                           )
@@ -842,7 +857,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                         ? formatDnaLineagePathSummary(
                             pathPersonIds,
                             pathRelationshipIds,
-                            lineageRelationshipRows,
+                            pathRelationshipRows,
                             pathNames,
                             lineageMrcaOptions
                           )
@@ -852,7 +867,7 @@ const AdminDnaPanel: React.FC<AdminDnaPanelProps> = ({
                         ? pickLineageMrcaPersonId(
                             pathPersonIds,
                             pathRelationshipIds,
-                            lineageRelationshipRows,
+                            pathRelationshipRows,
                             lineageMrcaOptions
                           )
                         : null;

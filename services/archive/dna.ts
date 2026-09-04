@@ -656,10 +656,34 @@ export const listSharedMatchesForAutosomalPerson = async (
     mapDbRowToNameLookup(row)
   );
   const personById = new Map<string, NameLookupRow>(nameRows.map((row) => [row.id, row]));
+  const relationshipById = new Map(typedRelationships.map((row) => [row.id, row]));
   const calculatorRelationships = relationshipRowsForCalculator(typedRelationships);
   const focusHasRawKit = (focusAutosomalResponse.data || []).some((row: any) =>
     hasEncryptedRawAutosomalMetadata(asRecord(row.metadata))
   );
+
+  // The Admin DNA panel can be open while the interactive tree has only a small pedigree scope
+  // loaded. Keep the labels tied to the UUID path returned by the resolver, not that UI scope.
+  const lineageDisplayData = (pathPersonIds: string[], pathRelationshipIds: string[]) => {
+    const lineagePersonNames: Record<string, string> = {};
+    pathPersonIds.forEach((personId) => {
+      const person = personById.get(personId);
+      if (person) lineagePersonNames[personId] = toDisplayName(person);
+    });
+    const lineageRelationshipEdges = pathRelationshipIds.flatMap((relationshipId) => {
+      const relationship = relationshipById.get(relationshipId);
+      if (!relationship?.id || !relationship.person_id || !relationship.related_id || !relationship.type) {
+        return [];
+      }
+      return [{
+        id: relationship.id,
+        personId: relationship.person_id,
+        relatedId: relationship.related_id,
+        type: relationship.type,
+      }];
+    });
+    return { lineagePersonNames, lineageRelationshipEdges };
+  };
 
   const results: DNASharedMatchRecord[] = [];
   const existingTestIds = new Set<string>();
@@ -708,6 +732,7 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathFitsPrediction,
       pathPersonIds,
       pathRelationshipIds,
+      ...lineageDisplayData(pathPersonIds, pathRelationshipIds),
       fileName: typeof metadata.file_name === 'string' ? metadata.file_name : undefined,
       importedAt: typeof metadata.imported_at === 'string' ? metadata.imported_at : undefined,
       sharedSegmentsPreview: sharedSegmentsPreviewFromMetadata(metadata),
@@ -869,6 +894,7 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathFitsPrediction,
       pathPersonIds,
       pathRelationshipIds,
+      ...lineageDisplayData(pathPersonIds, pathRelationshipIds),
       fileName: summary.fileName,
       importedAt: summary.importedAt,
       sharedSegmentsPreview: sharedSegmentsPreviewFromMetadata(metadata),
@@ -937,6 +963,7 @@ export const listSharedMatchesForAutosomalPerson = async (
       pathFitsPrediction,
       pathPersonIds,
       pathRelationshipIds,
+      ...lineageDisplayData(pathPersonIds, pathRelationshipIds),
       fileName: rawAutosomalFileNameFromMetadata(metadata),
       importedAt: rawAutosomalImportedAtFromMetadata(metadata),
     });
