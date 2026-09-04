@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { Person, Relationship, RelationshipConfidence } from '../../types';
+import { Person, Relationship } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
+import { layoutPedigreeFamilies, PEDIGREE_CARD_WIDTH, PEDIGREE_CARD_HEIGHT } from '../../lib/pedigreeFamilyLayout';
+import PedigreeFamilyConnections from './PedigreeFamilyConnections';
 import { centeredPedigreeScrollPosition } from '../../lib/pedigreeViewport';
 import { dnaSupportMatchIds } from '../../lib/dnaSupport';
 import { getAvatarForPerson } from '../../lib/avatar';
@@ -59,37 +61,11 @@ interface PedigreeTreeProps {
   hypothesisPersonIds?: Set<string>;
 }
 
-const horizontalSpacing = 220;
-const verticalSpacing = 180;
-const cardWidth = 180;
-const cardHeight = 152;
-const TOP_CANVAS_PADDING = 28;
+const cardWidth = PEDIGREE_CARD_WIDTH;
+const cardHeight = PEDIGREE_CARD_HEIGHT;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2;
 const ZOOM_STEP = 0.15;
-const MIN_ROW_GAP = 1;
-// Edge styling (roadmap L1): DNA-backed lineages trace emerald; otherwise the stroke encodes the
-// parental relationship's `confidence` (Confirmed bold indigo → Speculative faint dashed). Unset
-// confidence falls back to the default lineage indigo so the common, unsourced case doesn't regress.
-// Mirrors the confidence encoding in the legacy force graph (components/FamilyTree.tsx getLinkStroke)
-// so the two views agree on what each link style means.
-const CONFIDENCE_STROKE: Record<
-  RelationshipConfidence,
-  { color: string; width: number; dash: string; opacity: number }
-> = {
-  Confirmed: { color: '#4f46e5', width: 3, dash: 'none', opacity: 0.95 },
-  Probable: { color: '#6366f1', width: 2.5, dash: 'none', opacity: 0.9 },
-  Assumed: { color: '#94a3b8', width: 2, dash: 'none', opacity: 0.8 },
-  Speculative: { color: '#cbd5e1', width: 2, dash: '5,4', opacity: 0.7 },
-  Unknown: { color: '#cbd5e1', width: 1.5, dash: '1,5', opacity: 0.55 },
-};
-const DEFAULT_LINEAGE_STROKE = { color: '#6366f1', width: 2.5, dash: 'none', opacity: 0.95 };
-const UNION_BAR_STROKE = { color: '#4338ca', width: 3.5, dash: 'none', opacity: 1 };
-const DNA_STROKE = { color: '#059669', width: 3, dash: 'none', opacity: 1 };
-const PLACEHOLDER_OVERRIDE = { dash: '6,5', width: 2, opacity: 0.5 };
-
-const strokeForConfidence = (conf?: RelationshipConfidence) =>
-  conf ? CONFIDENCE_STROKE[conf] : DEFAULT_LINEAGE_STROKE;
 
 const extractYear = (value?: string) => {
   if (!value) return null;
@@ -162,68 +138,24 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     [siblingHints, layout.siblingHints]
   );
 
-  const packedRowByNodeId = useMemo(() => {
-    const byColumn = new Map<number, typeof layout.nodes>();
-    layout.nodes.forEach((node) => {
-      const list = byColumn.get(node.column) || [];
-      list.push(node);
-      byColumn.set(node.column, list);
-    });
-
-    const packed = new Map<string, number>();
-    byColumn.forEach((nodesInColumn) => {
-      const sorted = [...nodesInColumn].sort((a, b) => {
-        if (a.row !== b.row) return a.row - b.row;
-        // Keep real people closer to their computed row and push placeholders outward first.
-        if (!!a.placeholder === !!b.placeholder) return 0;
-        return a.placeholder ? 1 : -1;
-      });
-
-      let lastRow = Number.NEGATIVE_INFINITY;
-      sorted.forEach((node) => {
-        let nextRow = node.row;
-        if (nextRow - lastRow < MIN_ROW_GAP) {
-          nextRow = lastRow + MIN_ROW_GAP;
-        }
-        packed.set(node.id, nextRow);
-        lastRow = nextRow;
-      });
-    });
-
-    return packed;
-  }, [layout]);
-
-  const packedRows = useMemo(() => Array.from(packedRowByNodeId.values()), [packedRowByNodeId]);
-  const columnOffset = -layout.minColumn;
-  const minPackedRow = packedRows.length ? Math.min(...packedRows) : layout.minRow;
-  const maxPackedRow = packedRows.length ? Math.max(...packedRows) : layout.maxRow;
-  const rowOffset = -minPackedRow;
-  const totalGenerations = layout.maxColumn - layout.minColumn + 1 || 1;
-  const totalRows = maxPackedRow - minPackedRow + 1 || 1;
-  const width = totalRows * horizontalSpacing + cardWidth;
-  const height = totalGenerations * verticalSpacing + cardHeight + TOP_CANVAS_PADDING;
+  const familyLayout = useMemo(
+    () => layoutPedigreeFamilies(layout, allRelationships ?? relationships),
+    [layout, allRelationships, relationships]
+  );
+  const { width, height } = familyLayout;
   const scaledWidth = width * zoom;
   const scaledHeight = height * zoom;
-
-  const nodeRects = useMemo(() => {
-    const map = new Map<string, { left: number; top: number }>();
-    layout.nodes.forEach((node) => {
-      const depthIndex = node.column + columnOffset;
-      const packedRow = packedRowByNodeId.get(node.id) ?? node.row;
-      const left =
-        (packedRow + rowOffset) * horizontalSpacing + horizontalSpacing / 2 - cardWidth / 2;
-      const top = depthIndex * verticalSpacing + TOP_CANVAS_PADDING;
-      map.set(node.id, { left, top });
-    });
+  const nodeRects = useMemo(() => new Map(familyLayout.cards.map((card) => [card.id, card])), [familyLayout]);
+  const occurrencesByPersonId = useMemo(() => {
+    const map = new Map<string, typeof familyLayout.cards>();
+    for (const card of familyLayout.cards) {
+      const entries = map.get(card.sourceId) ?? [];
+      entries.push(card);
+      map.set(card.sourceId, entries);
+    }
     return map;
-  }, [layout, columnOffset, rowOffset, packedRowByNodeId]);
-  const nodeById = useMemo(() => {
-    const map = new Map<string, typeof layout.nodes[number]>();
-    layout.nodes.forEach((node) => map.set(node.id, node));
-    return map;
-  }, [layout]);
-
-  const focusRect = focusId ? nodeRects.get(focusId) : undefined;
+  }, [familyLayout]);
+  const focusRect = familyLayout.focusCardId ? nodeRects.get(familyLayout.focusCardId) : undefined;
 
   // A multi-union descendant branch can be thousands of pixels wide. Start each new focus on its
   // card rather than at the canvas origin, where the branch looks disconnected and is easy to misread.
@@ -249,24 +181,6 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     centeredFocusKeyRef.current = focusKey;
   }, [focusId, focusRect, scaledHeight, scaledWidth, zoom]);
 
-  const childEdgeGroups = useMemo(() => {
-    const groups = new Map<string, typeof layout.edges>();
-    layout.edges.forEach((edge) => {
-      if (edge.type !== 'parent') return;
-      const arr = groups.get(edge.toId) || [];
-      arr.push(edge);
-      groups.set(edge.toId, arr);
-    });
-    return groups;
-  }, [layout]);
-  const spouseEdges = useMemo(
-    () => layout.edges.filter((edge) => edge.type === 'spouse'),
-    [layout]
-  );
-  const focusPartnerCount = useMemo(() => {
-    if (!focusId) return 0;
-    return spouseEdges.filter((edge) => edge.fromId === focusId || edge.toId === focusId).length;
-  }, [spouseEdges, focusId]);
   const highlightedChildId = hoveredPersonId || selectedPersonId || null;
 
   const dnaSupportByPersonId = useMemo(() => {
@@ -322,7 +236,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   useEffect(() => {
     if (!pendingHomeRecenter || !focusId) return;
     const container = scrollContainerRef.current;
-    const rect = nodeRects.get(focusId);
+    const rect = focusRect;
     if (!container || !rect) return;
     const position = centeredPedigreeScrollPosition(
       {
@@ -340,7 +254,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
       behavior: 'smooth',
     });
     setPendingHomeRecenter(false);
-  }, [pendingHomeRecenter, focusId, nodeRects, scaledHeight, scaledWidth, zoom]);
+  }, [pendingHomeRecenter, focusId, focusRect, scaledHeight, scaledWidth, zoom]);
 
   const handleHomeClick = () => {
     if (!homeEnabled || !onFocusHome) return;
@@ -370,196 +284,11 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
             style={{ width, height, transform: `scale(${zoom})`, transformOrigin: 'top left' }}
           >
           <svg width={width} height={height} className="absolute inset-0 pointer-events-none">
-            {spouseEdges.map((edge) => {
-              const rectA = nodeRects.get(edge.fromId);
-              const rectB = nodeRects.get(edge.toId);
-              if (!rectA || !rectB) return null;
-              const leftRect = rectA.left <= rectB.left ? rectA : rectB;
-              const rightRect = rectA.left <= rectB.left ? rectB : rectA;
-              const y = leftRect.top + cardHeight / 2;
-              return (
-                <g key={edge.id}>
-                  <line
-                    x1={leftRect.left + cardWidth}
-                    y1={y}
-                    x2={rightRect.left}
-                    y2={y}
-                    stroke="#f472b6"
-                    strokeWidth={2}
-                    strokeDasharray="6,4"
-                    opacity={0.9}
-                  />
-                  <title>Spousal union</title>
-                </g>
-              );
-            })}
-            {Array.from(childEdgeGroups.entries()).map(([childId, edges]) => {
-              const childRect = nodeRects.get(childId);
-              if (!childRect) return null;
-              // DNA-aware overlay (roadmap L1): a child whose lineage is backed by DNA evidence traces
-              // emerald. Otherwise each parental edge encodes its `confidence` (Confirmed bold indigo →
-              // Speculative faint dashed); unset confidence keeps the default lineage indigo so the
-              // common, unsourced case is unchanged. The shared union bar + drop use the group style.
-              const childDnaCount = dnaSupportByPersonId.get(childId)?.size ?? 0;
-              const isDna = childDnaCount > 0;
-              const groupStroke = isDna ? DNA_STROKE : UNION_BAR_STROKE;
-              const singleStroke = isDna ? DNA_STROKE : DEFAULT_LINEAGE_STROKE;
-              const isHighlighted = !highlightedChildId || highlightedChildId === childId;
-              const edgeOpacity = isHighlighted ? 1 : 0.2;
-              const edgeConfidence = (fromId: string, toId: string): RelationshipConfidence | undefined =>
-                parentalRelByKey.get(`${fromId}->${toId}`)?.confidence;
-              const parentStroke = (parent: {
-                node: typeof layout.nodes[number];
-                edge: typeof layout.edges[number];
-              }) =>
-                parent.node.placeholder
-                  ? { ...groupStroke, ...PLACEHOLDER_OVERRIDE }
-                  : isDna
-                  ? DNA_STROKE
-                  : strokeForConfidence(edgeConfidence(parent.edge.fromId, parent.edge.toId));
-              const edgeTitle = (fromId: string, toId: string) => {
-                if (isDna) {
-                  const cm = dnaCmByPersonId.get(toId);
-                  return cm
-                    ? `parent → child · DNA-backed · ${Math.round(cm)} cM`
-                    : 'parent → child · DNA-backed';
-                }
-                return `parent → child${edgeConfidence(fromId, toId) ? ` · ${edgeConfidence(fromId, toId)}` : ''}`;
-              };
-              if (edges.length >= 2) {
-                const parents = edges
-                  .map((edge) => {
-                    const rect = nodeRects.get(edge.fromId);
-                    const node = nodeById.get(edge.fromId);
-                    if (!rect || !node) return null;
-                    return { rect, node, edge };
-                  })
-                  .filter(Boolean) as Array<{
-                    rect: { left: number; top: number };
-                    node: typeof layout.nodes[number];
-                    edge: typeof layout.edges[number];
-                  }>;
-                if (parents.length < 2) {
-                  // Fallback to single line if only one parent with rect.
-                  const fallbackEdge = parents[0];
-                  if (!fallbackEdge) return null;
-                  const fromX = fallbackEdge.rect.left + cardWidth / 2;
-                  const fromY = fallbackEdge.rect.top + cardHeight;
-                  const toX = childRect.left + cardWidth / 2;
-                  const toY = childRect.top;
-                  const midY = (fromY + toY) / 2;
-                  const s = parentStroke(fallbackEdge);
-                  return (
-                    <path
-                      key={`${fallbackEdge.edge.id}-single`}
-                      d={`M${fromX},${fromY} L${fromX},${midY} L${toX},${midY} L${toX},${toY}`}
-                      stroke={s.color}
-                      strokeWidth={s.width}
-                      fill="none"
-                      strokeDasharray={s.dash}
-                      opacity={s.opacity * edgeOpacity}
-                    >
-                      <title>{edgeTitle(fallbackEdge.edge.fromId, fallbackEdge.edge.toId)}</title>
-                    </path>
-                  );
-                }
-                parents.sort((a, b) => a.rect.left - b.rect.left);
-                const parentXs = parents.map((p) => p.rect.left + cardWidth / 2);
-                let unionY = Math.min(...parents.map((p) => p.rect.top + cardHeight)) + 20;
-                unionY = Math.min(unionY, childRect.top - 20);
-                const midX = (Math.min(...parentXs) + Math.max(...parentXs)) / 2;
-                const toX = childRect.left + cardWidth / 2;
-                const childJoinY = Math.max(unionY + 12, childRect.top - 18);
-                return (
-                  <g key={`${childId}-union`}>
-                    {parents.map((parent, idx) => {
-                      const s = parentStroke(parent);
-                      return (
-                        <line
-                          key={`${childId}-parent-${idx}`}
-                          x1={parent.rect.left + cardWidth / 2}
-                          y1={parent.rect.top + cardHeight}
-                          x2={parent.rect.left + cardWidth / 2}
-                          y2={unionY}
-                          stroke={s.color}
-                          strokeWidth={s.width}
-                          strokeDasharray={s.dash}
-                          opacity={s.opacity * edgeOpacity}
-                        >
-                          <title>{edgeTitle(parent.edge.fromId, parent.edge.toId)}</title>
-                        </line>
-                      );
-                    })}
-                    <line
-                      x1={Math.min(...parentXs)}
-                      x2={Math.max(...parentXs)}
-                      y1={unionY}
-                      y2={unionY}
-                      stroke={groupStroke.color}
-                      strokeWidth={groupStroke.width}
-                      opacity={groupStroke.opacity * edgeOpacity}
-                    />
-                    <line
-                      x1={midX}
-                      x2={midX}
-                      y1={unionY}
-                      y2={childJoinY}
-                      stroke={groupStroke.color}
-                      strokeWidth={groupStroke.width}
-                      opacity={groupStroke.opacity * edgeOpacity}
-                    />
-                    <line
-                      x1={midX}
-                      x2={toX}
-                      y1={childJoinY}
-                      y2={childJoinY}
-                      stroke={groupStroke.color}
-                      strokeWidth={groupStroke.width}
-                      opacity={groupStroke.opacity * edgeOpacity}
-                    />
-                    <line
-                      x1={toX}
-                      x2={toX}
-                      y1={childJoinY}
-                      y2={childRect.top}
-                      stroke={groupStroke.color}
-                      strokeWidth={groupStroke.width}
-                      opacity={groupStroke.opacity * edgeOpacity}
-                    />
-                  </g>
-                );
-              }
-              const edge = edges[0];
-              const parentNode = nodeById.get(edge.fromId);
-              const fromRect = nodeRects.get(edge.fromId);
-              if (!fromRect || !parentNode) return null;
-              const fromX = fromRect.left + cardWidth / 2;
-              const fromY = fromRect.top + cardHeight;
-              const toX = childRect.left + cardWidth / 2;
-              const toY = childRect.top;
-              const midY = (fromY + toY) / 2;
-              const s = parentNode.placeholder
-                ? { ...singleStroke, ...PLACEHOLDER_OVERRIDE }
-                : isDna
-                ? DNA_STROKE
-                : strokeForConfidence(edgeConfidence(edge.fromId, edge.toId));
-              return (
-                <path
-                  key={edge.id}
-                  d={`M${fromX},${fromY} L${fromX},${midY} L${toX},${midY} L${toX},${toY}`}
-                  stroke={s.color}
-                  strokeWidth={s.width}
-                  fill="none"
-                  strokeDasharray={s.dash}
-                  opacity={s.opacity * edgeOpacity}
-                >
-                  <title>{edgeTitle(edge.fromId, edge.toId)}</title>
-                </path>
-              );
-            })}
+            <PedigreeFamilyConnections families={familyLayout.families} cardsById={nodeRects}
+              relationshipsByPair={parentalRelByKey} highlightedPersonId={highlightedChildId} />
           </svg>
 
-          {layout.nodes.map((node) => {
+          {familyLayout.cards.map((node) => {
             const rect = nodeRects.get(node.id);
             if (!rect) return null;
             const isSelected = node.person?.id === selectedPersonId;
@@ -594,7 +323,6 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
               !!node.person &&
               (mergedDescendantHints[node.person.id] ||
                 (mergedChildHints[node.person.id] && node.column < layout.maxColumn));
-            const isFocus = node.person?.id === focusId;
             const dnaSupportCount = node.person
               ? dnaSupportByPersonId.get(node.person.id)?.size ?? 0
               : 0;
@@ -620,21 +348,36 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     : '',
             ].join(' ');
             return (
-              <button
+              <div
                 key={node.id}
+                data-person-id={node.sourceId}
                 className={cardClasses}
                 style={{ left: rect.left, top: rect.top, width: cardWidth, height: cardHeight }}
-                disabled={isPlaceholder ? !canAddParent : !node.person}
-                onClick={() => {
-                  if (canAddParent && node.relatedPersonId) {
-                    onAddParent?.(node.relatedPersonId, node.placeholder as 'father' | 'mother');
-                    return;
-                  }
-                  if (node.person) onPersonSelect(node.person);
-                }}
                 onMouseEnter={() => setHoveredPersonId(node.person?.id ?? null)}
                 onMouseLeave={() => setHoveredPersonId((prev) => (prev === node.person?.id ? null : prev))}
               >
+                {node.repeated && (
+                  <button
+                    type="button"
+                    className="absolute top-2 left-2 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700 hover:bg-blue-100"
+                    aria-label={`Show next family view of ${node.person?.firstName} ${node.person?.lastName}`}
+                    title="Same person, not a duplicate record. Jump to their next family view."
+                    onClick={() => {
+                      const entries = occurrencesByPersonId.get(node.sourceId)!;
+                      const next = entries[(entries.findIndex((card) => card.id === node.id) + 1) % entries.length];
+                      const container = scrollContainerRef.current;
+                      if (!container) return;
+                      const position = centeredPedigreeScrollPosition(
+                        { left: next.left * zoom, top: next.top * zoom, width: cardWidth * zoom, height: cardHeight * zoom },
+                        { width: scaledWidth, height: scaledHeight },
+                        { width: container.clientWidth, height: container.clientHeight }
+                      );
+                      container.scrollTo({ ...position, behavior: 'smooth' });
+                    }}
+                  >
+                    {occurrencesByPersonId.get(node.sourceId)?.length} views
+                  </button>
+                )}
                 {node.person && mergedSiblingHints[node.person.id] && onExpandSiblings && (
                   <button
                     type="button"
@@ -649,33 +392,34 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     <ChevronRight className="w-3 h-3" />
                   </button>
                 )}
-                <div className="flex h-full flex-col items-center text-center">
-                  {node.person && dnaSupportCount > 0 && (
-                    <DnaPersonBadge
-                      matchCount={dnaSupportCount}
-                      strongestCm={dnaCm}
-                      onClick={
-                        onDnaBadgeClick && node.person
-                          ? () => onDnaBadgeClick(node.person!.id)
-                          : undefined
-                      }
-                    />
-                  )}
-                  {isFocus && focusPartnerCount > 1 && (
-                    <div
-                      className="absolute top-2 left-2 rounded-full bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider"
-                      title={`${focusPartnerCount} spousal unions`}
-                    >
-                      {focusPartnerCount} unions
-                    </div>
-                  )}
+                {node.person && dnaSupportCount > 0 && (
+                  <DnaPersonBadge
+                    matchCount={dnaSupportCount}
+                    strongestCm={dnaCm}
+                    onClick={
+                      onDnaBadgeClick && node.person
+                        ? () => onDnaBadgeClick(node.person!.id)
+                        : undefined
+                    }
+                  />
+                )}
+                <button
+                  type="button"
+                  className="flex h-full w-full flex-col items-center text-center rounded-xl focus-visible:outline-2 focus-visible:outline-blue-500"
+                  disabled={isPlaceholder ? !canAddParent : !node.person}
+                  onClick={() => {
+                    if (canAddParent && node.relatedPersonId) {
+                      onAddParent?.(node.relatedPersonId, node.placeholder as 'father' | 'mother');
+                    } else if (node.person) onPersonSelect(node.person);
+                  }}
+                >
                   <div
                     className={`w-14 h-14 rounded-2xl overflow-hidden ${
                       node.placeholder ? 'bg-slate-100 border border-dashed border-slate-300' : ''
                     }`}
                   >
                     {node.person ? (
-                      <img src={getAvatarForPerson(node.person)} className="w-full h-full object-cover" />
+                      <img src={getAvatarForPerson(node.person)} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <span className="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center">
@@ -696,6 +440,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     )}
                   </div>
                   <div className="mt-auto space-y-1">
+                    {node.repeated && <div className="text-[9px] font-bold text-slate-500" title="Same person, shown in more than one family group. Not a duplicate record.">Same person · shown again</div>}
                     {lifeLabel && (
                       <div className="flex items-center justify-center text-xs text-slate-500 font-medium">
                         <span className="truncate">{lifeLabel}</span>
@@ -708,7 +453,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                       </div>
                     )}
                   </div>
-                </div>
+                </button>
                 {node.person && ancestorsRemaining && node.column === layout.minColumn && onExpandAncestors && (
                   <button
                     type="button"
@@ -735,7 +480,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
                     <ChevronDown className="w-3 h-3" />
                   </button>
                 )}
-              </button>
+              </div>
             );
           })}
           </div>
@@ -745,7 +490,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
         <div className="absolute bottom-20 right-4 bg-white/90 border border-slate-200 rounded-2xl shadow-2xl p-3 z-30">
           <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-2">Overview</div>
           <div className="relative w-40 h-24 bg-slate-50 rounded-xl overflow-hidden border border-slate-100">
-            {layout.nodes.map((node) => {
+            {familyLayout.cards.map((node) => {
               const rect = nodeRects.get(node.id);
               if (!rect) return null;
               const miniX = (rect.left / width) * 160 + 10;

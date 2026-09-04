@@ -36,3 +36,29 @@ not a full-force directed graph.
   extension point for those future views.
 
 Related: [../concepts/public-first-genealogy.md](../concepts/public-first-genealogy.md).
+
+## Family-block rendering (2026-09-04)
+
+The pedigree renderer now positions **families**, not independently packed generation rows.
+The scope/graph selection remains in `lib/pedigreeLayout.ts`; the presentation geometry lives in
+`lib/pedigreeFamilyLayout.ts`. Other views, including the fan chart, retain their own geometry.
+
+- Each known parent set gets one labeled frame and one child branch, shared by its siblings.
+  Each descendant family reserves enough horizontal space for its entire visible subtree.
+  No unrelated card may be inserted between the members of a family or across its child branch.
+- Marriage and partnership labels come from explicit relationship UUID pairs. Shared children alone
+  are labeled **Co-parents**, not assumed to establish a marriage. Single-parent records and missing
+  parent placeholders remain distinct from recorded unions.
+- A person with multiple families can appear in more than one frame, marked **Same person - shown
+  again**. These are presentation occurrences of the same UUID, not new person records. Profile
+  selection, parent creation, expansion controls, and DNA actions always use the original person ID.
+  The **N views** button cycles between that person's visible occurrences without changing focus.
+  A family already expanded elsewhere becomes a labeled terminal reference to bound shared branches.
+- Ancestor branches reserve their own space above the focus. Missing-parent cards connect to their
+  actual child, not to whichever child happens to be horizontally nearest.
+- The renderer keeps DNA badges and per-child lineage evidence styling. A child's DNA evidence does
+  not recolor an entire sibling branch as if every sibling had that evidence.
+
+Regression coverage includes the Fredin/Brodden/Bystrom branch topology, multiple unions, single
+parents, placeholder grandparents, shared branches, and UUID identity after name changes. Wider
+canvases are intentional: pan/zoom rather than compressing unrelated families into an ambiguous row.
