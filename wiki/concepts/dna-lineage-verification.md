@@ -17,6 +17,10 @@ is consistent with how much DNA they actually share.
 3. **Resolve lineage** — the admin DNA panel finds the shortest plausible relationship path
    between the two testers: `resolveSharedMatchLineage` / `resolveSharedTestLineage` in
    [../../services/archive.ts](../../services/archive.ts).
+   When the documented pedigree has more than one common ancestor, the expanded review also
+   lists the other recorded shared-ancestor lines and generation distances. These are context
+   for pedigree collapse/endogamy, not additional DNA-proof claims; support is still attached
+   only to the selected shortest path.
 4. **cM compatibility** — compare observed shared centimorgans against the expected range for
    the resolved relationship (see [../sources/dna-cm-ranges.md](../sources/dna-cm-ranges.md)).
    The result stores path person ids, path relationship ids, and the compatibility outcome.

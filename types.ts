@@ -173,6 +173,17 @@ export interface DNASharedMatchRecord {
   pathFitsPrediction: boolean;
   pathPersonIds: string[];
   pathRelationshipIds: string[];
+  /**
+   * Other recorded common-ancestor routes. Informational only: shared DNA does
+   * not independently prove every route in an endogamous pedigree.
+   */
+  sharedAncestorLineages?: Array<{
+    mrcaPersonId: string;
+    pathPersonIds: string[];
+    pathRelationshipIds: string[];
+    focusGenerations: number;
+    counterpartGenerations: number;
+  }>;
   /** UUID-keyed display data for this exact lineage path. Keeps the admin view independent of the visible tree scope. */
   lineagePersonNames?: Record<string, string>;
   /** Exact relationship rows used to resolve this path, so breadcrumb labels remain accurate outside the loaded pedigree. */
