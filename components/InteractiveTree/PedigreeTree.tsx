@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { Person, Relationship, RelationshipConfidence } from '../../types';
 import { buildPedigreeLayout } from '../../lib/pedigreeLayout';
+import { centeredPedigreeScrollPosition } from '../../lib/pedigreeViewport';
 import { dnaSupportMatchIds } from '../../lib/dnaSupport';
 import { getAvatarForPerson } from '../../lib/avatar';
 import DnaPersonBadge from '../dna/DnaPersonBadge';
@@ -134,6 +135,7 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
   const [minimapOpen, setMinimapOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingHomeRecenter, setPendingHomeRecenter] = useState(false);
+  const centeredFocusKeyRef = useRef<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [hoveredPersonId, setHoveredPersonId] = useState<string | null>(null);
   const layout = useMemo(
@@ -221,6 +223,32 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     return map;
   }, [layout]);
 
+  const focusRect = focusId ? nodeRects.get(focusId) : undefined;
+
+  // A multi-union descendant branch can be thousands of pixels wide. Start each new focus on its
+  // card rather than at the canvas origin, where the branch looks disconnected and is easy to misread.
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !focusId || !focusRect) return;
+
+    const focusKey = `${focusId}:${focusRect.left}:${focusRect.top}`;
+    if (centeredFocusKeyRef.current === focusKey) return;
+
+    const position = centeredPedigreeScrollPosition(
+      {
+        left: focusRect.left * zoom,
+        top: focusRect.top * zoom,
+        width: cardWidth * zoom,
+        height: cardHeight * zoom,
+      },
+      { width: scaledWidth, height: scaledHeight },
+      { width: container.clientWidth, height: container.clientHeight }
+    );
+    container.scrollLeft = position.left;
+    container.scrollTop = position.top;
+    centeredFocusKeyRef.current = focusKey;
+  }, [focusId, focusRect, scaledHeight, scaledWidth, zoom]);
+
   const childEdgeGroups = useMemo(() => {
     const groups = new Map<string, typeof layout.edges>();
     layout.edges.forEach((edge) => {
@@ -296,15 +324,23 @@ const PedigreeTree: React.FC<PedigreeTreeProps> = ({
     const container = scrollContainerRef.current;
     const rect = nodeRects.get(focusId);
     if (!container || !rect) return;
-    const targetLeft = rect.left * zoom + (cardWidth * zoom) / 2 - container.clientWidth / 2;
-    const targetTop = rect.top * zoom + (cardHeight * zoom) / 2 - container.clientHeight / 2;
+    const position = centeredPedigreeScrollPosition(
+      {
+        left: rect.left * zoom,
+        top: rect.top * zoom,
+        width: cardWidth * zoom,
+        height: cardHeight * zoom,
+      },
+      { width: scaledWidth, height: scaledHeight },
+      { width: container.clientWidth, height: container.clientHeight }
+    );
     container.scrollTo({
-      left: Math.max(0, targetLeft),
-      top: Math.max(0, targetTop),
+      left: position.left,
+      top: position.top,
       behavior: 'smooth',
     });
     setPendingHomeRecenter(false);
-  }, [pendingHomeRecenter, focusId, nodeRects, zoom]);
+  }, [pendingHomeRecenter, focusId, nodeRects, scaledHeight, scaledWidth, zoom]);
 
   const handleHomeClick = () => {
     if (!homeEnabled || !onFocusHome) return;
