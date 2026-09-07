@@ -32,7 +32,7 @@
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
+    "@types/react-dom": "^19.2.7",
     "@typescript-eslint/eslint-plugin": "^8.69.0",
     "@typescript-eslint/parser": "^8.69.0",
     "@vitejs/plugin-react": "^6.1.1",
@@ -43,6 +43,6 @@
     "husky": "^9.1.7",
     "typescript": "~6.0.3",
     "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }
