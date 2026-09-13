@@ -6,6 +6,15 @@ remembering. Keep entries short; link to wiki pages / commits / files.
 
 ---
 
+## 2026-09-13 — Vercel Web Analytics
+
+Added `@vercel/analytics` and mounted its React component once in
+[`index.tsx`](../index.tsx), covering the main app and standalone public book viewer.
+Enable Web Analytics in Vercel and deploy to collect page views; setup is documented
+in [`README.md`](../README.md#web-analytics).
+
+---
+
 > **Backfill note (reconstructed 2026-06-23):** the 2026-06-22/23 entries below were written after
 > the fact from `git log` (commits `ae0299d`→`a7f9359`, authored in a Claude Fable 5 session) — that
 > work shipped + was committed but not logged at the time. Build is green at **143 tests** as of the

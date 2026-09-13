@@ -21,6 +21,13 @@ This repo contains everything you need to run Linegra locally or deploy it to Ve
 
 > ⚠️ Linegra no longer ships with mock archives or an in-app Supabase connection form. You must provide valid `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` values (as described in `docs/SUPABASE_SETUP.md`) before the UI will load.
 
+## Web Analytics
+
+Vercel Web Analytics is mounted once in `index.tsx` using `@vercel/analytics/react`,
+covering both the main app and public book pages. Enable **Web Analytics** for the
+project in Vercel and deploy this change to start collecting page views. See the
+[Vercel setup guide](https://vercel.com/docs/analytics/quickstart).
+
 ## DNA Workflows
 
 The DNA workflow (Autosomal + Shared Autosomal imports, lineage resolution, and admin review) is documented in:
